@@ -27,6 +27,9 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "getTelephony" -> result.success(telephonyInfo())
                     "requestPhonePermission" -> result.success(ensurePhonePermission())
+                    "hasPhonePermission" -> result.success(hasPhonePermission())
+                    "checkNotificationPermission" -> result.success(hasNotificationPermission())
+                    "requestNotificationPermission" -> result.success(requestNotificationPermission())
                     "getRxBytes" -> result.success(rxBytes())
                     "startCollect" -> {
                         val interval = call.argument<Int>("intervalMinutes")
@@ -47,15 +50,44 @@ class MainActivity : FlutterActivity() {
     /// Retourne true si READ_PHONE_STATE est déjà accordée ; sinon déclenche la
     /// demande runtime (le résultat sera disponible aux prochaines lectures).
     private fun ensurePhonePermission(): Boolean {
-        val granted = ContextCompat.checkSelfPermission(
-            this, Manifest.permission.READ_PHONE_STATE
-        ) == PackageManager.PERMISSION_GRANTED
+        val granted = hasPhonePermission()
         if (!granted) {
             ActivityCompat.requestPermissions(
                 this, arrayOf(Manifest.permission.READ_PHONE_STATE), phonePermissionRequestCode
             )
         }
         return granted
+    }
+
+    /// Vrai si READ_PHONE_STATE est déjà accordée (lecture de l'état sans
+    /// déclencher la demande système).
+    private fun hasPhonePermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            this, Manifest.permission.READ_PHONE_STATE
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /// La permission de notification n'existe qu'à partir d'Android 13
+    /// (TIRAMISU). Avant, elle est considérée comme accordée d'office.
+    private fun hasNotificationPermission(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
+        return ContextCompat.checkSelfPermission(
+            this, Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /// Demande l'autorisation de notification (Android 13+). Retourne vrai
+    /// seulement si elle est accordée après la demande ; la réponse système
+    /// étant asynchrone, un false immédiat signifie « demande affichée ».
+    private fun requestNotificationPermission(): Boolean {
+        if (hasNotificationPermission()) return true
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ActivityCompat.requestPermissions(
+                this, arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                notificationPermissionRequestCode,
+            )
+        }
+        return false
     }
 
     /// Octets reçus par l'application depuis le démarrage de l'appareil, ou -1

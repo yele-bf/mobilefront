@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../constants/config.dart';
 import '../services/background_collection_service.dart';
+import '../services/permission_service.dart';
 import '../theme/yele_theme.dart';
 import '../widgets/yele_scaffold.dart';
 
@@ -12,23 +14,54 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
-  bool _useGps = true;
-
+class _SettingsScreenState extends State<SettingsScreen>
+    with WidgetsBindingObserver {
   final _collect = BackgroundCollectionService();
   CollectStatus _status = CollectStatus.unavailable;
   bool _busy = false;
 
+  final _perms = PermissionService();
+  Map<YelePermission, PermissionState> _permStates = {};
+  final Set<YelePermission> _busyPerms = {};
+  bool _gpsOn = true;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _refreshStatus();
+    _refreshPermissions();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Retour des réglages système : relire l'état des permissions.
+    if (state == AppLifecycleState.resumed) {
+      _refreshStatus();
+      _refreshPermissions();
+    }
   }
 
   Future<void> _refreshStatus() async {
     final status = await _collect.status();
     if (!mounted) return;
     setState(() => _status = status);
+  }
+
+  Future<void> _refreshPermissions() async {
+    final states = await _perms.checkAll();
+    final gps = await _perms.isGpsServiceEnabled();
+    if (!mounted) return;
+    setState(() {
+      _permStates = states;
+      _gpsOn = gps;
+    });
   }
 
   @override
@@ -45,15 +78,261 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _item('Test par défaut au démarrage', 'Test complet'),
             _item('Unité de débit', 'Mb/s'),
             _item('Style de fond', 'Vert'),
-            _toggle('Utiliser le GPS',
-                'Active/désactive la géolocalisation des tests', _useGps,
-                (v) => setState(() => _useGps = v)),
+            ..._permissionsSection(),
             if (_collect.isSupported) ..._collectSection(),
             const SizedBox(height: 24),
           ],
         ),
       ),
     );
+  }
+
+  // ── Autorisations du téléphone ────────────────────────────────────────────
+
+  /// Section groupant les autorisations Android requises par l'application :
+  /// la localisation et le réseau mobile sont obligatoires, les notifications
+  /// facultatives.
+  List<Widget> _permissionsSection() {
+    final web = kIsWeb;
+    return [
+      _section('Autorisations'),
+      Container(
+        padding: const EdgeInsets.fromLTRB(18, 2, 18, 10),
+        child: Text(
+          web
+              ? 'Ces autorisations s\'appliquent à l\'application Android '
+                  'installée sur le téléphone. Sur le web, aucune permission '
+                  'système n\'est requise : la localisation utilise l\'adresse IP.'
+              : 'Localisation et Réseau mobile sont obligatoires pour des '
+                  'mesures exploitables (position sur la carte, opérateur, '
+                  'technologie). Notifications est facultative : elle sert '
+                  'uniquement à la collecte de couverture en arrière-plan.',
+          style: const TextStyle(fontSize: 13, color: YeleColors.muted),
+        ),
+      ),
+      for (final p in YelePermission.values) _permissionTile(p),
+    ];
+  }
+
+  /// Ligne d'autorisation avec une bascule qui reflète l'état réel de la
+  /// permission Android : ON quand elle est accordée, OFF sinon (IMP-04). On
+  /// ne stocke rien en local — c'est Android qui fait foi, et l'état est relu
+  /// à chaque retour au premier plan (voir [didChangeAppLifecycleState]).
+  Widget _permissionTile(YelePermission p) {
+    final state = _permStates[p];
+    final busy = _busyPerms.contains(p);
+    final web = kIsWeb;
+    final required = p.required;
+
+    // Couleur de la pastille « Obligatoire » / « Facultative ».
+    final chipColor = required ? YeleColors.primaryDk : YeleColors.muted;
+
+    // Alerte GPS : permission accordée mais service de localisation éteint →
+    // les tests seront bloqués tant qu'il est désactivé (voir ISS-09).
+    final gpsWarn = !web &&
+        p == YelePermission.location &&
+        state == PermissionState.granted &&
+        !_gpsOn;
+
+    final granted = state == PermissionState.granted;
+    final deniedForever = state == PermissionState.deniedForever;
+    final unavailable = state == PermissionState.unavailable;
+
+    // Sur le web il n'y a pas de permission système ; pendant une demande en
+    // cours (popup système affichée) la bascule est désactivée.
+    final togglable = !web && state != null && !busy;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 10, 18, 10),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: Color(0x11000000))),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(p.label,
+                          style: const TextStyle(
+                              fontSize: 16, color: YeleColors.ink)),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: chipColor.withValues(alpha: .12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        required ? 'Obligatoire' : 'Facultative',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: chipColor,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(p.description,
+                    style: const TextStyle(
+                        fontSize: 13, color: YeleColors.muted)),
+                if (deniedForever) ...[
+                  const SizedBox(height: 5),
+                  Text(
+                    'Refus définitif : touchez la bascule pour ouvrir les '
+                    'réglages Android et autoriser.',
+                    style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: YeleColors.danger,
+                        height: 1.3),
+                  ),
+                ],
+                if (unavailable) ...[
+                  const SizedBox(height: 5),
+                  Text(
+                    web
+                        ? 'Non requise sur le web (la localisation utilise '
+                            'l\'adresse IP).'
+                        : 'Non requise sur cette plateforme.',
+                    style: const TextStyle(
+                        fontSize: 12.5, color: YeleColors.muted, height: 1.3),
+                  ),
+                ],
+                if (gpsWarn) ...[
+                  const SizedBox(height: 5),
+                  Row(
+                    children: [
+                      const Icon(Icons.warning_amber,
+                          size: 14, color: YeleColors.warn),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          'GPS du téléphone éteint : les tests resteront '
+                          'bloqués tant qu\'il est désactivé.',
+                          style: const TextStyle(
+                              fontSize: 12.5,
+                              color: YeleColors.warn,
+                              height: 1.3),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (busy)
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            Switch(
+              value: granted,
+              activeThumbColor: YeleColors.primary,
+              onChanged: togglable ? (v) => _onTogglePermission(p, v) : null,
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Bascule d'une autorisation :
+  /// - **OFF → ON** : demande la permission à Android (popup système). Si
+  ///   l'utilisateur avait refusé définitivement, Android ne réaffiche plus la
+  ///   popup : on ouvre alors les réglages système de l'app.
+  /// - **ON → OFF** : Android interdit à l'app de retirer elle-même une
+  ///   permission accordée ; on ouvre la page « Applications → Yélé » où
+  ///   l'utilisateur la désactive. À la fermeture, l'état est relu et la
+  ///   bascule se met à jour (voir [didChangeAppLifecycleState]).
+  Future<void> _onTogglePermission(YelePermission p, bool target) async {
+    final state = _permStates[p];
+
+    if (!target) {
+      final go = await _showPermissionDialog(
+        title: 'Désactiver « ${p.label} » ?',
+        message: 'Yélé ne peut pas retirer elle-même une autorisation déjà '
+            'accordée à Android. La page « Applications → Yélé » va '
+            's\'ouvrir : désactivez-y l\'interrupteur « ${p.label} », puis '
+            'revenez dans l\'application.',
+      );
+      if (go != true || !mounted) return;
+      await _openSettings(p);
+      return;
+    }
+
+    if (state == PermissionState.deniedForever) {
+      final go = await _showPermissionDialog(
+        title: 'Autoriser « ${p.label} » ?',
+        message: 'Android a mémorisé votre refus et ne réaffichera plus la '
+            'demande. La page « Applications → Yélé » va s\'ouvrir : '
+            'autorisez-y « ${p.label} », puis revenez dans l\'application.',
+      );
+      if (go != true || !mounted) return;
+      await _openSettings(p);
+      return;
+    }
+
+    // Cas courant : permission refusée une fois (ou état inconnu) → popup
+    // système classique.
+    await _authorize(p);
+  }
+
+  /// Petit dialogue d'explication avant d'ouvrir les réglages système
+  /// d'Android (l'app n'a aucun contrôle direct sur ces permissions).
+  Future<bool?> _showPermissionDialog({
+    required String title,
+    required String message,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(message, style: const TextStyle(fontSize: 14)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Ouvrir les réglages'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _authorize(YelePermission p) async {
+    if (_busyPerms.contains(p)) return;
+    setState(() => _busyPerms.add(p));
+    await _perms.request(p);
+    // La réponse de la popup système arrive parfois en différé (canal natif).
+    await Future.delayed(const Duration(milliseconds: 500));
+    await _refreshPermissions();
+    if (!mounted) return;
+    setState(() => _busyPerms.remove(p));
+    final after = _permStates[p];
+    if (after == PermissionState.deniedForever) {
+      _snack('Refus définitif : touchez la bascule pour ouvrir les réglages '
+          'Android et autoriser.');
+    } else if (after == PermissionState.denied) {
+      _snack('Si la fenêtre système est affichée, accordez l\'autorisation.');
+    }
+  }
+
+  Future<void> _openSettings(YelePermission p) async {
+    await _perms.openAppSettings();
   }
 
   // ── Collecte de couverture ────────────────────────────────────────────────

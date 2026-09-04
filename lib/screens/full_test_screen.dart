@@ -133,8 +133,58 @@ class _FullTestScreenState extends State<FullTestScreen>
     return 1.0;
   }
 
+  /// Garde-fou ISS-09 : ne lance le test que si la localisation est utilisable
+  /// (GPS système activé + permission accordée). Retourne false si le test doit
+  /// rester bloqué, après avoir montré le dialogue approprié.
+  ///
+  /// Sur le web (Chrome), il n'y a pas de GPS système : la vérification renvoie
+  /// toujours « ok » et le test se lance comme avant (repli IP conservé).
+  Future<bool> _ensureGpsAllowed() async {
+    final gate = await _location.ensureGpsForTest();
+    if (gate == GpsGateResult.ok) return true;
+
+    if (!mounted) return false;
+
+    final gpsOff = gate == GpsGateResult.gpsDisabled;
+    final action = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Localisation requise'),
+        content: Text(
+          gpsOff
+              ? 'Le GPS de votre téléphone est désactivé. Activez la localisation '
+                    'pour lancer le test de mesure.'
+              : 'L\'accès à la localisation est refusé. Autorisez Yélé à accéder '
+                    'à votre position pour lancer le test de mesure.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop('cancel'),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(gpsOff ? 'settings' : 'app'),
+            child: Text(gpsOff ? 'Ouvrir les paramètres' : 'Autoriser'),
+          ),
+        ],
+      ),
+    );
+
+    if (action == 'settings') {
+      await _location.openLocationSettings();
+    } else if (action == 'app') {
+      await _location.openAppSettings();
+    }
+    // Quoi qu'il arrive, on ne démarre pas automatiquement après le retour :
+    // l'utilisateur relance le test lui-même une fois le GPS activé.
+    return false;
+  }
+
   Future<void> _start() async {
     if (_stage == _Stage.running) return;
+    // ISS-09 : blocage du test tant que la localisation n'est pas disponible.
+    if (!await _ensureGpsAllowed()) return;
     setState(() {
       _stage = _Stage.running;
       _phaseLabel = 'Initialisation…';

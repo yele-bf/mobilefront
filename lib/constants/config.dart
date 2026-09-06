@@ -1,7 +1,9 @@
 // Configuration des constantes de l'application Yélé
 
 // ========== API CONFIGURATION ==========
-// Modifier cette URL pour pointer vers votre backend speedtest-go
+// Backend speedtest-go hébergé (Render). Le serveur dort après inactivité :
+// le premier appel peut mettre 30-60 s à répondre (cold start), les suivants
+// sont immédiats.
 const String API_BASE_URL = 'https://mobiletest-j0c6.onrender.com';
 // API MongoDB intégrée au même backend speedtest-go (/api/*)
 const String MONGO_API_BASE_URL = '$API_BASE_URL/api';

@@ -122,9 +122,46 @@ class ExportService {
 
   // ── Rapport PDF (utilisé par exportPdf ET exportPng) ─────────────────────
 
+  /// Octets des TTF embarqués (assets/fonts, cf. pubspec.yaml). La police
+  /// par défaut du package pdf — Helvetica, non embarquée, encodage WinAnsi —
+  /// ne couvre pas tous les caractères latins étendus (« œ », « … », tirets)
+  /// et les visionneuses qui la substituent (dont le rasteriseur Android du
+  /// PNG) affichaient des caractères cassés. Une vraie police TTF embarquée
+  /// garantit le même rendu partout.
+  Future<pw.Font?> _embeddedFont({bool bold = false}) async {
+    try {
+      final data = await rootBundle.load(bold
+          ? 'assets/fonts/NotoSans-Bold.ttf'
+          : 'assets/fonts/NotoSans-Regular.ttf');
+      return pw.Font.ttf(data.buffer.asByteData());
+    } catch (_) {
+      return null; // Repli sur Helvetica (rendu dégradé mais lisible).
+    }
+  }
+
+  /// Styles cohérents du rapport : police embarquée partout (ou repli).
+  pw.TextStyle _ts(
+    pw.Font? regular,
+    pw.Font? bold,
+    double size,
+    PdfColor color, {
+    bool isBold = false,
+  }) {
+    final f = isBold ? (bold ?? regular) : regular;
+    return pw.TextStyle(
+      font: f,
+      fontBold: f,
+      fontSize: size,
+      color: color,
+      fontWeight: isBold && f != null ? pw.FontWeight.bold : pw.FontWeight.normal,
+    );
+  }
+
   Future<pw.Document> _buildPdf(SpeedTestResult r, {required bool a4}) async {
     final pdf = pw.Document();
     final logo = await _logo();
+    final regular = await _embeddedFont();
+    final bold = await _embeddedFont(bold: true) ?? regular;
     final quality = _qualityLabel(r.downloadSpeed);
     final pageFormat =
         a4 ? PdfPageFormat.a4 : const PdfPageFormat(420, 520);
@@ -134,8 +171,15 @@ class ExportService {
 
     pdf.addPage(
       pw.Page(
-        pageFormat: pageFormat,
-        margin: pw.EdgeInsets.all(a4 ? 40 : 18),
+        // Fond blanc peint explicitement : sans lui, la rasterisation PNG
+        // (PdfRenderer Android) produit une image à fond noir. Ce fond est
+        // aussi présent dans le PDF A4, sans effet visible là-bas.
+        pageTheme: pw.PageTheme(
+          pageFormat: pageFormat,
+          margin: pw.EdgeInsets.all(a4 ? 40 : 18),
+          buildBackground: (context) =>
+              pw.Container(color: PdfColor.fromInt(0xFFFFFFFF)),
+        ),
         build: (context) => pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
@@ -149,14 +193,12 @@ class ExportService {
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
                     pw.Text(_appName,
-                        style: pw.TextStyle(
-                            fontSize: a4 ? 22 : 16,
-                            fontWeight: pw.FontWeight.bold,
-                            color: _hex(YeleColors.primary))),
+                        style: _ts(regular, bold, a4 ? 22 : 16,
+                            _hex(YeleColors.primary),
+                            isBold: true)),
                     pw.Text(_appTagline,
-                        style: pw.TextStyle(
-                            fontSize: a4 ? 8.5 : 6.5,
-                            color: _hex(YeleColors.muted))),
+                        style: _ts(
+                            regular, bold, a4 ? 8.5 : 6.5, _hex(YeleColors.muted))),
                   ],
                 ),
                 pw.Spacer(),
@@ -170,8 +212,7 @@ class ExportService {
                           const pw.BorderRadius.all(pw.Radius.circular(6)),
                     ),
                     child: pw.Text(_dateLong(r.timestamp),
-                        style: pw.TextStyle(
-                            fontSize: 9, color: _hex(YeleColors.ink))),
+                        style: _ts(regular, bold, 9, _hex(YeleColors.ink))),
                   ),
               ],
             ),
@@ -184,10 +225,8 @@ class ExportService {
               crossAxisAlignment: pw.CrossAxisAlignment.center,
               children: [
                 pw.Text('Rapport de mesure',
-                    style: pw.TextStyle(
-                        fontSize: titleSize,
-                        fontWeight: pw.FontWeight.bold,
-                        color: _hex(YeleColors.ink))),
+                    style: _ts(regular, bold, titleSize, _hex(YeleColors.ink),
+                        isBold: true)),
                 pw.SizedBox(width: 10),
                 pw.Container(
                   padding: const pw.EdgeInsets.symmetric(
@@ -200,10 +239,8 @@ class ExportService {
                         const pw.BorderRadius.all(pw.Radius.circular(4)),
                   ),
                   child: pw.Text('Qualité : ${quality.label}',
-                      style: pw.TextStyle(
-                          fontSize: bodySize,
-                          fontWeight: pw.FontWeight.bold,
-                          color: quality.color)),
+                      style: _ts(regular, bold, bodySize, quality.color,
+                          isBold: true)),
                 ),
               ],
             ),
@@ -213,37 +250,40 @@ class ExportService {
             pw.Row(
               children: [
                 _tile('Download', r.downloadSpeed.toStringAsFixed(2), 'Mb/s',
-                    tileValue),
+                    tileValue, regular, bold),
                 pw.SizedBox(width: a4 ? 10 : 6),
                 _tile('Upload', r.uploadSpeed.toStringAsFixed(2), 'Mb/s',
-                    tileValue),
+                    tileValue, regular, bold),
                 pw.SizedBox(width: a4 ? 10 : 6),
-                _tile('Latence', r.ping.toStringAsFixed(0), 'ms', tileValue),
+                _tile('Latence', r.ping.toStringAsFixed(0), 'ms', tileValue,
+                    regular, bold),
               ],
             ),
             pw.SizedBox(height: 4),
             pw.Text('Gigue : ${r.jitter.toStringAsFixed(0)} ms',
-                style: pw.TextStyle(
-                    fontSize: bodySize, color: _hex(YeleColors.muted))),
+                style: _ts(
+                    regular, bold, bodySize, _hex(YeleColors.muted))),
             pw.SizedBox(height: a4 ? 14 : 8),
 
             // ── Sections ──
-            _pdfSection('Détails de la mesure', _rows(r), bodySize),
+            _pdfSection('Détails de la mesure', _rows(r), bodySize, regular,
+                bold),
             if (r.hasStreamingTest) ...[
               pw.SizedBox(height: a4 ? 12 : 8),
-              _pdfSection('Test de streaming vidéo', _streamingRows(r), bodySize),
+              _pdfSection('Test de streaming vidéo', _streamingRows(r),
+                  bodySize, regular, bold),
             ],
             if (r.hasBrowsingTest) ...[
               pw.SizedBox(height: a4 ? 12 : 8),
-              _pdfSection('Test de navigation web', _browsingRows(r), bodySize),
+              _pdfSection('Test de navigation web', _browsingRows(r), bodySize,
+                  regular, bold),
             ],
             if (a4) ...[
               pw.Spacer(),
               pw.Divider(color: _hex(YeleColors.line)),
               pw.Text(
                 'Généré par l\'application $_appName le ${_dateLong(DateTime.now())} — Serveur de test : ${r.server}.',
-                style: pw.TextStyle(
-                    fontSize: 7.5, color: _hex(YeleColors.muted)),
+                style: _ts(regular, bold, 7.5, _hex(YeleColors.muted)),
               ),
             ],
           ],
@@ -254,7 +294,8 @@ class ExportService {
   }
 
   /// Tuile « Label / Valeur / Unité » encadrée, style carte de résultat.
-  pw.Widget _tile(String label, String value, String unit, double valueSize) {
+  pw.Widget _tile(String label, String value, String unit, double valueSize,
+      pw.Font? regular, pw.Font? bold) {
     return pw.Expanded(
       child: pw.Container(
         padding: const pw.EdgeInsets.symmetric(vertical: 10, horizontal: 6),
@@ -266,24 +307,21 @@ class ExportService {
         child: pw.Column(
           children: [
             pw.Text(label,
-                style: pw.TextStyle(
-                    fontSize: 8, color: _hex(YeleColors.muted))),
+                style: _ts(regular, bold, 8, _hex(YeleColors.muted))),
             pw.SizedBox(height: 3),
             pw.Text(value,
-                style: pw.TextStyle(
-                    fontSize: valueSize,
-                    fontWeight: pw.FontWeight.bold,
-                    color: _hex(YeleColors.field))),
+                style: _ts(regular, bold, valueSize, _hex(YeleColors.field),
+                    isBold: true)),
             pw.Text(unit,
-                style: pw.TextStyle(
-                    fontSize: 8, color: _hex(YeleColors.field))),
+                style: _ts(regular, bold, 8, _hex(YeleColors.field))),
           ],
         ),
       ),
     );
   }
 
-  pw.Widget _pdfSection(String title, List<List<String>> rows, double fontSize) {
+  pw.Widget _pdfSection(String title, List<List<String>> rows, double fontSize,
+      pw.Font? regular, pw.Font? bold) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
@@ -296,10 +334,9 @@ class ExportService {
                 const pw.BorderRadius.all(pw.Radius.circular(4)),
           ),
           child: pw.Text(title,
-              style: pw.TextStyle(
-                  fontSize: fontSize,
-                  fontWeight: pw.FontWeight.bold,
-                  color: PdfColor.fromInt(0xFFFFFFFF))),
+              style: _ts(regular, bold, fontSize,
+                  PdfColor.fromInt(0xFFFFFFFF),
+                  isBold: true)),
         ),
         pw.SizedBox(height: 4),
         ...rows.map((row) => pw.Padding(
@@ -310,26 +347,23 @@ class ExportService {
                   pw.SizedBox(
                     width: 150,
                     child: pw.Text('${row[0]} :',
-                        style: pw.TextStyle(
-                            fontSize: fontSize,
-                            color: _hex(YeleColors.muted))),
+                        style: _ts(
+                            regular, bold, fontSize, _hex(YeleColors.muted))),
                   ),
                   pw.Expanded(
                     child: pw.Text(
                       row.length > 1 ? row[1] : '',
-                      style: pw.TextStyle(
-                          fontSize: fontSize,
-                          fontWeight: pw.FontWeight.bold,
-                          color: _hex(YeleColors.ink)),
+                      style: _ts(regular, bold, fontSize,
+                          _hex(YeleColors.ink),
+                          isBold: true),
                     ),
                   ),
                   if (row.length > 2 && row[2].isNotEmpty)
                     pw.SizedBox(
                       width: 30,
                       child: pw.Text(row[2],
-                          style: pw.TextStyle(
-                              fontSize: fontSize,
-                              color: _hex(YeleColors.muted))),
+                          style: _ts(
+                              regular, bold, fontSize, _hex(YeleColors.muted))),
                     ),
                 ],
               ),

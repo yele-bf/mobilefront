@@ -68,3 +68,14 @@ flutter:
 
   assets:
     - assets/logo/yele_logo.png
+
+  # Police embarquée pour les exports PDF/PNG : la police par défaut du
+  # package pdf (Helvetica, non embarquée) ne couvre pas tous les caractères
+  # latins étendus (œ, «», '…) et l'afficheur Android la substitue mal,
+  # ce qui produisait des caractères cassés dans les exports.
+  fonts:
+    - family: NotoSans
+      fonts:
+        - asset: assets/fonts/NotoSans-Regular.ttf
+        - asset: assets/fonts/NotoSans-Bold.ttf
+          weight: 700

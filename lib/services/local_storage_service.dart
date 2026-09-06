@@ -167,18 +167,5 @@ class LocalStorageService {
     }
   }
 
-  // Exporter en JSON
-  Future<String?> exportToJSON() async {
-    try {
-      List<SpeedTestResult> results = getAllResults();
-      final jsonData = results.map((r) => r.toJson()).toList();
-      logger.i('Export JSON: ${jsonData.length} résultats');
-      return jsonData.toString();
-    } catch (e) {
-      logger.e('Erreur export JSON: $e');
-      return null;
-    }
-  }
-
   int getTotalResults() => _box.length;
 }

@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import '../models/speed_test_result.dart';
 import '../services/local_storage_service.dart';
 import '../theme/yele_theme.dart';
+import '../widgets/export_sheet.dart';
 import '../widgets/yele_scaffold.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -373,6 +374,22 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 '${r.latitude!.toStringAsFixed(4)}, ${r.longitude!.toStringAsFixed(4)}'),
           if (r.qoeRating != null && r.qoeRating! > 0)
             line('QoE', '${r.qoeRating}/5'),
+          // IMP-13 — Export de cette mesure (CSV / Excel / PDF / PNG).
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => showExportSheet(context, r),
+              icon: const Icon(Icons.ios_share, size: 18),
+              label: const Text('Exporter la mesure'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: YeleColors.ink,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
         ],
       ),
     );

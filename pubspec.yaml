@@ -47,6 +47,15 @@ dependencies:
   logger: ^2.0.0
   uuid: ^4.0.0
 
+  # Interop DOM pour les tests streaming/navigation sur le web (Chrome)
+  web: ^1.1.1
+
+  # Export d'une mesure (IMP-13) : CSV, Excel, PDF et partage natif
+  share_plus: ^13.3.0
+  excel: ^4.0.6
+  pdf: ^3.11.3
+  printing: ^5.14.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -56,3 +65,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  assets:
+    - assets/logo/yele_logo.png

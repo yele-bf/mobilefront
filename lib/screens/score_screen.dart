@@ -4,6 +4,7 @@ import '../models/speed_test_result.dart';
 import '../services/local_storage_service.dart';
 import '../services/speed_test_api_service.dart';
 import '../theme/yele_theme.dart';
+import '../widgets/export_sheet.dart';
 import '../widgets/qoe_dialog.dart';
 import '../widgets/streaming_table.dart';
 import '../widgets/yele_scaffold.dart';
@@ -417,6 +418,26 @@ class _ScoreScreenState extends State<ScoreScreen> {
       padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
       child: Column(
         children: [
+          // IMP-13 — Export de la mesure, façon nPerf : proposé dès le bilan
+          // (l'export d'un résultat échoué reste possible : les champs mesurés
+          // et la raison d'échec sont dans la mesure).
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                await _finalize();
+                if (mounted) showExportSheet(context, r);
+              },
+              icon: const Icon(Icons.ios_share),
+              label: const Text('Exporter la mesure'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: YeleColors.ink,
+                backgroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(

@@ -148,7 +148,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
                   style: const TextStyle(fontSize: 13, color: YeleColors.field)),
               const SizedBox(height: 3),
               Text(sub,
-                  style: const TextStyle(fontSize: 11, color: YeleColors.muted)),
+                  style: TextStyle(fontSize: 11, color: YeleColors.surface.muted)),
             ],
           ),
         ),
@@ -259,11 +259,11 @@ class _ScoreScreenState extends State<ScoreScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(l.k,
-                            style: const TextStyle(
-                                color: YeleColors.muted, fontSize: 13)),
+                            style: TextStyle(
+                                color: YeleColors.surface.muted, fontSize: 13)),
                         Text(l.v,
-                            style: const TextStyle(
-                                color: YeleColors.ink,
+                            style: TextStyle(
+                                color: YeleColors.surface.ink,
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700)),
                       ],
@@ -338,7 +338,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(message,
-                style: const TextStyle(fontSize: 13, color: YeleColors.ink)),
+                style: TextStyle(fontSize: 13, color: YeleColors.surface.ink)),
           ),
         ],
       ),
@@ -365,8 +365,8 @@ class _ScoreScreenState extends State<ScoreScreen> {
       return Expanded(
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          decoration: const BoxDecoration(
-            border: Border(right: BorderSide(color: YeleColors.line)),
+          decoration: BoxDecoration(
+            border: Border(right: BorderSide(color: YeleColors.surface.line)),
           ),
           child: Column(
             children: [
@@ -386,8 +386,8 @@ class _ScoreScreenState extends State<ScoreScreen> {
     }
 
     return Container(
-      decoration: const BoxDecoration(
-        color: YeleColors.panel,
+      decoration: BoxDecoration(
+        color: YeleColors.surface.panel,
         border: Border(top: BorderSide(color: YeleColors.primary, width: 2)),
       ),
       child: Row(

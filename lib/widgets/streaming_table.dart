@@ -73,9 +73,9 @@ class StreamingTable extends StatelessWidget {
       width: double.infinity,
       color: YeleColors.panel2,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: const Text(
+      child: Text(
         '* qualité modifiée par YouTube pendant la mesure : valeurs indicatives',
-        style: TextStyle(fontSize: 11, color: YeleColors.muted),
+        style: TextStyle(fontSize: 11, color: YeleColors.surface.muted),
       ),
     );
   }
@@ -130,7 +130,7 @@ class StreamingTable extends StatelessWidget {
       decoration: BoxDecoration(
         border: last
             ? null
-            : const Border(bottom: BorderSide(color: YeleColors.line)),
+            : Border(bottom: BorderSide(color: YeleColors.surface.line)),
       ),
       child: Row(
         children: [

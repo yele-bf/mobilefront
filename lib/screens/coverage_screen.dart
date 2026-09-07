@@ -107,13 +107,13 @@ class _CoverageScreenState extends State<CoverageScreen> {
           ],
         ),
         if (pts.isEmpty)
-          const Positioned(
+          Positioned(
             left: 0,
             right: 0,
             bottom: 16,
             child: Center(
               child: Text('Aucune donnée de couverture pour ce filtre.',
-                  style: TextStyle(color: YeleColors.ink, fontSize: 13)),
+                  style: TextStyle(color: YeleColors.surface.ink, fontSize: 13)),
             ),
           ),
       ],
@@ -138,8 +138,8 @@ class _CoverageScreenState extends State<CoverageScreen> {
       child: Row(
         children: [
           Text('${_filtered.length} mesures',
-              style: const TextStyle(
-                  color: YeleColors.ink,
+              style: TextStyle(
+                  color: YeleColors.surface.ink,
                   fontSize: 12,
                   fontWeight: FontWeight.w700)),
           const Spacer(),

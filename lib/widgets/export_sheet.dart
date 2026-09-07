@@ -62,8 +62,8 @@ class _ExportSheetState extends State<_ExportSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -71,12 +71,12 @@ class _ExportSheetState extends State<_ExportSheet> {
                       style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w800,
-                          color: YeleColors.ink)),
+                          color: YeleColors.surface.ink)),
                   SizedBox(height: 4),
                   Text(
                       'Le fichier est préparé puis partagé via Android '
                       '(Fichiers, e-mail, WhatsApp…)',
-                      style: TextStyle(fontSize: 12, color: YeleColors.muted)),
+                      style: TextStyle(fontSize: 12, color: YeleColors.surface.muted)),
                 ],
               ),
             ),
@@ -146,12 +146,12 @@ class _ExportSheetState extends State<_ExportSheet> {
               : Icon(icon, color: color, size: 22),
         ),
         title: Text(title,
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
-                color: YeleColors.ink)),
+                color: YeleColors.surface.ink)),
         subtitle: Text(subtitle,
-            style: const TextStyle(fontSize: 12, color: YeleColors.muted)),
+            style: TextStyle(fontSize: 12, color: YeleColors.surface.muted)),
         onTap: disabled ? null : onTap,
       ),
     );

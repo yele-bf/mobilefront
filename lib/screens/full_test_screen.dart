@@ -4,9 +4,11 @@ import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../models/test_selection.dart';
+import '../services/browsing_test_service.dart';
 import '../services/device_info_service.dart';
 import '../services/location_service.dart';
 import '../services/network_info_service.dart';
+import '../services/settings_service.dart';
 import '../services/speed_test_api_service.dart';
 import '../services/streaming_test_service.dart';
 import '../theme/yele_theme.dart';
@@ -62,14 +64,29 @@ class _FullTestScreenState extends State<FullTestScreen>
   String _metricUnit = 'Mb/s';
   double _phaseProgress = 0; // avancement de la phase en cours (0-1)
 
+  /// ISS-12 — Unité d'affichage choisie dans les réglages (auto/Mb-s/Kb-s).
+  final _settings = SettingsService();
+
   double _download = 0, _upload = 0, _ping = 0;
+
+  /// ISS-12 — Convertit un débit (Mb/s) dans l'unité d'affichage choisie.
+  double _displaySpeed(double mbps) =>
+      _settings.speedUnit == SpeedUnit.kbps ? mbps * 1000 : mbps;
+
+  /// ISS-12 — Libellé d'unité pour les débits (jamais « ms »).
+  String _speedUnitLabel() =>
+      _settings.speedUnit == SpeedUnit.kbps ? 'Kb/s' : 'Mb/s';
+
+  /// ISS-12 — Formate un débit selon l'unité choisie (mode auto inclus :
+  /// Kb/s sous 1 Mb/s, comme nPerf).
+  String _fmtSpeed(double mbps) => _settings.formatSpeed(mbps);
 
   String _connection = '—'; // WiFi / Mobile (par où passe Internet)
   String _fai = '—'; // FAI de connexion (déduit de l'IP)
   String _mobileNet = '—'; // Réseau mobile SIM : « 4G · Orange »
 
-  WebViewController? _stream; // test de streaming (lecteur YouTube visible)
-  WebViewController? _web; // test de navigation (pages visibles)
+  StreamingDisplay? _stream; // test de streaming (lecteur YouTube visible)
+  BrowsingDisplay? _web; // test de navigation (pages visibles)
 
   // Tableau des mesures de streaming, rempli qualité par qualité pendant le test.
   List<StreamingQualityResult> _streamRows = const [];
@@ -240,8 +257,8 @@ class _FullTestScreenState extends State<FullTestScreen>
       setState(() {
         _stage = _Stage.idle;
         _phaseLabel = '';
-        _coreTarget = _download;
-        _metricUnit = 'Mb/s';
+        _coreTarget = _displaySpeed(_download);
+        _metricUnit = _speedUnitLabel();
         _phaseProgress = 1;
       });
       _animateArcTo(_fracFor(_download, 100));
@@ -270,8 +287,8 @@ class _FullTestScreenState extends State<FullTestScreen>
 
       switch (p.phase) {
         case SpeedTestPhase.download:
-          _metricUnit = 'Mb/s';
-          _coreTarget = _download;
+          _metricUnit = _speedUnitLabel();
+          _coreTarget = _displaySpeed(_download);
           _animateArcTo(_fracFor(_download, 100));
           break;
         case SpeedTestPhase.ping:
@@ -280,8 +297,8 @@ class _FullTestScreenState extends State<FullTestScreen>
           _animateArcTo(_fracFor(_ping, 500));
           break;
         case SpeedTestPhase.upload:
-          _metricUnit = 'Mb/s';
-          _coreTarget = _upload;
+          _metricUnit = _speedUnitLabel();
+          _coreTarget = _displaySpeed(_upload);
           _animateArcTo(_fracFor(_upload, 100));
           break;
         case SpeedTestPhase.streaming:
@@ -390,6 +407,7 @@ class _FullTestScreenState extends State<FullTestScreen>
 
   /// Lecteur YouTube pendant le test de streaming (16:9, comme nPerf).
   Widget _videoCard() {
+    final display = _stream!;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: ClipRRect(
@@ -399,7 +417,12 @@ class _FullTestScreenState extends State<FullTestScreen>
           child: Stack(
             children: [
               Container(color: Colors.black),
-              WebViewWidget(controller: _stream!),
+              switch (display) {
+                NativeStreamingDisplay(:final controller) =>
+                  WebViewWidget(controller: controller),
+                WebStreamingDisplay(:final viewType) =>
+                  HtmlElementView(viewType: viewType),
+              },
               _badge('● TEST STREAMING'
                   '${_activeQuality != null ? ' $_activeQuality' : ''}'),
             ],
@@ -410,6 +433,7 @@ class _FullTestScreenState extends State<FullTestScreen>
   }
 
   Widget _webCard() {
+    final display = _web!;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: ClipRRect(
@@ -419,11 +443,58 @@ class _FullTestScreenState extends State<FullTestScreen>
           width: double.infinity,
           child: Stack(
             children: [
-              WebViewWidget(controller: _web!),
+              switch (display) {
+                NativeBrowsingDisplay(:final controller) =>
+                  WebViewWidget(controller: controller),
+                // Web : pas de page affichable (sites de référence fermés à
+                // l'encadrement) — on montre l'avancement du sondage.
+                WebBrowsingDisplay() => _browsingProbeCard(),
+              },
               _badge('● TEST NAVIGATION WEB'),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// Carte d'avancement du test de navigation côté web : chaque site est
+  /// sondé par requête réseau, on affiche le site en cours et la progression.
+  Widget _browsingProbeCard() {
+    return Container(
+      color: const Color(0xFF10150D),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(
+              strokeWidth: 3,
+              color: YeleColors.testTop,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            _phaseLabel,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white, fontSize: 14),
+          ),
+          const SizedBox(height: 12),
+          LinearProgressIndicator(
+            value: _phaseProgress.clamp(0.0, 1.0).toDouble(),
+            backgroundColor: Colors.white12,
+            color: YeleColors.testBot,
+            minHeight: 6,
+            borderRadius: BorderRadius.circular(3),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Mesure du temps de réponse des sites',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+        ],
       ),
     );
   }
@@ -532,7 +603,8 @@ class _FullTestScreenState extends State<FullTestScreen>
   }
 
   Widget _metrics() {
-    Widget cell(String label, double value, String unit, Color color) {
+    Widget cell(String label, String displayValue, Color color,
+        {double? barFrac}) {
       return Expanded(
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
@@ -548,16 +620,15 @@ class _FullTestScreenState extends State<FullTestScreen>
                       color: Color(0xFF33402A),
                       fontWeight: FontWeight.w600)),
               const SizedBox(height: 6),
-              SizedBox(height: 30, child: _miniBar(value, color)),
+              SizedBox(
+                  height: 30,
+                  child: barFrac == null ? null : _miniBar(barFrac, color)),
               const SizedBox(height: 4),
-              Text(
-                  value > 0
-                      ? '${value.toStringAsFixed(unit == 'ms' ? 0 : 1)} $unit'
-                      : '—',
-                  style: const TextStyle(
+              Text(displayValue,
+                  style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: YeleColors.ink)),
+                      color: YeleColors.surface.ink)),
             ],
           ),
         ),
@@ -568,21 +639,27 @@ class _FullTestScreenState extends State<FullTestScreen>
       color: const Color(0xFFEEF1EE),
       child: Row(
         children: [
-          cell('▼ Download', _download, 'Mb/s', YeleColors.accent),
-          cell('▲ Upload', _upload, 'Mb/s', YeleColors.good),
-          cell('↔ Latence', _ping, 'ms', YeleColors.muted),
+          cell('▼ Download', _download > 0 ? _fmtSpeed(_download) : '—',
+              YeleColors.accent,
+              barFrac: _fracFor(_download, 100)),
+          cell('▲ Upload', _upload > 0 ? _fmtSpeed(_upload) : '—',
+              YeleColors.good,
+              barFrac: _fracFor(_upload, 100)),
+          cell('↔ Latence',
+              _ping > 0 ? '${_ping.toStringAsFixed(0)} ms' : '—',
+              YeleColors.muted,
+              barFrac: _fracFor(_ping, 500)),
         ],
       ),
     );
   }
 
-  Widget _miniBar(double value, Color color) {
-    final frac = _fracFor(value, value > 100 ? value : 100);
+  Widget _miniBar(double frac, Color color) {
     return Align(
       alignment: Alignment.bottomLeft,
       child: FractionallySizedBox(
         widthFactor: 1,
-        heightFactor: value > 0 ? (0.25 + 0.75 * frac) : 0.06,
+        heightFactor: frac > 0 ? (0.25 + 0.75 * frac) : 0.06,
         child: Container(
           decoration: BoxDecoration(
             color: color.withValues(alpha: 0.8),
@@ -598,8 +675,8 @@ class _FullTestScreenState extends State<FullTestScreen>
       return Expanded(
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          decoration: const BoxDecoration(
-            border: Border(right: BorderSide(color: YeleColors.line)),
+          decoration: BoxDecoration(
+            border: Border(right: BorderSide(color: YeleColors.surface.line)),
           ),
           child: Column(
             children: [
@@ -619,8 +696,8 @@ class _FullTestScreenState extends State<FullTestScreen>
     }
 
     return Container(
-      decoration: const BoxDecoration(
-        color: YeleColors.panel,
+      decoration: BoxDecoration(
+        color: YeleColors.surface.panel,
         border: Border(top: BorderSide(color: YeleColors.primary, width: 2)),
       ),
       child: Row(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/yele_theme.dart';
+import 'app_localizations.dart';
 
 /// Tiroir de navigation latéral, repris de la maquette.
 class YeleDrawer extends StatelessWidget {
@@ -9,21 +10,32 @@ class YeleDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ISS-12 — libellés localisés (fr/en) du tiroir.
+    final labels = <String, String>{
+      '/full': AppLocale.t('Test complet', 'Full test'),
+      '/speed': 'Speed test',
+      '/browsing': AppLocale.t('Test de navigation', 'Browsing test'),
+      '/streaming': AppLocale.t('Test de streaming', 'Streaming test'),
+      '/history': AppLocale.t('Historique', 'History'),
+      '/coverage': AppLocale.t('Cartes de couverture', 'Coverage maps'),
+      '/settings': AppLocale.t('Réglages', 'Settings'),
+    };
+
     return Drawer(
       backgroundColor: YeleColors.drawerBg,
       child: SafeArea(
         child: Column(
           children: [
             _header(),
-            _item(context, Icons.hexagon_outlined, 'Test complet', '/full'),
-            _item(context, Icons.speed, 'Speed test', '/speed'),
-            _item(context, Icons.public, 'Test de navigation', '/browsing'),
-            _item(context, Icons.play_circle_outline, 'Test de streaming',
+            _item(context, Icons.hexagon_outlined, labels['/full']!, '/full'),
+            _item(context, Icons.speed, labels['/speed']!, '/speed'),
+            _item(context, Icons.public, labels['/browsing']!, '/browsing'),
+            _item(context, Icons.play_circle_outline, labels['/streaming']!,
                 '/streaming'),
-            _item(context, Icons.history, 'Historique', '/history'),
-            _item(context, Icons.map_outlined, 'Cartes de couverture',
+            _item(context, Icons.history, labels['/history']!, '/history'),
+            _item(context, Icons.map_outlined, labels['/coverage']!,
                 '/coverage'),
-            _item(context, Icons.settings, 'Réglages', '/settings'),
+            _item(context, Icons.settings, labels['/settings']!, '/settings'),
           ],
         ),
       ),
@@ -40,24 +52,26 @@ class YeleDrawer extends StatelessWidget {
             radius: 21,
             backgroundColor: YeleColors.primary,
             child: Text('Ye',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                style: TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w700)),
           ),
           const SizedBox(width: 12),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Text('Yélé',
+            children: [
+              const Text('Yélé',
                   style: TextStyle(
-                      color: YeleColors.ink,
+                      color: Colors.black,
                       fontSize: 17,
                       fontWeight: FontWeight.w700)),
               Text('Mesure de la qualité réseau',
-                  style: TextStyle(color: YeleColors.muted, fontSize: 12)),
+                  style: TextStyle(
+                      color: Colors.black54, fontSize: 12)),
             ],
           ),
           const Spacer(),
           const Text('v1.0.0',
-              style: TextStyle(color: YeleColors.muted, fontSize: 11)),
+              style: TextStyle(color: Colors.black54, fontSize: 11)),
         ],
       ),
     );
@@ -86,7 +100,8 @@ class YeleDrawer extends StatelessWidget {
             Text(label,
                 style: TextStyle(
                     fontSize: 15,
-                    color: active ? YeleColors.primary : const Color(0xFFE7ECF4))),
+                    color:
+                        active ? YeleColors.primary : const Color(0xFFE7ECF4))),
           ],
         ),
       ),

@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import '../constants/config.dart';
 import '../services/background_collection_service.dart';
 import '../services/permission_service.dart';
+import '../services/settings_service.dart';
 import '../theme/yele_theme.dart';
+import '../widgets/app_localizations.dart';
 import '../widgets/yele_scaffold.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -25,17 +27,42 @@ class _SettingsScreenState extends State<SettingsScreen>
   final Set<YelePermission> _busyPerms = {};
   bool _gpsOn = true;
 
+  /// ISS-12 — Réglages généraux fonctionnels et persistants (Hive).
+  final _settings = SettingsService();
+  AppLanguage _language = AppLanguage.system;
+  DefaultTest _defaultTest = DefaultTest.full;
+  SpeedUnit _speedUnit = SpeedUnit.auto;
+  AppStyle _appStyle = AppStyle.green;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _loadSettings();
     _refreshStatus();
     _refreshPermissions();
+    // ISS-12 : la langue peut être changée depuis cet écran même — on
+    // rafraîchit les libellés dès que le notificateur la change.
+    SettingsService.languageNotifier.addListener(_onLanguageChanged);
+  }
+
+  void _onLanguageChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _loadSettings() {
+    setState(() {
+      _language = _settings.language;
+      _defaultTest = _settings.defaultTest;
+      _speedUnit = _settings.speedUnit;
+      _appStyle = _settings.appStyle;
+    });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    SettingsService.languageNotifier.removeListener(_onLanguageChanged);
     super.dispose();
   }
 
@@ -45,6 +72,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     if (state == AppLifecycleState.resumed) {
       _refreshStatus();
       _refreshPermissions();
+      _loadSettings();
     }
   }
 
@@ -66,18 +94,37 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   @override
   Widget build(BuildContext context) {
+    // ISS-12 — libellés localisés de l'écran Réglages (fr/en).
+    final title = AppLocale.t('Réglages', 'Settings');
     return YeleScaffold(
-      title: 'Réglages',
+      title: title,
       route: '/settings',
       body: Container(
-        color: YeleColors.panel,
+        color: YeleColors.surface.panel,
         child: ListView(
           children: [
-            _section('Général'),
-            _item('Langue', 'Auto'),
-            _item('Test par défaut au démarrage', 'Test complet'),
-            _item('Unité de débit', 'Mb/s'),
-            _item('Style de fond', 'Vert'),
+            _section(AppLocale.t('Général', 'General')),
+            _choiceItem(
+              AppLocale.t('Langue', 'Language'),
+              _languageLabel(_language),
+              _pickLanguage,
+            ),
+            _choiceItem(
+              AppLocale.t('Test par défaut au démarrage',
+                  'Default test at startup'),
+              _defaultTestLabel(_defaultTest),
+              _pickDefaultTest,
+            ),
+            _choiceItem(
+              AppLocale.t('Unité de débit', 'Speed unit'),
+              _speedUnitLabel(_speedUnit),
+              _pickSpeedUnit,
+            ),
+            _choiceItem(
+              AppLocale.t('Style de fond', 'Background style'),
+              _appStyleLabel(_appStyle),
+              _pickAppStyle,
+            ),
             ..._permissionsSection(),
             if (_collect.isSupported) ..._collectSection(),
             const SizedBox(height: 24),
@@ -107,7 +154,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                   'mesures exploitables (position sur la carte, opérateur, '
                   'technologie). Notifications est facultative : elle sert '
                   'uniquement à la collecte de couverture en arrière-plan.',
-          style: const TextStyle(fontSize: 13, color: YeleColors.muted),
+          style: TextStyle(fontSize: 13, color: YeleColors.surface.muted),
         ),
       ),
       for (final p in YelePermission.values) _permissionTile(p),
@@ -156,9 +203,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                 Row(
                   children: [
                     Flexible(
-                      child: Text(p.label,
-                          style: const TextStyle(
-                              fontSize: 16, color: YeleColors.ink)),
+                      child:                Text(p.label,
+                          style: TextStyle(
+                              fontSize: 16, color: YeleColors.surface.ink)),
                     ),
                     const SizedBox(width: 8),
                     Container(
@@ -181,8 +228,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                 ),
                 const SizedBox(height: 2),
                 Text(p.description,
-                    style: const TextStyle(
-                        fontSize: 13, color: YeleColors.muted)),
+                    style: TextStyle(
+                        fontSize: 13, color: YeleColors.surface.muted)),
                 if (deniedForever) ...[
                   const SizedBox(height: 5),
                   Text(
@@ -202,8 +249,8 @@ class _SettingsScreenState extends State<SettingsScreen>
                         ? 'Non requise sur le web (la localisation utilise '
                             'l\'adresse IP).'
                         : 'Non requise sur cette plateforme.',
-                    style: const TextStyle(
-                        fontSize: 12.5, color: YeleColors.muted, height: 1.3),
+                    style: TextStyle(
+                        fontSize: 12.5, color: YeleColors.surface.muted, height: 1.3),
                   ),
                 ],
                 if (gpsWarn) ...[
@@ -403,19 +450,19 @@ class _SettingsScreenState extends State<SettingsScreen>
               _bullet('l\'opérateur de votre carte SIM'),
               _bullet('la puissance du signal'),
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 'Aucun test de débit n\'est effectué. Chaque relève consomme '
                 'environ 4 Ko, soit une dizaine de mégaoctets par mois à la '
                 'cadence de 15 minutes — moins d\'un centième de ce que '
                 'coûterait un test de débit automatique.',
-                style: TextStyle(fontSize: 13, color: YeleColors.muted),
+                style: TextStyle(fontSize: 13, color: YeleColors.surface.muted),
               ),
               const SizedBox(height: 10),
-              const Text(
+              Text(
                 'Une notification permanente reste affichée tant que la '
                 'collecte est active. Vous pouvez l\'arrêter à tout moment, '
                 'depuis cette notification ou depuis ces réglages.',
-                style: TextStyle(fontSize: 13, color: YeleColors.muted),
+                style: TextStyle(fontSize: 13, color: YeleColors.surface.muted),
               ),
             ],
           ),
@@ -454,8 +501,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Fréquence des relèves',
-              style: TextStyle(fontSize: 16, color: YeleColors.ink)),
+          Text('Fréquence des relèves',
+              style: TextStyle(fontSize: 16, color: YeleColors.surface.ink)),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,
@@ -472,7 +519,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           const SizedBox(height: 6),
           Text(
             backgroundIntervalLabel(_status.intervalMinutes),
-            style: const TextStyle(fontSize: 13, color: YeleColors.muted),
+            style: TextStyle(fontSize: 13, color: YeleColors.surface.muted),
           ),
         ],
       ),
@@ -512,11 +559,11 @@ class _SettingsScreenState extends State<SettingsScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(lastLabel,
-                    style: const TextStyle(fontSize: 14, color: YeleColors.ink)),
+                    style: TextStyle(fontSize: 14, color: YeleColors.surface.ink)),
                 const SizedBox(height: 2),
                 Text('${_status.count} relève${_status.count > 1 ? 's' : ''} envoyée${_status.count > 1 ? 's' : ''}',
-                    style: const TextStyle(
-                        fontSize: 13, color: YeleColors.muted)),
+                    style: TextStyle(
+                        fontSize: 13, color: YeleColors.surface.muted)),
               ],
             ),
           ),
@@ -584,7 +631,170 @@ class _SettingsScreenState extends State<SettingsScreen>
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
+  // ── Réglages généraux (ISS-12) ────────────────────────────────────────────
+
+  String _languageLabel(AppLanguage v) {
+    switch (v) {
+      case AppLanguage.system:
+        return 'Auto (langue du téléphone)';
+      case AppLanguage.fr:
+        return 'Français';
+      case AppLanguage.en:
+        return 'English';
+    }
+  }
+
+  String _defaultTestLabel(DefaultTest v) {
+    switch (v) {
+      case DefaultTest.full:
+        return 'Test complet';
+      case DefaultTest.speed:
+        return 'Speed test';
+      case DefaultTest.streaming:
+        return 'Test de streaming';
+      case DefaultTest.browsing:
+        return 'Test de navigation';
+    }
+  }
+
+  String _speedUnitLabel(SpeedUnit v) {
+    switch (v) {
+      case SpeedUnit.auto:
+        return 'Auto (Mb/s ou Kb/s)';
+      case SpeedUnit.mbps:
+        return 'Mb/s';
+      case SpeedUnit.kbps:
+        return 'Kb/s';
+    }
+  }
+
+  String _appStyleLabel(AppStyle v) {
+    switch (v) {
+      case AppStyle.green:
+        return 'Blanc';
+      case AppStyle.dark:
+        return 'Sombre';
+    }
+  }
+
+  /// Ouvre une liste de choix et persiste immédiatement la valeur retenue.
+  Future<void> _pick<T>({
+    required String title,
+    required List<(T, String)> choices,
+    required T current,
+    required void Function(T) onPick,
+  }) async {
+    final picked = await showModalBottomSheet<T>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
+              child: Text(title,
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: YeleColors.surface.ink)),
+            ),
+            for (final (value, label) in choices)
+              ListTile(
+                title: Text(label),
+                trailing: value == current
+                    ? const Icon(Icons.check,
+                        color: YeleColors.primary, size: 22)
+                    : null,
+                onTap: () => Navigator.pop(ctx, value),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || picked == current) return;
+    onPick(picked);
+    _loadSettings();
+  }
+
+  Future<void> _pickLanguage() => _pick<AppLanguage>(
+        title: 'Langue',
+        current: _language,
+        choices: [
+          for (final v in AppLanguage.values) (v, _languageLabel(v)),
+        ],
+        onPick: (v) => _settings.language = v,
+      );
+
+  Future<void> _pickDefaultTest() => _pick<DefaultTest>(
+        title: 'Test par défaut au démarrage',
+        current: _defaultTest,
+        choices: [
+          for (final v in DefaultTest.values) (v, _defaultTestLabel(v)),
+        ],
+        onPick: (v) {
+          _settings.defaultTest = v;
+          // Ce réglage décide de l'écran affiché au lancement de l'app : il
+          // ne peut pas modifier rétroactivement l'écran courant.
+          _snack(AppLocale.t(
+              'Pris en compte au prochain démarrage de l\'application.',
+              'Applied the next time the app starts.'));
+        },
+      );
+
+  Future<void> _pickSpeedUnit() => _pick<SpeedUnit>(
+        title: 'Unité de débit',
+        current: _speedUnit,
+        choices: [
+          for (final v in SpeedUnit.values) (v, _speedUnitLabel(v)),
+        ],
+        onPick: (v) => _settings.speedUnit = v,
+      );
+
+  Future<void> _pickAppStyle() => _pick<AppStyle>(
+        title: 'Style de fond',
+        current: _appStyle,
+        choices: [
+          for (final v in AppStyle.values) (v, _appStyleLabel(v)),
+        ],
+        onPick: (v) => _settings.appStyle = v,
+      );
+
   // ── Éléments de liste ─────────────────────────────────────────────────────
+
+  /// Ligne de réglage interactive : le sous-titre affiche la valeur courante
+  /// et un tap ouvre le sélecteur (ISS-12).
+  Widget _choiceItem(String title, String sub, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: YeleColors.surface.line)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style:
+                          TextStyle(fontSize: 16, color: YeleColors.surface.ink)),
+                  const SizedBox(height: 2),
+                  Text(sub,
+                      style: TextStyle(
+                          fontSize: 13, color: YeleColors.surface.muted)),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right,
+                size: 22, color: YeleColors.surface.muted),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _section(String t) => Padding(
         padding: const EdgeInsets.fromLTRB(18, 22, 18, 6),
@@ -593,23 +803,6 @@ class _SettingsScreenState extends State<SettingsScreen>
                 color: YeleColors.primary,
                 fontSize: 15,
                 fontWeight: FontWeight.w700)),
-      );
-
-  Widget _item(String title, String sub) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: Color(0x11000000))),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title,
-                style: const TextStyle(fontSize: 16, color: YeleColors.ink)),
-            const SizedBox(height: 2),
-            Text(sub,
-                style: const TextStyle(fontSize: 13, color: YeleColors.muted)),
-          ],
-        ),
       );
 
   Widget _toggle(
@@ -626,11 +819,11 @@ class _SettingsScreenState extends State<SettingsScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title,
-                    style: const TextStyle(fontSize: 16, color: YeleColors.ink)),
+                    style: TextStyle(fontSize: 16, color: YeleColors.surface.ink)),
                 const SizedBox(height: 2),
                 Text(sub,
                     style:
-                        const TextStyle(fontSize: 13, color: YeleColors.muted)),
+                        TextStyle(fontSize: 13, color: YeleColors.surface.muted)),
               ],
             ),
           ),

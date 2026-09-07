@@ -46,24 +46,24 @@ class _QoeDialogState extends State<QoeDialog> {
                           color: YeleColors.primary, size: 26),
                     ),
                     const SizedBox(height: 10),
-                    const Text('Évaluation de l\'expérience',
+                    Text('Évaluation de l\'expérience',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w700,
-                            color: YeleColors.ink)),
+                            color: YeleColors.surface.ink)),
                     const SizedBox(height: 4),
-                    const Text(
+                    Text(
                         'Aidez-nous à évaluer la qualité ressentie du réseau.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 12, color: YeleColors.muted)),
+                        style: TextStyle(fontSize: 12, color: YeleColors.surface.muted)),
                   ],
                 ),
               ),
               const Divider(height: 28),
-              const Text('1. Comment évaluez-vous la vitesse globale ?',
+              Text('1. Comment évaluez-vous la vitesse globale ?',
                   style: TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w600, color: YeleColors.ink)),
+                      fontSize: 13, fontWeight: FontWeight.w600, color: YeleColors.surface.ink)),
               const SizedBox(height: 8),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -80,9 +80,9 @@ class _QoeDialogState extends State<QoeDialog> {
                 }),
               ),
               const SizedBox(height: 16),
-              const Text('2. Votre niveau de satisfaction générale ?',
+              Text('2. Votre niveau de satisfaction générale ?',
                   style: TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w600, color: YeleColors.ink)),
+                      fontSize: 13, fontWeight: FontWeight.w600, color: YeleColors.surface.ink)),
               const SizedBox(height: 10),
               ..._satisfactions.map((sat) {
                 final sel = _satisfaction == sat['value'];
@@ -105,8 +105,8 @@ class _QoeDialogState extends State<QoeDialog> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(sat['label']!,
-                            style: const TextStyle(
-                                fontSize: 13, color: YeleColors.ink)),
+                            style: TextStyle(
+                                fontSize: 13, color: YeleColors.surface.ink)),
                         if (sel)
                           const Icon(Icons.check_circle,
                               color: YeleColors.primary, size: 18),
@@ -121,8 +121,8 @@ class _QoeDialogState extends State<QoeDialog> {
                   Expanded(
                     child: TextButton(
                       onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Ignorer',
-                          style: TextStyle(color: YeleColors.muted)),
+                      child: Text('Ignorer',
+                          style: TextStyle(color: YeleColors.surface.muted)),
                     ),
                   ),
                   const SizedBox(width: 12),

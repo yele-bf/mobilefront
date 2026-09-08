@@ -564,6 +564,21 @@ class SpeedTestApiService {
       if (response.statusCode == 200) {
         final data = response.data;
         _log('[DIAG] /getIP reponse brute: ${response.data}');
+        // Dio peut retourner une chaîne brute si le Content-Type n'est pas
+        // application/json : on décode explicitement dans ce cas.
+        if (data is String) {
+          final decoded = jsonDecode(data);
+          if (decoded is Map) {
+            final rawIspInfo = decoded['rawIspInfo'];
+            _log('[DIAG] /getIP rawIspInfo: $rawIspInfo');
+            final processed = (decoded['processedString'] ??
+                    decoded['ip'] ??
+                    (rawIspInfo is Map ? rawIspInfo['ip'] : null))
+                ?.toString();
+            _log('[DIAG] /getIP processedString: $processed');
+            return (processedString: processed, rawJson: data);
+          }
+        }
         if (data is Map) {
           final rawIspInfo = data['rawIspInfo'];
           _log('[DIAG] /getIP rawIspInfo: $rawIspInfo');

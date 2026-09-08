@@ -1,4 +1,5 @@
 
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:geolocator/geolocator.dart';
 import '../constants/config.dart';
@@ -65,7 +66,11 @@ class LocationService {
       _log('[DIAG-LOC] getCurrentLocation: data brute = ${response.data}');
 
       if (response.statusCode == 200 && response.data != null) {
-        final data = response.data;
+        // Dio peut retourner une chaîne brute si le Content-Type n'est pas
+        // application/json : on décode explicitement dans ce cas.
+        final data = response.data is String
+            ? jsonDecode(response.data as String) as Map<String, dynamic>
+            : response.data as Map<String, dynamic>;
 
         if (data['rawIspInfo'] != null) {
           final ispInfo = data['rawIspInfo'];

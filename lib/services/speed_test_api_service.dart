@@ -11,6 +11,7 @@ import '../constants/config.dart';
 import '../models/speed_test_result.dart';
 import '../models/test_selection.dart';
 import 'browsing_test_service.dart';
+import 'device_identity_service.dart';
 import 'streaming_test_service.dart';
 
 enum SpeedTestPhase {
@@ -717,6 +718,9 @@ class SpeedTestApiService {
   // Envoyer les résultats sauvegardés au serveur via telemetry.
   Future<bool> uploadTestResult(SpeedTestResult result) async {
     try {
+      // IMP-13 : UUID d'appareil anonyme et stable, généré localement —
+      // aucune donnée privée n'est lue ni transmise.
+      final deviceId = await DeviceIdentityService.instance.getUuid();
       final response = await _dio.post(
         '/results/telemetry',
         data: {
@@ -738,6 +742,7 @@ class SpeedTestApiService {
             'simOperator': result.simOperator ?? '',
             'cellularTech': result.cellularTech ?? '',
             'deviceModel': result.deviceModel ?? '',
+            'deviceId': deviceId,
             // location n'est plus transmis : le serveur le compose depuis
             // city/country extraits du JSON ispinfo (source unique).
             'latitude': result.latitude ?? 0.0,

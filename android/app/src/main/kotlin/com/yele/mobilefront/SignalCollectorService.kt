@@ -55,6 +55,9 @@ class SignalCollectorService : Service() {
         const val KEY_API_BASE = "api_base_url"
         const val KEY_LAST_AT = "last_collect_at"
         const val KEY_COUNT = "collect_count"
+        // IMP-13 : UUID d'appareil anonyme (généré côté Dart, repris ici pour
+        // que les relèves passives soient traçables au même appareil).
+        const val KEY_DEVICE_ID = "device_id"
 
         const val DEFAULT_INTERVAL_MIN = 15
 
@@ -238,6 +241,9 @@ class SignalCollectorService : Service() {
     private fun buildSample(location: Location?): JSONObject {
         val json = JSONObject()
         json.put("type", "passive")
+
+        // IMP-13 : identifiant d'appareil anonyme, absent si non encore propagé.
+        prefs(this).getString(KEY_DEVICE_ID, null)?.let { json.put("deviceId", it) }
 
         location?.let {
             json.put("latitude", it.latitude)

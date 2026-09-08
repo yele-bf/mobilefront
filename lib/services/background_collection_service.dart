@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:logger/logger.dart';
 
 import '../constants/config.dart';
+import 'device_identity_service.dart';
 
 /// État de la collecte passive en arrière-plan.
 class CollectStatus {
@@ -71,6 +72,10 @@ class BackgroundCollectionService {
       final ok = await _channel.invokeMethod<bool>('startCollect', {
         'intervalMinutes': intervalMinutes,
         'apiBaseUrl': API_BASE_URL,
+        // IMP-13 : l'UUID d'appareil accompagne le démarrage du service natif
+        // pour que les relèves passives portent le même identifiant que les
+        // tests actifs.
+        'deviceId': await DeviceIdentityService.instance.getUuid(),
       });
       logger.i('Collecte passive démarrée (toutes les $intervalMinutes min)');
       return ok ?? false;

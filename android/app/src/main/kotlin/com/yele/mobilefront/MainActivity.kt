@@ -35,7 +35,8 @@ class MainActivity : FlutterActivity() {
                         val interval = call.argument<Int>("intervalMinutes")
                             ?: SignalCollectorService.DEFAULT_INTERVAL_MIN
                         val apiBase = call.argument<String>("apiBaseUrl")
-                        result.success(startCollect(interval, apiBase))
+                        val deviceId = call.argument<String>("deviceId")
+                        result.success(startCollect(interval, apiBase, deviceId))
                     }
                     "stopCollect" -> {
                         stopCollect()
@@ -104,7 +105,7 @@ class MainActivity : FlutterActivity() {
     /// Démarre le service de collecte. Retourne false si la notification est
     /// refusée : sans elle, Android tue immédiatement un service de premier
     /// plan, et la collecte s'arrêterait sans que l'utilisateur comprenne.
-    private fun startCollect(intervalMinutes: Int, apiBaseUrl: String?): Boolean {
+    private fun startCollect(intervalMinutes: Int, apiBaseUrl: String?, deviceId: String?): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(
                 this, Manifest.permission.POST_NOTIFICATIONS
@@ -122,6 +123,11 @@ class MainActivity : FlutterActivity() {
             .apply {
                 if (apiBaseUrl != null) {
                     putString(SignalCollectorService.KEY_API_BASE, apiBaseUrl)
+                }
+                // IMP-13 : l'UUID d'appareil est propagé au service de collecte
+                // (généré côté Dart, stocké anonymement dans les prefs natives).
+                if (!deviceId.isNullOrEmpty()) {
+                    putString(SignalCollectorService.KEY_DEVICE_ID, deviceId)
                 }
             }
             .apply()

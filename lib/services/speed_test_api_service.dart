@@ -211,6 +211,7 @@ class SpeedTestApiService {
   final String baseUrl = API_BASE_URL;
 
   SpeedTestApiService() {
+    logger.i('SpeedTestApiService init, baseUrl=$baseUrl');
     _dio = Dio(
       BaseOptions(
         baseUrl: baseUrl,
@@ -226,11 +227,11 @@ class SpeedTestApiService {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
-          logger.i('Request: ${options.method} ${options.path}');
+          logger.i('Request: ${options.method} ${options.path} ${options.data != null ? "data=${options.data}" : ""}');
           return handler.next(options);
         },
         onError: (error, handler) {
-          logger.e('DIO Error: ${error.message}');
+          logger.e('DIO Error: ${error.message} type=${error.type}');
           return handler.next(error);
         },
       ),

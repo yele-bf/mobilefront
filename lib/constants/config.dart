@@ -1,9 +1,14 @@
 // Configuration des constantes de l'application Yélé
 
 // ========== API CONFIGURATION ==========
-// Modifier cette URL pour pointer vers votre backend speedtest-go
-const String API_BASE_URL = 'https://mobiletest-j0c6.onrender.com';
-// API MongoDB intégrée au même backend speedtest-go (/api/*)
+// URL du backend local.
+// Depuis un téléphone physique connecté au même réseau, utiliser l'adresse IP de
+// la machine, par exemple http://192.168.11.108:8989.
+// Depuis un émulateur Android, utiliser http://10.0.2.2:8989.
+const String API_BASE_URL = 'http://192.168.11.108:8989';
+
+// Attention : le backend local expose /getIP et non /ip.
+// Ne pas changer cette constante ici si l'appel vise /getIP dans le code client.
 const String MONGO_API_BASE_URL = '$API_BASE_URL/api';
 
 // ========== APPLICATION CONFIGURATION ==========
@@ -110,7 +115,7 @@ const Map<String, String> PERMISSION_MESSAGES = {
 // ========== API ENDPOINTS ==========
 const String ENDPOINT_START_TEST = '/speed-test';
 const String ENDPOINT_GET_RESULTS = '/results/';
-const String ENDPOINT_GET_IP = '/ip';
+const String ENDPOINT_GET_IP = '/getIP';
 const String ENDPOINT_GET_SERVERS = '/servers';
 const String ENDPOINT_UPLOAD_RESULT = '/results';
 const String ENDPOINT_GET_HISTORY = '/results';

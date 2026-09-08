@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
+import 'package:logger/logger.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../models/test_selection.dart';
@@ -42,6 +43,7 @@ class _FullTestScreenState extends State<FullTestScreen>
   final _location = LocationService();
   final _device = DeviceInfoService();
   final _net = NetworkInfoService();
+  final _diagLogger = Logger();
 
   /// Pilote l'animation de la jauge : à chaque image, l'aiguille et le chiffre
   /// se rapprochent de leur cible. Un tween relancé à chaque mesure ne
@@ -105,8 +107,11 @@ class _FullTestScreenState extends State<FullTestScreen>
   }
 
   Future<void> _loadContext() async {
+    _diagLogger.i('[DIAG-UI] _loadContext: recuperation contexte reseau + IP');
     final status = await _net.getStatus();
+    _diagLogger.i('[DIAG-UI] _loadContext: connectionType=${status.connectionType} cellularTech=${status.cellularTech} simOperator=${status.simOperator} networkBadge=${status.networkBadge}');
     final loc = await _location.getCurrentLocation();
+    _diagLogger.i('[DIAG-UI] _loadContext: loc=$loc');
     if (!mounted) return;
     setState(() {
       _connection = status.connectionType;
@@ -147,11 +152,16 @@ class _FullTestScreenState extends State<FullTestScreen>
     });
 
     try {
+      _diagLogger.i('[DIAG-UI] _start: DEBUT du test, selection=${widget.selection}');
       final gps = await _location.requestGpsPosition();
+      _diagLogger.i('[DIAG-UI] _start: GPS=${gps != null ? "${gps.latitude}, ${gps.longitude}" : "null"}');
       final ipLoc = await _location.getCurrentLocation();
+      _diagLogger.i('[DIAG-UI] _start: ipLoc=${ipLoc != null ? "${ipLoc.city}, ${ipLoc.countryName}, ${ipLoc.ip}, ${ipLoc.operator}" : "null"}');
       final status = await _net.getStatus();
+      _diagLogger.i('[DIAG-UI] _start: status=${status.connectionType}, badge=${status.networkBadge}, cellular=${status.cellularTech}, sim=${status.simOperator}');
       final deviceModel = await _device.getDeviceModel();
       final osVersion = await _device.getOSVersion();
+      _diagLogger.i('[DIAG-UI] _start: device=$deviceModel os=$osVersion');
 
       if (mounted) {
         setState(() {
@@ -161,6 +171,7 @@ class _FullTestScreenState extends State<FullTestScreen>
         });
       }
 
+      _diagLogger.i('[DIAG-UI] _start: appel runSpeedTest...');
       final result = await _api.runSpeedTest(
         latitude: gps?.latitude ?? ipLoc?.latitude,
         longitude: gps?.longitude ?? ipLoc?.longitude,
@@ -186,6 +197,8 @@ class _FullTestScreenState extends State<FullTestScreen>
         autoUpload: false,
       );
 
+      _diagLogger.i('[DIAG-UI] _start: test termine, dl=${result.downloadSpeed} ul=${result.uploadSpeed} ping=${result.ping} jitter=${result.jitter}');
+
       if (!mounted) return;
       setState(() {
         _stage = _Stage.idle;
@@ -200,7 +213,9 @@ class _FullTestScreenState extends State<FullTestScreen>
       await Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => ScoreScreen(result: result)),
       );
-    } catch (_) {
+    } catch (e, stack) {
+      _diagLogger.e('[DIAG-UI] _start ECHEC: $e');
+      _diagLogger.e('[DIAG-UI] _start STACK: $stack');
       if (!mounted) return;
       setState(() {
         _stage = _Stage.idle;

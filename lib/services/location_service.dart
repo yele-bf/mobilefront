@@ -9,6 +9,7 @@ class LocationService {
   late final Dio _dio;
 
   LocationService() {
+    logger.i('[DIAG-LOC] LocationService init, baseUrl=$API_BASE_URL');
     _dio = Dio(
       BaseOptions(
         baseUrl: API_BASE_URL,
@@ -55,18 +56,26 @@ class LocationService {
   /// Récupère la localisation basée sur l'IP publique (pour l'accueil)
   Future<LocationData?> getCurrentLocation() async {
     try {
+      logger.i('[DIAG-LOC] getCurrentLocation: appel /getIP?isp=true vers $API_BASE_URL');
       final response = await _dio.get('/getIP', queryParameters: {'isp': 'true'});
+      logger.i('[DIAG-LOC] getCurrentLocation: reponse HTTP ${response.statusCode}');
+      logger.i('[DIAG-LOC] getCurrentLocation: data brute = ${response.data}');
 
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data;
 
         if (data['rawIspInfo'] != null) {
           final ispInfo = data['rawIspInfo'];
-          final loc = (ispInfo['loc'] as String).split(',');
+          logger.i('[DIAG-LOC] getCurrentLocation: rawIspInfo.loc = "${ispInfo["loc"]}"');
+          final locStr = (ispInfo['loc'] as String?) ?? '';
+          if (locStr.isEmpty) {
+            logger.w('[DIAG-LOC] getCurrentLocation: rawIspInfo.loc est VIDE - fallback GPS/IP impossible');
+          }
+          final loc = locStr.split(',');
 
           final locationData = LocationData(
-            latitude: double.tryParse(loc[0]) ?? 0.0,
-            longitude: double.tryParse(loc[1]) ?? 0.0,
+            latitude: double.tryParse(loc.isNotEmpty ? loc[0] : '') ?? 0.0,
+            longitude: double.tryParse(loc.length > 1 ? loc[1] : '') ?? 0.0,
             city: ispInfo['city'] ?? 'Unknown',
             region: ispInfo['region'] ?? '',
             country: ispInfo['country'] ?? 'Unknown',
@@ -77,14 +86,16 @@ class LocationService {
             processedString: data['processedString'] ?? '',
           );
 
-          logger.i('🌍 Localisation IP: ${locationData.city}, ${locationData.countryName}');
+          logger.i('[DIAG-LOC] getCurrentLocation: RESULTAT lat=${locationData.latitude} lng=${locationData.longitude} city=${locationData.city} country=${locationData.country} operator=${locationData.operator}');
           return locationData;
+        } else {
+          logger.w('[DIAG-LOC] getCurrentLocation: rawIspInfo est null');
         }
       }
     } on DioException catch (e) {
-      logger.e('❌ Erreur localisation IP: ${e.message}');
+      logger.e('[DIAG-LOC] getCurrentLocation ERREUR DIO: ${e.message} type=${e.type}');
     } catch (e) {
-      logger.e('❌ Erreur inattendue localisation: $e');
+      logger.e('[DIAG-LOC] getCurrentLocation ERREUR INATTENDUE: $e');
     }
 
     return null;

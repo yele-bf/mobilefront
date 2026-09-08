@@ -5,7 +5,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
-import 'package:logger/logger.dart';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../constants/config.dart';
 import '../models/speed_test_result.dart';
@@ -206,12 +206,15 @@ class _TransferRun {
 }
 
 class SpeedTestApiService {
-  final logger = Logger();
+  // Logger remplacé par print() pour visibilité en release (dart:developer est strippé)
+  // ignore: avoid_print
+  void _log(String msg) => print('[YELE-DIAG] $msg');
+  void _logErr(String msg) => print('[YELE-DIAG-ERR] $msg');
   late final Dio _dio;
   final String baseUrl = API_BASE_URL;
 
   SpeedTestApiService() {
-    logger.i('SpeedTestApiService init, baseUrl=$baseUrl');
+    _log('SpeedTestApiService init, baseUrl=$baseUrl');
     _dio = Dio(
       BaseOptions(
         baseUrl: baseUrl,
@@ -227,11 +230,11 @@ class SpeedTestApiService {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
-          logger.i('Request: ${options.method} ${options.path} ${options.data != null ? "data=${options.data}" : ""}');
+          _log('Request: ${options.method} ${options.path} ${options.data != null ? "data=${options.data}" : ""}');
           return handler.next(options);
         },
         onError: (error, handler) {
-          logger.e('DIO Error: ${error.message} type=${error.type}');
+          _logErr('DIO Error: ${error.message} type=${error.type}');
           return handler.next(error);
         },
       ),
@@ -271,19 +274,19 @@ class SpeedTestApiService {
         ),
       );
 
-      logger.i('[DIAG] runSpeedTest debute: speed=${selection.speed} streaming=${selection.streaming} browsing=${selection.browsing}');
+      _log('[DIAG] runSpeedTest debute: speed=${selection.speed} streaming=${selection.streaming} browsing=${selection.browsing}');
 
       final ipDetails = await getPublicIpInfo();
       ipInfo = ipDetails?.processedString;
       ipRawJson = ipDetails?.rawJson;
-      logger.i('[DIAG] IP apres getPublicIpInfo: processedString=$ipInfo');
-      logger.i('[DIAG] IP rawJson (500 premiers chars): ${ipRawJson != null ? (ipRawJson!.length > 500 ? ipRawJson!.substring(0, 500) : ipRawJson) : "null"}');
+      _log('[DIAG] IP apres getPublicIpInfo: processedString=$ipInfo');
+      _log('[DIAG] IP rawJson (500 premiers chars): ${ipRawJson != null ? (ipRawJson!.length > 500 ? ipRawJson!.substring(0, 500) : ipRawJson) : "null"}');
 
       // Débit : exécuté uniquement si demandé (tests indépendants).
       // Ordre : download, upload, puis latence.
       double dlMbps = 0, ulMbps = 0, pingMs = 0, jitterMs = 0;
       if (selection.speed) {
-        logger.i('[DIAG] Phase speed selectionnee - lancement download/upload/ping');
+        _log('[DIAG] Phase speed selectionnee - lancement download/upload/ping');
         onProgress?.call(const SpeedTestProgress(
           phase: SpeedTestPhase.download,
           message: 'Mesure du téléchargement',
@@ -386,7 +389,7 @@ class SpeedTestApiService {
             ),
           );
         } catch (e) {
-          logger.e('Test streaming échoué: $e');
+          _logErr('Test streaming échoué: $e');
         }
       }
 
@@ -417,7 +420,7 @@ class SpeedTestApiService {
             ),
           );
         } catch (e) {
-          logger.e('Test navigation échoué: $e');
+          _logErr('Test navigation échoué: $e');
         }
       }
 
@@ -484,8 +487,8 @@ class SpeedTestApiService {
       );
 
       return result;      } catch (e, stack) {
-      logger.e('[DIAG] Exception dans runSpeedTest: $e');
-      logger.e('[DIAG] Stack trace: $stack');
+      _logErr('[DIAG] Exception dans runSpeedTest: $e');
+      _logErr('[DIAG] Stack trace: $stack');
       onProgress?.call(
         SpeedTestProgress(
           phase: SpeedTestPhase.failed,
@@ -508,7 +511,7 @@ class SpeedTestApiService {
     try {
       final ipResponse = await getPublicIP();
       if (ipResponse != null) {
-        logger.i('Test ready, IP: $ipResponse');
+        _log('Test ready, IP: $ipResponse');
         return {
           'testId': DateTime.now().millisecondsSinceEpoch.toString(),
           'status': 'ready',
@@ -517,7 +520,7 @@ class SpeedTestApiService {
       }
       return null;
     } on DioException catch (e) {
-      logger.e('Erreur init test: ${e.message}');
+      _logErr('Erreur init test: ${e.message}');
       _handleDioError(e);
     }
     return null;
@@ -532,13 +535,13 @@ class SpeedTestApiService {
       );
 
       if (response.statusCode == 200) {
-        logger.i('Résultats reçus pour test: $testId');
+        _log('Résultats reçus pour test: $testId');
         return response.data is Map<String, dynamic>
             ? response.data as Map<String, dynamic>
             : <String, dynamic>{'raw': response.data};
       }
     } on DioException catch (e) {
-      logger.e('Erreur récupération résultats: ${e.message}');
+      _logErr('Erreur récupération résultats: ${e.message}');
       _handleDioError(e);
     }
     return null;
@@ -560,25 +563,25 @@ class SpeedTestApiService {
 
       if (response.statusCode == 200) {
         final data = response.data;
-        logger.i('[DIAG] /getIP reponse brute: ${response.data}');
+        _log('[DIAG] /getIP reponse brute: ${response.data}');
         if (data is Map) {
           final rawIspInfo = data['rawIspInfo'];
-          logger.i('[DIAG] /getIP rawIspInfo: $rawIspInfo');
+          _log('[DIAG] /getIP rawIspInfo: $rawIspInfo');
           final processed = (data['processedString'] ??
                   data['ip'] ??
                   (rawIspInfo is Map ? rawIspInfo['ip'] : null))
               ?.toString();
-          logger.i('[DIAG] /getIP processedString: $processed');
+          _log('[DIAG] /getIP processedString: $processed');
           return (processedString: processed, rawJson: jsonEncode(data));
         }
         final processed = data?.toString();
-        logger.i('[DIAG] /getIP reponse non-map: $processed');
+        _log('[DIAG] /getIP reponse non-map: $processed');
         return (processedString: processed, rawJson: null);
       } else {
-        logger.e('[DIAG] /getIP reponse non-200: ${response.statusCode}');
+        _logErr('[DIAG] /getIP reponse non-200: ${response.statusCode}');
       }
     } on DioException catch (e) {
-      logger.e('Erreur récupération IP: ${e.message}');
+      _logErr('Erreur récupération IP: ${e.message}');
       _handleDioError(e);
     }
     return null;
@@ -615,9 +618,7 @@ class SpeedTestApiService {
       ),
     ));
 
-    final measurement = run.finish();
-    logger.i('Download: ${measurement.mbps.toStringAsFixed(2)} Mbps, '
-        'bytes: ${measurement.bytes} en ${measurement.duration.inSeconds}s');
+    final measurement = run.finish();        _log('Download: ${measurement.mbps.toStringAsFixed(2)} Mbps, bytes: ${measurement.bytes} en ${measurement.duration.inSeconds}s');
     return measurement;
   }
 
@@ -645,9 +646,7 @@ class SpeedTestApiService {
       ),
     ));
 
-    final measurement = run.finish();
-    logger.i('Upload: ${measurement.mbps.toStringAsFixed(2)} Mbps, '
-        'bytes: ${measurement.bytes} en ${measurement.duration.inSeconds}s');
+    final measurement = run.finish();        _log('Upload: ${measurement.mbps.toStringAsFixed(2)} Mbps, bytes: ${measurement.bytes} en ${measurement.duration.inSeconds}s');
     return measurement;
   }
 
@@ -696,8 +695,7 @@ class SpeedTestApiService {
     final ping = _avg(measurements);
     final jitter = _jitterOf(measurements);
 
-    logger.i(
-        'Ping: ${ping.toStringAsFixed(2)} ms, jitter: ${jitter.toStringAsFixed(2)} ms');
+    _log('Ping: ${ping.toStringAsFixed(2)} ms, jitter: ${jitter.toStringAsFixed(2)} ms');
     return LatencyMeasurement(ping: ping, jitter: jitter);
   }
 
@@ -714,7 +712,7 @@ class SpeedTestApiService {
 
   // Obtenir la liste des serveurs disponibles.
   Future<List<Map<String, dynamic>>?> getServers() async {
-    logger.i('Serveur unique: Render.com');
+    _log('Serveur unique: Render.com');
     return [
       {
         'name': 'Render.com Default',
@@ -728,8 +726,8 @@ class SpeedTestApiService {
   // Envoyer les résultats sauvegardés au serveur via telemetry.
   Future<bool> uploadTestResult(SpeedTestResult result) async {
     try {
-      logger.i('[DIAG] uploadTestResult DEBUT: dl=${result.downloadSpeed} ul=${result.uploadSpeed} ping=${result.ping} jitter=${result.jitter}');
-      logger.i('[DIAG] uploadTestResult testLog (200 premiers): ${(result.testLog ?? "null").substring(0, (result.testLog ?? "null").length > 200 ? 200 : (result.testLog ?? "null").length)}');
+      _log('[DIAG] uploadTestResult DEBUT: dl=${result.downloadSpeed} ul=${result.uploadSpeed} ping=${result.ping} jitter=${result.jitter}');
+      _log('[DIAG] uploadTestResult testLog (200 premiers): ${(result.testLog ?? "null").substring(0, (result.testLog ?? "null").length > 200 ? 200 : (result.testLog ?? "null").length)}');
       final response = await _dio.post(
         '/results/telemetry',
         data: {
@@ -775,19 +773,19 @@ class SpeedTestApiService {
         options: Options(contentType: Headers.formUrlEncodedContentType),
       );
 
-      logger.i('[DIAG] uploadTestResult reponse: statusCode=${response.statusCode} body=${response.data}');
+      _log('[DIAG] uploadTestResult reponse: statusCode=${response.statusCode} body=${response.data}');
       if (response.statusCode == 200 || response.statusCode == 201) {
         final serverId = _extractTelemetryId(response.data?.toString());
         if (serverId != null) {
           result.id = serverId;
         }
-        logger.i('[DIAG] uploadTestResult SUCCES: id=${result.id}');
+        _log('[DIAG] uploadTestResult SUCCES: id=${result.id}');
         return true;
       } else {
-        logger.e('[DIAG] uploadTestResult ECHEC HTTP: ${response.statusCode}');
+        _logErr('[DIAG] uploadTestResult ECHEC HTTP: ${response.statusCode}');
       }
     } on DioException catch (e) {
-      logger.e('[DIAG] uploadTestResult ERREUR DIO: ${e.message} type=${e.type}');
+      _logErr('[DIAG] uploadTestResult ERREUR DIO: ${e.message} type=${e.type}');
       _handleDioError(e);
     }
     return false;
@@ -798,7 +796,7 @@ class SpeedTestApiService {
     int limit = 50,
     int offset = 0,
   }) async {
-    logger.i('Historique géré localement par Hive');
+    _log('Historique géré localement par Hive');
     return null;
   }
 
@@ -814,7 +812,7 @@ class SpeedTestApiService {
       stopwatch.stop();
       return stopwatch;
     } on DioException catch (e) {
-      logger.e('Erreur test download: ${e.message}');
+      _logErr('Erreur test download: ${e.message}');
       _handleDioError(e);
     }
     return null;
@@ -836,7 +834,7 @@ class SpeedTestApiService {
       stopwatch.stop();
       return stopwatch;
     } on DioException catch (e) {
-      logger.e('Erreur test upload: ${e.message}');
+      _logErr('Erreur test upload: ${e.message}');
       _handleDioError(e);
     }
     return null;
@@ -852,7 +850,7 @@ class SpeedTestApiService {
 
         if (results != null) {
           if (results['status'] == 'failed') {
-            logger.e('Test échoué: $testId');
+            _logErr('Test échoué: $testId');
             return null;
           }
 
@@ -871,9 +869,9 @@ class SpeedTestApiService {
         attempts++;
       }
 
-      logger.e('Timeout: polling dépassé pour test $testId');
+      _logErr('Timeout: polling dépassé pour test $testId');
     } catch (e) {
-      logger.e('Erreur polling: $e');
+      _logErr('Erreur polling: $e');
     }
     return null;
   }
@@ -887,7 +885,7 @@ class SpeedTestApiService {
     bool Function()? shouldStop,
     CancelToken? cancelToken,
   }) async {
-    logger.i('[DIAG] _downloadChunk DEBUT: chunkSize=$chunkSize');
+    _log('[DIAG] _downloadChunk DEBUT: chunkSize=$chunkSize');
     // Sur le web (pas de streaming), Dio fournit la progression cumulée.
     int lastReceived = 0;
     final response = await _dio.get(
@@ -909,7 +907,7 @@ class SpeedTestApiService {
     );
 
     if (response.statusCode != 200) {
-      logger.e('[DIAG] _downloadChunk ERREUR HTTP: ${response.statusCode}');
+      _logErr('[DIAG] _downloadChunk ERREUR HTTP: ${response.statusCode}');
       throw DioException(
         requestOptions: response.requestOptions,
         response: response,
@@ -917,7 +915,7 @@ class SpeedTestApiService {
       );
     }
 
-    logger.i('[DIAG] _downloadChunk reponse recue: statusCode=${response.statusCode}, contentType=${response.headers.value("content-type")}');
+    _log('[DIAG] _downloadChunk reponse recue: statusCode=${response.statusCode}, contentType=${response.headers.value("content-type")}');
 
     final data = response.data;
     if (data is ResponseBody) {
@@ -927,17 +925,17 @@ class SpeedTestApiService {
         onBytes?.call(chunk.length);
         if (shouldStop?.call() ?? false) break;
       }
-      logger.i('[DIAG] _downloadChunk FIN (stream): bytes=$bytes');
+      _log('[DIAG] _downloadChunk FIN (stream): bytes=$bytes');
       return bytes;
     }
 
     if (data is List<int>) {
-      logger.i('[DIAG] _downloadChunk FIN (list): bytes=${data.length}');
+      _log('[DIAG] _downloadChunk FIN (list): bytes=${data.length}');
       return data.length;
     }
 
     final len = data?.toString().length ?? 0;
-    logger.i('[DIAG] _downloadChunk FIN (fallback): bytes=$len');
+    _log('[DIAG] _downloadChunk FIN (fallback): bytes=$len');
     return len;
   }
 
@@ -947,7 +945,7 @@ class SpeedTestApiService {
     void Function(int delta)? onBytes,
     CancelToken? cancelToken,
   }) async {
-    logger.i('[DIAG] _uploadChunk DEBUT: uploadSize=${uploadData.length} bytes');
+    _log('[DIAG] _uploadChunk DEBUT: uploadSize=${uploadData.length} bytes');
     int lastSent = 0;
     final response = await _dio.post(
       '/empty',
@@ -965,7 +963,7 @@ class SpeedTestApiService {
     );
 
     if (response.statusCode != 200) {
-      logger.e('[DIAG] _uploadChunk ERREUR HTTP: ${response.statusCode}');
+      _logErr('[DIAG] _uploadChunk ERREUR HTTP: ${response.statusCode}');
       throw DioException(
         requestOptions: response.requestOptions,
         response: response,
@@ -973,7 +971,7 @@ class SpeedTestApiService {
       );
     }
 
-    logger.i('[DIAG] _uploadChunk FIN: bytes=${uploadData.length}, statusCode=${response.statusCode}');
+    _log('[DIAG] _uploadChunk FIN: bytes=${uploadData.length}, statusCode=${response.statusCode}');
     return uploadData.length;
   }
 
@@ -1004,13 +1002,13 @@ class SpeedTestApiService {
 
   void _handleDioError(DioException error) {
     if (error.type == DioExceptionType.connectionTimeout) {
-      logger.e('Timeout de connexion');
+      _logErr('Timeout de connexion');
     } else if (error.type == DioExceptionType.receiveTimeout) {
-      logger.e('Timeout de réception');
+      _logErr('Timeout de réception');
     } else if (error.type == DioExceptionType.badResponse) {
-      logger.e('Erreur serveur: ${error.response?.statusCode}');
+      _logErr('Erreur serveur: ${error.response?.statusCode}');
     } else if (error.type == DioExceptionType.connectionError) {
-      logger.e('Erreur de connexion');
+      _logErr('Erreur de connexion');
     }
   }
 }

@@ -1,15 +1,18 @@
-import 'package:logger/logger.dart';
+
 import 'package:dio/dio.dart';
 import 'package:geolocator/geolocator.dart';
 import '../constants/config.dart';
 
 /// Service de localisation — GPS réel avec fallback IP
 class LocationService {
-  final logger = Logger();
+  // ignore: avoid_print
+  void _log(String msg) => print('[YELE-DIAG-LOC] $msg');
+  void _logErr(String msg) => print('[YELE-DIAG-LOC-ERR] $msg');
+  void _logWarn(String msg) => print('[YELE-DIAG-LOC-WARN] $msg');
   late final Dio _dio;
 
   LocationService() {
-    logger.i('[DIAG-LOC] LocationService init, baseUrl=$API_BASE_URL');
+    _log('[DIAG-LOC] LocationService init, baseUrl=$API_BASE_URL');
     _dio = Dio(
       BaseOptions(
         baseUrl: API_BASE_URL,
@@ -25,7 +28,7 @@ class LocationService {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        logger.w('Service GPS désactivé');
+        _logWarn('Service GPS désactivé');
         return null;
       }
 
@@ -33,22 +36,22 @@ class LocationService {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          logger.w('Permission GPS refusée');
+          _logWarn('Permission GPS refusée');
           return null;
         }
       }
       if (permission == LocationPermission.deniedForever) {
-        logger.w('Permission GPS refusée définitivement');
+        _logWarn('Permission GPS refusée définitivement');
         return null;
       }
 
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
-      logger.i('📍 GPS: ${position.latitude}, ${position.longitude}');
+      _log('📍 GPS: ${position.latitude}, ${position.longitude}');
       return position;
     } catch (e) {
-      logger.e('Erreur GPS: $e');
+      _logErr('Erreur GPS: $e');
       return null;
     }
   }
@@ -56,20 +59,20 @@ class LocationService {
   /// Récupère la localisation basée sur l'IP publique (pour l'accueil)
   Future<LocationData?> getCurrentLocation() async {
     try {
-      logger.i('[DIAG-LOC] getCurrentLocation: appel /getIP?isp=true vers $API_BASE_URL');
+      _log('[DIAG-LOC] getCurrentLocation: appel /getIP?isp=true vers $API_BASE_URL');
       final response = await _dio.get('/getIP', queryParameters: {'isp': 'true'});
-      logger.i('[DIAG-LOC] getCurrentLocation: reponse HTTP ${response.statusCode}');
-      logger.i('[DIAG-LOC] getCurrentLocation: data brute = ${response.data}');
+      _log('[DIAG-LOC] getCurrentLocation: reponse HTTP ${response.statusCode}');
+      _log('[DIAG-LOC] getCurrentLocation: data brute = ${response.data}');
 
       if (response.statusCode == 200 && response.data != null) {
         final data = response.data;
 
         if (data['rawIspInfo'] != null) {
           final ispInfo = data['rawIspInfo'];
-          logger.i('[DIAG-LOC] getCurrentLocation: rawIspInfo.loc = "${ispInfo["loc"]}"');
+          _log('[DIAG-LOC] getCurrentLocation: rawIspInfo.loc = "${ispInfo["loc"]}"');
           final locStr = (ispInfo['loc'] as String?) ?? '';
           if (locStr.isEmpty) {
-            logger.w('[DIAG-LOC] getCurrentLocation: rawIspInfo.loc est VIDE - fallback GPS/IP impossible');
+            _logWarn('[DIAG-LOC] getCurrentLocation: rawIspInfo.loc est VIDE - fallback GPS/IP impossible');
           }
           final loc = locStr.split(',');
 
@@ -86,16 +89,16 @@ class LocationService {
             processedString: data['processedString'] ?? '',
           );
 
-          logger.i('[DIAG-LOC] getCurrentLocation: RESULTAT lat=${locationData.latitude} lng=${locationData.longitude} city=${locationData.city} country=${locationData.country} operator=${locationData.operator}');
+          _log('[DIAG-LOC] getCurrentLocation: RESULTAT lat=${locationData.latitude} lng=${locationData.longitude} city=${locationData.city} country=${locationData.country} operator=${locationData.operator}');
           return locationData;
         } else {
-          logger.w('[DIAG-LOC] getCurrentLocation: rawIspInfo est null');
+          _logWarn('[DIAG-LOC] getCurrentLocation: rawIspInfo est null');
         }
       }
     } on DioException catch (e) {
-      logger.e('[DIAG-LOC] getCurrentLocation ERREUR DIO: ${e.message} type=${e.type}');
+      _logErr('[DIAG-LOC] getCurrentLocation ERREUR DIO: ${e.message} type=${e.type}');
     } catch (e) {
-      logger.e('[DIAG-LOC] getCurrentLocation ERREUR INATTENDUE: $e');
+      _logErr('[DIAG-LOC] getCurrentLocation ERREUR INATTENDUE: $e');
     }
 
     return null;
@@ -109,7 +112,7 @@ class LocationService {
         return '${location.city}, ${location.countryName}';
       }
     } catch (e) {
-      logger.e('Erreur récupération nom localisation: $e');
+      _logErr('Erreur récupération nom localisation: $e');
     }
     return null;
   }

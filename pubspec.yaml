@@ -53,6 +53,7 @@ dependencies:
   # Export d'une mesure (IMP-13) : CSV, Excel, PDF et partage natif
   share_plus: ^13.3.0
   excel: ^4.0.6
+  image: ^4.2.0
   pdf: ^3.11.3
   printing: ^5.14.3
 

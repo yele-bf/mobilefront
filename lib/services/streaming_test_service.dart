@@ -1,14 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show ContentType, HttpServer, InternetAddress;
-import 'dart:ui' show Color;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:logger/logger.dart';
 import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_flutter_android/webview_flutter_android.dart';
-import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
 import '../constants/config.dart';
+import 'streaming_test_service_native.dart' as native_impl;
+import 'streaming_test_service_web.dart'
+    if (dart.library.io) 'streaming_test_service_web_stub.dart' as web_impl;
 import 'traffic_stats_service.dart';
 
 /// Mesures d'une qualité vidéo — une colonne du tableau de résultats.
@@ -31,7 +31,7 @@ class StreamingQualityResult {
   /// Nombre d'interruptions après le démarrage.
   final int rebufferCount;
 
-  /// Données téléchargées pendant la lecture. -1 = non mesurable (iOS).
+  /// Données téléchargées pendant la lecture. -1 = non mesurable (iOS/web).
   final int dataUsedKiB;
 
   /// Faux si YouTube a changé de qualité pendant la mesure : les chiffres
@@ -166,7 +166,7 @@ class StreamingTestResult {
 ///
 /// [servedKey] est la qualité que YouTube a **réellement** servie, qui n'est
 /// pas forcément celle demandée : c'est elle qui détermine la colonne.
-class _LevelMeasurement {
+class LevelMeasurement {
   final bool played; // la lecture a démarré
   final String servedKey;
   final double performanceRate;
@@ -180,7 +180,7 @@ class _LevelMeasurement {
   /// de grandeur.
   final bool stable;
 
-  const _LevelMeasurement({
+  const LevelMeasurement({
     required this.played,
     this.servedKey = '',
     this.performanceRate = 0,
@@ -191,7 +191,25 @@ class _LevelMeasurement {
     this.stable = true,
   });
 
-  static const notPlayed = _LevelMeasurement(played: false);
+  static const notPlayed = LevelMeasurement(played: false);
+}
+
+/// Ce que l'interface doit afficher pendant le test de streaming.
+sealed class StreamingDisplay {
+  const StreamingDisplay();
+}
+
+/// Lecteur YouTube dans une WebView (Android, iOS, macOS).
+class NativeStreamingDisplay extends StreamingDisplay {
+  final WebViewController controller;
+  const NativeStreamingDisplay({required this.controller});
+}
+
+/// Lecteur YouTube dans un élément DOM embarqué (web/Chrome).
+class WebStreamingDisplay extends StreamingDisplay {
+  /// Identifiant de vue enregistré via `platformViewRegistry`.
+  final String viewType;
+  const WebStreamingDisplay({required this.viewType});
 }
 
 typedef StreamingProgressCallback = void Function(
@@ -200,30 +218,133 @@ typedef StreamingProgressCallback = void Function(
 /// Fournit le contrôleur WebView à l'interface pour afficher le lecteur,
 /// puis null quand le test est terminé.
 typedef StreamingControllerCallback = void Function(
-    WebViewController? controller);
+    StreamingDisplay? display);
 
 /// Remonte le tableau des qualités au fil de l'eau, pour l'affichage en direct.
 typedef StreamingRowsCallback = void Function(
     List<StreamingQualityResult> rows);
 
-/// Test de streaming **sur YouTube**, à la manière de nPerf.
+/// Calculs partagés entre les implémentations native (WebView) et web du test
+/// de streaming : consolidation des paliers, scores et messages d'erreur.
+class StreamingMetrics {
+  /// Nom lisible d'une clé de qualité de l'IFrame API.
+  static String qualityLabel(String key) => const {
+        'tiny': '144p',
+        'small': '240p',
+        'medium': '360p',
+        'large': '480p',
+        'hd720': '720p',
+        'hd1080': '1080p',
+        'hd1440': '1440p',
+        'hd2160': '2160p',
+        'highres': 'au-delà de 2160p',
+      }[key] ??
+      (key.isEmpty ? 'inconnue' : key);
+
+  /// Explique les colonnes restées vides, quand YouTube n'a pas servi toutes
+  /// les qualités demandées. null si le tableau est complet.
+  static String? servedNote(
+      List<StreamingQualityResult> rows, List<String> served) {
+    if (served.isEmpty) {
+      return 'Aucune qualité n\'a pu être lue. Réseau trop faible ou lecteur '
+          'indisponible.';
+    }
+    if (rows.every((r) => r.reached)) return null;
+
+    final unique = served.toSet().toList();
+    return 'YouTube choisit lui-même la qualité selon le réseau et la taille '
+        'du lecteur : il a servi ${unique.join(', ')} pendant ce test. Les '
+        'qualités non servies restent vides.';
+  }
+
+  /// Consolide les mesures par qualité en indicateurs globaux (stockés dans
+  /// l'historique et envoyés au serveur).
+  static StreamingTestResult aggregate(List<StreamingQualityResult> rows,
+      {String? error}) {
+    final reached = rows.where((r) => r.reached).toList();
+
+    final bestHeight = reached.isEmpty
+        ? 0
+        : reached.map((r) => r.height).reduce((a, b) => a > b ? a : b);
+    final startupMs =
+        reached.isEmpty ? 0 : (reached.first.initialLoadingSec * 1000).round();
+    final rebuffers =
+        reached.fold<int>(0, (sum, r) => sum + r.rebufferCount);
+
+    final buffering = reached.fold<double>(0, (sum, r) => sum + r.bufferingSec);
+    final watched = reached.fold<double>(
+        0, (sum, r) => sum + STREAMING_LEVEL_DURATION_SEC - r.bufferingSec);
+    final measured = watched + buffering;
+    final ratio = measured > 0 ? (buffering / measured).clamp(0.0, 1.0) : 0.0;
+
+    final score = computeScore(
+        bestHeight.toDouble(), startupMs, ratio.toDouble(), rebuffers);
+
+    return StreamingTestResult(
+      qualities: rows,
+      startupMs: startupMs,
+      rebufferCount: rebuffers,
+      rebufferRatio: double.parse(ratio.toStringAsFixed(3)),
+      maxResolution: bestHeight > 0 ? '${bestHeight}p' : 'inconnue',
+      score: double.parse(score.toStringAsFixed(1)),
+      error: error,
+    );
+  }
+
+  static double computeScore(
+      double maxHeight, int startupMs, double rebufferRatio, int rebufferCount) {
+    final double base = maxHeight >= 2160
+        ? 100
+        : maxHeight >= 1080
+            ? 90
+            : maxHeight >= 720
+                ? 75
+                : maxHeight >= 480
+                    ? 55
+                    : maxHeight > 0
+                        ? 35
+                        : 0;
+    double score = base;
+    if (startupMs > 2000) score -= (startupMs - 2000) / 500;
+    score -= 40 * rebufferRatio + 2 * rebufferCount;
+    return score.clamp(0, 100);
+  }
+
+  /// Traduit les codes d'erreur de l'IFrame Player API.
+  static String errorMessage(int code) {
+    switch (code) {
+      case 2:
+        return 'Identifiant de vidéo invalide.';
+      case 5:
+        return 'Le lecteur HTML5 ne peut pas lire cette vidéo sur cet appareil.';
+      case 100:
+        return 'Vidéo introuvable ou retirée de YouTube.';
+      case 101:
+      case 150:
+        return 'Le propriétaire de la vidéo en interdit la lecture intégrée. '
+            'Choisissez une autre vidéo dans la configuration.';
+      case 152:
+      case 153:
+        // Codes non documentés par Google, apparus avec le durcissement des
+        // règles d'intégration : YouTube exige que l'application s'identifie
+        // par un en-tête Referer qu'il juge légitime.
+        return 'YouTube refuse la lecture intégrée depuis cette application '
+            '(erreur $code). Le test de streaming ne peut pas aboutir tant '
+            'que YouTube n\'accepte pas l\'intégration.';
+      default:
+        return 'Le lecteur YouTube a renvoyé l\'erreur $code.';
+    }
+  }
+}
+
+/// Logique commune aux deux plateformes du test de streaming : enchaînement
+/// des paliers (720p, 1080p, 2160p), mesure d'un palier, consolidation.
 ///
-/// Charge le lecteur YouTube (IFrame Player API) dans un WebView visible, puis
-/// demande successivement chaque qualité (720p, 1080p, 2160p). Pour chacune on
-/// mesure le délai avant la première image, le temps cumulé de mise en tampon,
-/// le volume de données téléchargé, et on en dérive un **taux de performance** :
-///
-///     performance = temps réellement regardé / temps total écoulé
-///
-/// Autrement dit la part du temps passée à voir la vidéo plutôt qu'à l'attendre.
-///
-/// ⚠️ `setPlaybackQuality()` est déprécié et **ignoré** par le lecteur YouTube
-/// depuis 2019 : la qualité demandée n'est qu'une suggestion. On relit donc
-/// systématiquement `getPlaybackQuality()` en fin de palier, et une qualité qui
-/// n'a pas été réellement servie est marquée non atteinte (colonne « — »).
-/// C'est aussi ce que fait nPerf lorsqu'il affiche « - » pour le 2160p.
-class StreamingTestService {
-  final logger = Logger();
+/// La plateforme n'intervient que par cinq points d'extension :
+///  - [openPlayer] / [closePlayer] : mise en place et retrait du lecteur ;
+///  - [jsBuildLevel] / [jsStartLevel] / [jsStopLevel] : pilotage du lecteur.
+abstract class StreamingRunner {
+  final Logger logger = Logger();
   final TrafficStatsService _traffic = TrafficStatsService();
 
   Completer<void>? _ready; // API YouTube chargée
@@ -236,7 +357,19 @@ class StreamingTestService {
   final Set<String> _available = {};
 
   /// Renseigné si le lecteur signale une erreur, pour l'expliquer à l'écran.
-  String? _playerError;
+  ///
+  /// Lecture publique : les implémentations de plateforme peuvent aussi
+  /// renseigner une erreur (ex. API YouTube injoignable).
+  String? playerError;
+
+  /// Vrai tant que l'événement 'ready' de l'API n'est pas arrivé. Sert aux
+  /// implémentations de plateforme à débloquer l'attente en cas de panne.
+  bool get isReadyPending => _ready?.isCompleted == false;
+
+  /// Débloque l'attente de l'API (implémentations de plateforme).
+  void completeReady() {
+    if (_ready?.isCompleted == false) _ready!.complete();
+  }
 
   Future<StreamingTestResult> runTest({
     StreamingControllerCallback? onController,
@@ -253,26 +386,21 @@ class StreamingTestService {
     final served = <String>[];
     onRows?.call(List.of(rows));
 
-    final controller = _buildController();
-    final host = _PlayerHost();
-
     try {
       onProgress?.call(0.02, 'Ouverture du lecteur YouTube…');
-      final uri = await host.start(_playerHtml);
-      await controller.loadRequest(uri);
-      onController?.call(controller);
-
       _ready = Completer<void>();
+      await openPlayer(onController);
+
       try {
         await _ready!.future.timeout(const Duration(seconds: 25));
       } on TimeoutException {
         logger.w('Streaming: lecteur YouTube non chargé (réseau ou ID vidéo)');
-        return _aggregate(rows,
+        return StreamingMetrics.aggregate(rows,
             error: 'Lecteur YouTube injoignable. Vérifiez la connexion '
                 'Internet, puis relancez le test.');
       }
-      if (_playerError != null) {
-        return _aggregate(rows, error: _playerError);
+      if (playerError != null) {
+        return StreamingMetrics.aggregate(rows, error: playerError);
       }
 
       for (int i = 0; i < keys.length; i++) {
@@ -288,7 +416,6 @@ class StreamingTestService {
 
         onProgress?.call((i + 0.1) / keys.length, 'Chargement en $label…');
         final m = await _measureQuality(
-          controller: controller,
           key: key,
           label: label,
           onProgress: (frac, msg) =>
@@ -300,7 +427,7 @@ class StreamingTestService {
         // est ignoré par le lecteur depuis 2019. On range donc la mesure dans
         // la colonne de ce qui a été SERVI, jamais de ce qui a été demandé —
         // sinon on jetterait des mesures parfaitement valides.
-        served.add(_qualityLabel(m.servedKey));
+        served.add(StreamingMetrics.qualityLabel(m.servedKey));
         final column = keys.indexOf(m.servedKey);
         if (column < 0) continue; // qualité hors tableau (360p, 1440p…)
 
@@ -322,25 +449,25 @@ class StreamingTestService {
       // Libère la référence côté UI avant de couper la lecture.
       onController?.call(null);
       try {
-        await controller.runJavaScript('stopLevel()');
+        await jsStopLevel();
       } catch (_) {
         // Le lecteur n'a jamais démarré : rien à arrêter.
       }
-      await host.stop();
+      await closePlayer();
     }
 
-    final result = _aggregate(rows, error: _playerError ?? _servedNote(rows, served));
+    final result = StreamingMetrics.aggregate(
+        rows, error: playerError ?? StreamingMetrics.servedNote(rows, served));
     logger.i('$result — servi : ${served.join(', ')}');
     return result;
   }
 
   /// Joue une qualité pendant [STREAMING_LEVEL_DURATION_SEC] et en mesure les
   /// quatre indicateurs.
-  Future<_LevelMeasurement> _measureQuality({
-    required WebViewController controller,
+  Future<LevelMeasurement> _measureQuality({
     required String key,
     required String label,
-    required StreamingProgressCallback onProgress,
+    required void Function(double frac, String msg) onProgress,
   }) async {
     // Le lecteur prend les dimensions de la qualité visée : c'est ce qui
     // détermine ce que YouTube accepte de servir.
@@ -350,13 +477,13 @@ class StreamingTestService {
     // Lecteur NEUF pour cette qualité : pas d'estimation de bande passante
     // héritée du palier précédent.
     _levelReady = Completer<void>();
-    await controller.runJavaScript('buildLevel("$key", $width, $height)');
+    await jsBuildLevel(key, width, height);
     try {
       await _levelReady!.future
           .timeout(const Duration(seconds: STREAMING_LEVEL_TIMEOUT_SEC));
     } on TimeoutException {
       logger.w('Streaming: lecteur $label non construit');
-      return _LevelMeasurement.notPlayed;
+      return LevelMeasurement.notPlayed;
     }
 
     // Laisse YouTube prendre en compte les dimensions avant de lancer.
@@ -368,7 +495,7 @@ class StreamingTestService {
     _level = Completer<Map<String, dynamic>>();
 
     final wall = Stopwatch()..start();
-    await controller.runJavaScript('startLevel("$key")');
+    await jsStartLevel(key);
 
     // Attente de la première image.
     try {
@@ -376,8 +503,8 @@ class StreamingTestService {
           .timeout(const Duration(seconds: STREAMING_LEVEL_TIMEOUT_SEC));
     } on TimeoutException {
       logger.w('Streaming: $label n\'a jamais démarré');
-      await _stopLevel(controller);
-      return _LevelMeasurement.notPlayed;
+      await jsStopLevel();
+      return LevelMeasurement.notPlayed;
     }
 
     // Lecture mesurée.
@@ -390,13 +517,14 @@ class StreamingTestService {
       onProgress(frac.clamp(0.0, 0.95), 'Lecture en $label…');
     }
 
-    final report = await _stopLevel(controller);
+    final report = await jsStopLevel();
     wall.stop();
     final rxAfter = await _traffic.rxBytes();
 
     final servedKey = (report['q'] ?? '').toString();
     if (servedKey != key) {
-      logger.i('Streaming: $label demandé, ${_qualityLabel(servedKey)} servi');
+      logger.i('Streaming: $label demandé, '
+          '${StreamingMetrics.qualityLabel(servedKey)} servi');
     }
 
     final initialSec = ((report['startupMs'] as num?)?.toDouble() ?? 0) / 1000;
@@ -405,7 +533,7 @@ class StreamingTestService {
     final watchedSec = (totalSec - initialSec - bufferingSec).clamp(0.0, totalSec);
     final performance = totalSec > 0 ? watchedSec / totalSec * 100 : 0.0;
 
-    return _LevelMeasurement(
+    return LevelMeasurement(
       played: true,
       servedKey: servedKey,
       performanceRate: double.parse(performance.toStringAsFixed(2)),
@@ -417,133 +545,18 @@ class StreamingTestService {
     );
   }
 
-  /// Explique les colonnes restées vides, quand YouTube n'a pas servi toutes
-  /// les qualités demandées. null si le tableau est complet.
-  String? _servedNote(List<StreamingQualityResult> rows, List<String> served) {
-    if (served.isEmpty) {
-      return 'Aucune qualité n\'a pu être lue. Réseau trop faible ou lecteur '
-          'indisponible.';
-    }
-    if (rows.every((r) => r.reached)) return null;
-
-    final unique = served.toSet().toList();
-    return 'YouTube choisit lui-même la qualité selon le réseau et la taille '
-        'du lecteur : il a servi ${unique.join(', ')} pendant ce test. Les '
-        'qualités non servies restent vides.';
-  }
-
-  /// Nom lisible d'une clé de qualité de l'IFrame API.
-  String _qualityLabel(String key) => const {
-        'tiny': '144p',
-        'small': '240p',
-        'medium': '360p',
-        'large': '480p',
-        'hd720': '720p',
-        'hd1080': '1080p',
-        'hd1440': '1440p',
-        'hd2160': '2160p',
-        'highres': 'au-delà de 2160p',
-      }[key] ??
-      (key.isEmpty ? 'inconnue' : key);
-
-  /// Met la lecture en pause et récupère le bilan du palier.
-  Future<Map<String, dynamic>> _stopLevel(WebViewController controller) async {
+  /// Attend le bilan du palier courant (complété par l'événement 'level').
+  Future<Map<String, dynamic>> waitLevelReport() async {
     try {
-      await controller.runJavaScript('stopLevel()');
       return await _level!.future.timeout(const Duration(seconds: 5));
     } catch (_) {
       return <String, dynamic>{};
     }
   }
 
-  /// Consolide les mesures par qualité en indicateurs globaux (stockés dans
-  /// l'historique et envoyés au serveur).
-  StreamingTestResult _aggregate(List<StreamingQualityResult> rows,
-      {String? error}) {
-    final reached = rows.where((r) => r.reached).toList();
-
-    final bestHeight = reached.isEmpty
-        ? 0
-        : reached.map((r) => r.height).reduce((a, b) => a > b ? a : b);
-    final startupMs =
-        reached.isEmpty ? 0 : (reached.first.initialLoadingSec * 1000).round();
-    final rebuffers =
-        reached.fold<int>(0, (sum, r) => sum + r.rebufferCount);
-
-    final buffering = reached.fold<double>(0, (sum, r) => sum + r.bufferingSec);
-    final watched = reached.fold<double>(
-        0, (sum, r) => sum + STREAMING_LEVEL_DURATION_SEC - r.bufferingSec);
-    final measured = watched + buffering;
-    final ratio = measured > 0 ? (buffering / measured).clamp(0.0, 1.0) : 0.0;
-
-    final score = _computeScore(
-        bestHeight.toDouble(), startupMs, ratio.toDouble(), rebuffers);
-
-    return StreamingTestResult(
-      qualities: rows,
-      startupMs: startupMs,
-      rebufferCount: rebuffers,
-      rebufferRatio: double.parse(ratio.toStringAsFixed(3)),
-      maxResolution: bestHeight > 0 ? '${bestHeight}p' : 'inconnue',
-      score: double.parse(score.toStringAsFixed(1)),
-      error: error,
-    );
-  }
-
-  double _computeScore(
-      double maxHeight, int startupMs, double rebufferRatio, int rebufferCount) {
-    final double base = maxHeight >= 2160
-        ? 100
-        : maxHeight >= 1080
-            ? 90
-            : maxHeight >= 720
-                ? 75
-                : maxHeight >= 480
-                    ? 55
-                    : maxHeight > 0
-                        ? 35
-                        : 0;
-    double score = base;
-    if (startupMs > 2000) score -= (startupMs - 2000) / 500;
-    score -= 40 * rebufferRatio + 2 * rebufferCount;
-    return score.clamp(0, 100);
-  }
-
-  // ── WebView ────────────────────────────────────────────────────────────────
-
-  WebViewController _buildController() {
-    // iOS : sans `allowsInlineMediaPlayback` la vidéo part en plein écran natif
-    // et l'utilisateur perd de vue le test.
-    final params = WebViewPlatform.instance is WebKitWebViewPlatform
-        ? WebKitWebViewControllerCreationParams(
-            allowsInlineMediaPlayback: true,
-            mediaTypesRequiringUserAction: const <PlaybackMediaTypes>{},
-          )
-        : const PlatformWebViewControllerCreationParams();
-
-    final controller = WebViewController.fromPlatformCreationParams(params)
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0xFF000000))
-      ..addJavaScriptChannel('YeleStream', onMessageReceived: _onJsMessage);
-
-    // Android : sans ceci, `playVideo()` déclenché par du JS est bloqué faute
-    // de geste utilisateur, et aucun palier ne démarrerait jamais.
-    final platform = controller.platform;
-    if (platform is AndroidWebViewController) {
-      platform.setMediaPlaybackRequiresUserGesture(false);
-    }
-
-    return controller;
-  }
-
-  void _onJsMessage(JavaScriptMessage message) {
-    Map<String, dynamic> event;
-    try {
-      event = Map<String, dynamic>.from(jsonDecode(message.message) as Map);
-    } catch (_) {
-      return;
-    }
-
+  /// Répartit les événements remontés par le lecteur (mêmes messages sur
+  /// les deux plateformes : ready, levelready, start, level, error, jserror).
+  void handleEvent(Map<String, dynamic> event) {
     switch (event['e']) {
       case 'ready':
         if (_ready?.isCompleted == false) _ready!.complete();
@@ -565,247 +578,61 @@ class StreamingTestService {
         break;
       case 'error':
         final code = (event['code'] as num?)?.toInt() ?? 0;
-        _playerError = _errorMessage(code);
+        playerError = StreamingMetrics.errorMessage(code);
         logger.w('Streaming: erreur lecteur YouTube (code $code)');
         // Débloque les attentes en cours : la vidéo est injouable.
-        if (_ready?.isCompleted == false) _ready!.complete();
+        completeReady();
         if (_started?.isCompleted == false) _started!.complete();
         break;
       case 'jserror':
         // Erreur JavaScript dans la page hôte : sans elle, un échec de
         // chargement du script de l'API ressemblerait à un simple timeout.
-        _playerError ??= 'Erreur du lecteur : ${event['msg']}';
+        playerError ??= 'Erreur du lecteur : ${event['msg']}';
         logger.w('Streaming: erreur JS — ${event['msg']}');
-        if (_ready?.isCompleted == false) _ready!.complete();
+        completeReady();
         break;
     }
   }
 
-  /// Traduit les codes d'erreur de l'IFrame Player API.
-  String _errorMessage(int code) {
-    switch (code) {
-      case 2:
-        return 'Identifiant de vidéo invalide.';
-      case 5:
-        return 'Le lecteur HTML5 ne peut pas lire cette vidéo sur cet appareil.';
-      case 100:
-        return 'Vidéo introuvable ou retirée de YouTube.';
-      case 101:
-      case 150:
-        return 'Le propriétaire de la vidéo en interdit la lecture intégrée. '
-            'Choisissez une autre vidéo dans la configuration.';
-      case 152:
-      case 153:
-        // Codes non documentés par Google, apparus avec le durcissement des
-        // règles d'intégration : YouTube exige que l'application s'identifie
-        // par un en-tête Referer qu'il juge légitime, ce qu'une page servie
-        // depuis la boucle locale ne garantit pas.
-        return 'YouTube refuse la lecture intégrée depuis cette application '
-            '(erreur $code). Le test de streaming ne peut pas aboutir tant '
-            'que YouTube n\'accepte pas l\'intégration.';
-      default:
-        return 'Le lecteur YouTube a renvoyé l\'erreur $code.';
-    }
-  }
+  /// Mise en place du lecteur (WebView ou élément DOM) ; doit livrer le
+  /// display via [onController] et déclencher l'événement 'ready'.
+  Future<void> openPlayer(StreamingControllerCallback? onController);
 
-  /// Page hôte du lecteur YouTube, servie par [_PlayerHost] depuis
-  /// `http://127.0.0.1:<port>`.
-  ///
-  /// L'IFrame API valide l'origine de la page hôte par un échange
-  /// `postMessage` avant d'émettre `onReady`. Une page injectée via
-  /// `loadHtmlString` — même avec un `baseUrl` pointant sur youtube.com —
-  /// n'a pas d'origine réelle : la validation échoue silencieusement, le
-  /// lecteur reste noir et `onReady` n'arrive jamais. D'où le serveur local,
-  /// qui fournit une vraie origine HTTP, transmise ici en `origin`.
-  String _playerHtml(String origin) => '''
-<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<style>
-  html,body{margin:0;padding:0;background:#000;overflow:hidden;height:100%}
-  /* Le lecteur est RÉELLEMENT dimensionné en 1920x1080, puis réduit
-     visuellement par une transformation. YouTube choisit sa qualité d'après
-     la taille du lecteur : une zone de quelques centaines de pixels de large
-     ne se voit jamais servir de 1080p, encore moins de 2160p. Sans cette
-     mise à l'échelle, le test plafonnerait à 360p quelle que soit la
-     qualité demandée, et les colonnes resteraient vides. */
-  #stage{position:absolute;top:0;left:0;width:1920px;height:1080px;
-         transform-origin:0 0}
-  #player{width:100%;height:100%}
-</style>
-</head>
-<body>
-<div id="stage"><div id="player"></div></div>
-<script>
-var player = null;
-var stageW = 1920, stageH = 1080;
-var t0 = 0, startupMs = -1, bufferMs = 0, bufferStart = 0;
-var rebuffers = 0, started = false;
+  /// Nettoyage après le test.
+  Future<void> closePlayer();
 
-// Durée passée dans chaque qualité pendant la fenêtre mesurée. YouTube peut
-// basculer en cours de lecture : sans ce suivi, on attribuerait à une qualité
-// des chiffres qui en mélangent deux.
-var qSegments = [], curQ = null, curQStart = 0;
+  Future<void> jsBuildLevel(String key, int width, int height);
 
-function send(o) { YeleStream.postMessage(JSON.stringify(o)); }
+  Future<void> jsStartLevel(String key);
 
-// Sans ceci, un échec de chargement du script de l'API serait indiscernable
-// d'un simple dépassement de délai.
-window.onerror = function (msg) { send({ e: 'jserror', msg: String(msg) }); };
-
-// La taille du lecteur pilote le choix de qualité de YouTube : un lecteur
-// 1280x720 obtient du 720p, un lecteur 3840x2160 rend le 4K envisageable.
-// La scène garde ses dimensions réelles et n'est réduite qu'à l'affichage.
-function setStage(w, h) {
-  stageW = w; stageH = h;
-  var stage = document.getElementById('stage');
-  stage.style.width = w + 'px';
-  stage.style.height = h + 'px';
-  fitStage();
+  Future<Map<String, dynamic>> jsStopLevel();
 }
 
-function fitStage() {
-  document.getElementById('stage').style.transform =
-    'scale(' + (window.innerWidth / stageW) + ')';
-}
-window.addEventListener('resize', fitStage);
-
-function onYouTubeIframeAPIReady() { send({ e: 'ready' }); }
-
-// Reconstruit un lecteur NEUF pour chaque qualité. Réutiliser le même lecteur
-// laissait l'algorithme adaptatif de YouTube conserver son estimation de
-// bande passante d'un palier à l'autre : après un palier en 4K il restait
-// haut, et inversement. Les paliers se contaminaient, d'où des résultats
-// différents d'un test à l'autre.
-function buildLevel(q, w, h) {
-  if (player && player.destroy) { try { player.destroy(); } catch (e) {} }
-  player = null;
-  document.getElementById('stage').innerHTML = '<div id="player"></div>';
-  setStage(w, h);
-
-  startupMs = -1; bufferMs = 0; bufferStart = 0; rebuffers = 0;
-  started = false; qSegments = []; curQ = null; curQStart = 0;
-
-  player = new YT.Player('player', {
-    width: String(w),
-    height: String(h),
-    videoId: '$STREAMING_YOUTUBE_VIDEO_ID',
-    playerVars: {
-      autoplay: 0, controls: 0, disablekb: 1, fs: 0,
-      modestbranding: 1, playsinline: 1, rel: 0, iv_load_policy: 3,
-      enablejsapi: 1, origin: '$origin', vq: q
-    },
-    events: {
-      onReady: function () { send({ e: 'levelready' }); },
-      onStateChange: onState,
-      onPlaybackQualityChange: function (ev) { markQuality(ev.data); },
-      onError: function (ev) { send({ e: 'error', code: ev.data }); }
-    }
-  });
-}
-
-function markQuality(q) {
-  var now = Date.now();
-  if (curQ !== null) {
-    var ms = now - curQStart;
-    for (var i = 0; i < qSegments.length; i++) {
-      if (qSegments[i].q === curQ) { qSegments[i].ms += ms; curQ = null; break; }
-    }
-    if (curQ !== null) qSegments.push({ q: curQ, ms: ms });
-  }
-  curQ = q; curQStart = now;
-}
-
-// Qualité ayant duré le plus longtemps sur la fenêtre mesurée.
-function dominantQuality() {
-  var best = null;
-  for (var i = 0; i < qSegments.length; i++) {
-    if (!best || qSegments[i].ms > best.ms) best = qSegments[i];
-  }
-  return best ? best.q : 'unknown';
-}
-
-function onState(ev) {
-  var s = ev.data;
-  if (s === YT.PlayerState.PLAYING) {
-    if (startupMs < 0) {
-      startupMs = Date.now() - t0;
-      started = true;
-      try { markQuality(player.getPlaybackQuality()); } catch (e) {}
-      send({ e: 'start', startupMs: startupMs });
-    }
-    // Sortie de mise en tampon : on referme le chrono.
-    if (bufferStart > 0) { bufferMs += Date.now() - bufferStart; bufferStart = 0; }
-  } else if (s === YT.PlayerState.BUFFERING) {
-    // Le buffering d'amorçage fait partie du « chargement initial », pas des
-    // interruptions : on ne compte que ce qui survient après la 1re image.
-    if (started && bufferStart === 0) { bufferStart = Date.now(); rebuffers++; }
-  }
-}
-
-function startLevel(q) {
-  t0 = Date.now();
-  try { player.setPlaybackQualityRange(q, q); } catch (e) {}
-  try { player.setPlaybackQuality(q); } catch (e) {}
-  player.playVideo();
-}
-
-function stopLevel() {
-  if (!player) { send({ e: 'level', q: 'unknown', segments: 0 }); return; }
-  if (bufferStart > 0) { bufferMs += Date.now() - bufferStart; bufferStart = 0; }
-  markQuality(null); // referme le segment en cours
-
-  var avail = '';
-  try { avail = player.getAvailableQualityLevels().join(','); } catch (e) {}
-  try { player.pauseVideo(); } catch (e) {}
-
-  send({
-    e: 'level', startupMs: startupMs < 0 ? 0 : startupMs,
-    bufferMs: bufferMs, rebuffers: rebuffers,
-    q: dominantQuality(), segments: qSegments.length, avail: avail
-  });
-}
-</script>
-<script src="https://www.youtube.com/iframe_api"></script>
-</body>
-</html>
-''';
-}
-
-/// Sert la page hôte du lecteur sur la boucle locale, le temps du test.
+/// Test de streaming **sur YouTube**, à la manière de nPerf.
 ///
-/// L'unique raison d'être de ce serveur est de donner à la page une **origine
-/// HTTP réelle** : l'IFrame Player API la vérifie avant d'initialiser le
-/// lecteur, et rejette les pages injectées sans origine.
-class _PlayerHost {
-  HttpServer? _server;
-
-  /// Démarre le serveur et retourne l'URL à charger. [builder] reçoit
-  /// l'origine effective, à recopier dans le playerVar `origin`.
-  Future<Uri> start(String Function(String origin) builder) async {
-    // Port 0 : le système en attribue un libre, ce qui évite tout conflit
-    // avec une autre application.
-    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    _server = server;
-
-    final origin = 'http://127.0.0.1:${server.port}';
-    final html = builder(origin);
-
-    server.listen((request) async {
-      request.response
-        ..statusCode = 200
-        ..headers.contentType = ContentType.html
-        ..headers.set('Cache-Control', 'no-store')
-        ..write(html);
-      await request.response.close();
-    });
-
-    return Uri.parse('$origin/');
+/// Charge le lecteur YouTube (IFrame Player API) puis demande successivement
+/// chaque qualité (720p, 1080p, 2160p). Pour chacune on mesure le délai avant
+/// la première image, le temps cumulé de mise en tampon, le volume de données
+/// téléchargé, et on en dérive un **taux de performance** :
+///
+///     performance = temps réellement regardé / temps total écoulé
+///
+/// Sur Android/iOS/macOS le lecteur tourne dans une WebView ; sur le web
+/// (Chrome) il est embarqué directement dans la page. Le comportement et les
+/// résultats sont identiques.
+class StreamingTestService {
+  Future<StreamingTestResult> runTest({
+    StreamingControllerCallback? onController,
+    StreamingProgressCallback? onProgress,
+    StreamingRowsCallback? onRows,
+  }) {
+    final runner = kIsWeb
+        ? web_impl.WebStreamingRunner()
+        : native_impl.NativeStreamingRunner();
+    return runner.runTest(
+      onController: onController,
+      onProgress: onProgress,
+      onRows: onRows,
+    );
   }
-
-  Future<void> stop() async {
-    await _server?.close(force: true);
-    _server = null;
-  }
-}
+}

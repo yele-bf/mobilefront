@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:excel/excel.dart';
+import 'package:image/image.dart' as img;
 import 'package:flutter/material.dart' show Color;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
@@ -102,22 +103,71 @@ class ExportService {
     );
   }
 
+  /// Bytes du rapport (réservé aux tests de rendu).
+  Future<Uint8List> buildPdfBytesForTest(SpeedTestResult r) async =>
+      (await _buildPdf(r, a4: false)).save();
+
   /// Résumé en image : on réutilise le rapport vectoriel (PDF) rasterisé en
   /// PNG par `printing` — un seul rendu à maintenir pour les deux formats.
   /// La rasterisation passe par la plateforme : indisponible sur le web.
+  ///
+  /// Deux corrections de rendu :
+  /// 1. le rasteriseur Android (PdfRenderer) produit une image à canal alpha :
+  ///    tout pixel non peint est transparent et s'affiche NOIR dans la plupart
+  ///    des visionneuses (cadrage noir signalé). On recompose le PNG sur fond
+  ///    blanc avec le package `image` ;
+  /// 2. on recadre l'image sur le contenu utile pour supprimer les marges
+  ///    transparentes résiduelles autour de la page.
   Future<void> exportPng(SpeedTestResult r) async {
     final doc = await _buildPdf(r, a4: false);
     final pages = await Printing.raster(await doc.save(), dpi: 144).toList();
     if (pages.isEmpty) {
       throw Exception('Rasterisation impossible sur cette plateforme');
     }
-    final png = await pages.first.toPng();
+    final rawPng = await pages.first.toPng();
+    final png = await _flattenPngOnWhite(rawPng);
     await _shareFile(
       png,
       'Yele_mesure_${_stamp(r)}.png',
       'image/png',
       'Mesure Yélé (PNG)',
     );
+  }
+
+  /// Aplatit un PNG (potentiellement transparent) sur fond blanc et recadre
+  /// les marges transparentes. Retourne l'image d'origine en cas d'échec du
+  /// décodage (jamais de blocage du partage pour un souci cosmétique).
+  Future<Uint8List> _flattenPngOnWhite(Uint8List pngBytes) async {
+    try {
+      final decoded = img.decodePng(pngBytes);
+      if (decoded == null) return pngBytes;
+      final flattened = img.Image(
+          width: decoded.width, height: decoded.height, numChannels: 3);
+      // Composition alpha du contenu par-dessus un fond blanc opaque :
+      // tout pixel transparent reste blanc (fixe le cadrage noir).
+      flattened.clear(img.ColorRgb8(255, 255, 255));
+      for (var y = 0; y < decoded.height; y++) {
+        for (var x = 0; x < decoded.width; x++) {
+          final px = decoded.getPixel(x, y);
+          final a = px.a / 255.0;
+          if (a >= 1.0) {
+            flattened.setPixelRgb(x, y, px.r, px.g, px.b);
+          } else if (a > 0.0) {
+            flattened.setPixelRgb(
+              x,
+              y,
+              (px.r * a + 255 * (1 - a)).round(),
+              (px.g * a + 255 * (1 - a)).round(),
+              (px.b * a + 255 * (1 - a)).round(),
+            );
+          }
+          // a == 0 : reste blanc (fixe le cadrage noir).
+        }
+      }
+      return Uint8List.fromList(img.encodePng(flattened));
+    } catch (_) {
+      return pngBytes;
+    }
   }
 
   // ── Rapport PDF (utilisé par exportPdf ET exportPng) ─────────────────────
@@ -164,7 +214,7 @@ class ExportService {
     final bold = await _embeddedFont(bold: true) ?? regular;
     final quality = _qualityLabel(r.downloadSpeed);
     final pageFormat =
-        a4 ? PdfPageFormat.a4 : const PdfPageFormat(420, 520);
+        a4 ? PdfPageFormat.a4 : const PdfPageFormat(480, 600);
     final double titleSize = a4 ? 18 : 15;
     final double tileValue = a4 ? 17 : 14;
     final double bodySize = a4 ? 9.5 : 8;
@@ -267,16 +317,17 @@ class ExportService {
 
             // ── Sections ──
             _pdfSection('Détails de la mesure', _rows(r), bodySize, regular,
-                bold),
+                bold, labelWidth: a4 ? 150 : 130),
             if (r.hasStreamingTest) ...[
               pw.SizedBox(height: a4 ? 12 : 8),
               _pdfSection('Test de streaming vidéo', _streamingRows(r),
-                  bodySize, regular, bold),
+                  bodySize, regular, bold,
+                  labelWidth: a4 ? 150 : 130),
             ],
             if (r.hasBrowsingTest) ...[
               pw.SizedBox(height: a4 ? 12 : 8),
               _pdfSection('Test de navigation web', _browsingRows(r), bodySize,
-                  regular, bold),
+                  regular, bold, labelWidth: a4 ? 150 : 130),
             ],
             if (a4) ...[
               pw.Spacer(),
@@ -321,7 +372,8 @@ class ExportService {
   }
 
   pw.Widget _pdfSection(String title, List<List<String>> rows, double fontSize,
-      pw.Font? regular, pw.Font? bold) {
+      pw.Font? regular, pw.Font? bold,
+      {double labelWidth = 150}) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
@@ -345,7 +397,7 @@ class ExportService {
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   pw.SizedBox(
-                    width: 150,
+                    width: labelWidth,
                     child: pw.Text('${row[0]} :',
                         style: _ts(
                             regular, bold, fontSize, _hex(YeleColors.muted))),
@@ -397,6 +449,15 @@ class ExportService {
       ['Upload', r.uploadSpeed.toStringAsFixed(2), 'Mb/s'],
       ['Latence (ping)', r.ping.toStringAsFixed(0), 'ms'],
       ['Gigue (jitter)', r.jitter.toStringAsFixed(0), 'ms'],
+      // IMP-01 : données consommées par le test (masqué si non mesuré).
+      if ((r.dataUsedKiB ?? -1) >= 0)
+        [
+          'Données consommées',
+          r.dataUsedKiB! >= 1024
+              ? (r.dataUsedKiB! / 1024).toStringAsFixed(1)
+              : r.dataUsedKiB!.toString(),
+          r.dataUsedKiB! >= 1024 ? 'Mo' : 'Ko',
+        ],
       if (r.qoeRating != null && r.qoeRating! > 0)
         ['Évaluation QoE', '${r.qoeRating}/5', ''],
       if ((r.qoeUsage ?? '').isNotEmpty) ['Usage principal', r.qoeUsage!, ''],

@@ -114,6 +114,10 @@ class SpeedTestResult extends HiveObject {
   @HiveField(33)
   String? streamingQualitiesJson;
 
+  // ── IMP-01 : données consommées pendant le test ──
+  @HiveField(34)
+  int? dataUsedKiB; // Total rx + tx du test, en kibioctets (-1 = non mesuré)
+
   SpeedTestResult({
     String? id,
     DateTime? timestamp,
@@ -148,6 +152,7 @@ class SpeedTestResult extends HiveObject {
     this.simOperator,
     this.cellularTech,
     this.streamingQualitiesJson,
+    this.dataUsedKiB,
   }) {
     this.id = id ?? const Uuid().v4();
     this.timestamp = timestamp ?? DateTime.now();
@@ -183,6 +188,7 @@ class SpeedTestResult extends HiveObject {
       'streamingMaxResolution': streamingMaxResolution,
       'streamingScore': streamingScore,
       'streamingQualities': streamingQualitiesJson,
+      'dataUsedKiB': dataUsedKiB,
       'browsingAvgLoadMs': browsingAvgLoadMs,
       'browsingSuccessRate': browsingSuccessRate,
       'browsingPagesTested': browsingPagesTested,
@@ -256,6 +262,7 @@ class SpeedTestResult extends HiveObject {
       simOperator: json['simOperator']?.toString(),
       cellularTech: json['cellularTech']?.toString(),
       streamingQualitiesJson: json['streamingQualities'] as String?,
+      dataUsedKiB: readInt(['dataUsedKiB']),
       imagePath: json['imagePath'] as String?,
       testLog: json['testLog'] as String?,
       isUploaded: json['isUploaded'] as bool? ?? false,

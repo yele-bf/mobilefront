@@ -21,6 +21,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
   final _date = DateFormat('dd/MM/yy');
   final _time = DateFormat('HH:mm:ss');
 
+  /// IMP-01 : volume lisible en Ko/Mo.
+  static String _formatData(int kib) {
+    if (kib >= 1024) return '${(kib / 1024).toStringAsFixed(1)} Mo';
+    return '$kib Ko';
+  }
+
   List<SpeedTestResult> _all = [];
   int _tab = 0; // 0 = Test complet, 1 = Speed test
   String? _expandedId;
@@ -364,6 +370,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
           if ((r.deviceModel ?? '').isNotEmpty) line('Appareil', r.deviceModel!),
           line('Latence', '${r.ping.toStringAsFixed(0)} ms'),
           line('Gigue', '${r.jitter.toStringAsFixed(0)} ms'),
+          // IMP-01 : données consommées par le test (masqué si non mesuré).
+          if ((r.dataUsedKiB ?? -1) >= 0) line('Données', _formatData(r.dataUsedKiB!)),
           if (r.hasStreamingTest)
             line('Streaming',
                 '${r.streamingMaxResolution ?? '—'} · ${r.streamingScore!.toStringAsFixed(0)}/100'),

@@ -158,15 +158,39 @@ class _ScoreScreenState extends State<ScoreScreen> {
 
     return Container(
       color: YeleColors.panel,
-      child: Row(
+      child: Column(
         children: [
-          m('▼ Download', r.downloadSpeed.toStringAsFixed(2), 'Mb/s', ''),
-          m('▲ Upload', r.uploadSpeed.toStringAsFixed(2), 'Mb/s', ''),
-          m('↔ Latence', r.ping.toStringAsFixed(0), 'ms',
-              'Gigue : ${r.jitter.toStringAsFixed(0)} ms'),
+          Row(
+            children: [
+              m('▼ Download', r.downloadSpeed.toStringAsFixed(2), 'Mb/s', ''),
+              m('▲ Upload', r.uploadSpeed.toStringAsFixed(2), 'Mb/s', ''),
+              m('↔ Latence', r.ping.toStringAsFixed(0), 'ms',
+                  'Gigue : ${r.jitter.toStringAsFixed(0)} ms'),
+            ],
+          ),
+          // IMP-01 : données consommées par le test (Android ; « — » sur iOS).
+          if (r.dataUsedKiB != null && r.dataUsedKiB! >= 0)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(0, 0, 0, 10),
+              child: Text(
+                '📊 Données consommées : ${_formatData(r.dataUsedKiB!)}',
+                style: const TextStyle(
+                    color: Color(0xFF2C3650),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600),
+              ),
+            ),
         ],
       ),
     );
+  }
+
+  /// IMP-01 : formatage lisible d'un volume en KiB (Mo au-delà de 1 Mo).
+  String _formatData(int kib) {
+    if (kib >= 1024) {
+      return '${(kib / 1024).toStringAsFixed(1)} Mo';
+    }
+    return '$kib Ko';
   }
 
   Widget _qualityBand() {

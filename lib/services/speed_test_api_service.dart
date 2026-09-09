@@ -13,6 +13,7 @@ import '../models/test_selection.dart';
 import 'browsing_test_service.dart';
 import 'device_identity_service.dart';
 import 'streaming_test_service.dart';
+import 'traffic_stats_service.dart';
 
 enum SpeedTestPhase {
   initializing,
@@ -275,6 +276,10 @@ class SpeedTestApiService {
       ipInfo = ipDetails?.processedString;
       ipRawJson = ipDetails?.rawJson;
 
+      // IMP-01 : relevé des compteurs data juste avant la 1re phase réseau.
+      final dataUsage = DataUsageCapture();
+      await dataUsage.start();
+
       // Débit : exécuté uniquement si demandé (tests indépendants).
       // Ordre : download, upload, puis latence.
       double dlMbps = 0, ulMbps = 0, pingMs = 0, jitterMs = 0;
@@ -444,6 +449,8 @@ class SpeedTestApiService {
         browsingSuccessRate: browsing?.successRate,
         browsingPagesTested: browsing?.pagesTested,
         browsingScore: browsing?.score,
+        // IMP-01 : volume rx + tx consommé par l'app pendant le test.
+        dataUsedKiB: await dataUsage.stopKiB(),
       );
 
       // Par défaut : QoE puis envoi immédiat. Si autoUpload=false, l'UI gère

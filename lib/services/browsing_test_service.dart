@@ -1,9 +1,10 @@
-import 'dart:async';
-
-import 'package:logger/logger.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../constants/config.dart';
+import 'browsing_test_service_native.dart' as native_impl;
+import 'browsing_test_service_web.dart'
+    if (dart.library.io) 'browsing_test_service_web_stub.dart' as web_impl;
 
 /// Résultat du test de navigation web.
 class BrowsingTestResult {
@@ -28,122 +29,59 @@ class BrowsingTestResult {
 
 typedef BrowsingProgressCallback = void Function(double progress, String message);
 
-/// Callback fournissant le contrôleur WebView à l'interface pour affichage,
+/// Callback fournissant l'affichage du test de navigation à l'interface,
 /// puis null quand le test est terminé.
-typedef BrowsingControllerCallback = void Function(WebViewController? controller);
+typedef BrowsingControllerCallback = void Function(BrowsingDisplay? display);
+
+/// Ce que l'interface doit afficher pendant le test de navigation.
+sealed class BrowsingDisplay {
+  const BrowsingDisplay();
+}
+
+/// Pages chargées dans une vraie WebView (Android, iOS, macOS).
+class NativeBrowsingDisplay extends BrowsingDisplay {
+  final WebViewController controller;
+  const NativeBrowsingDisplay({required this.controller});
+}
+
+/// Web : les pages sont sondées par requêtes réseau, pas d'affichage réel —
+/// la plupart des sites de référence bloquent l'encadrement (X-Frame-Options).
+class WebBrowsingDisplay extends BrowsingDisplay {
+  const WebBrowsingDisplay();
+}
+
+/// Interface commune des deux implémentations (native WebView / web fetch).
+abstract class BrowsingRunner {
+  Future<BrowsingTestResult> runTest({
+    required List<String> pages,
+    BrowsingControllerCallback? onController,
+    BrowsingProgressCallback? onProgress,
+  });
+}
 
 /// Test de navigation web **réel et visible**.
 ///
-/// Charge chaque page de référence dans un vrai navigateur intégré
-/// ([WebViewController]) affiché à l'écran, et mesure le temps écoulé entre
-/// le début du chargement et la fin du rendu ([NavigationDelegate.onPageFinished]).
-/// Contrairement à une simple requête HTTP, cela inclut le téléchargement des
-/// sous-ressources (CSS, JS, images) et le rendu — la mesure reflète
-/// l'expérience réelle de navigation.
+/// Sur Android/iOS/macOS, chaque page de référence est chargée dans une vraie
+/// WebView affichée à l'écran, et on mesure le temps entre le début du
+/// chargement et la fin du rendu. Sur le web (Chrome), les pages sont sondées
+/// par requêtes réseau (les sites de référence interdisent l'encadrement en
+/// iframe) : on mesure le temps de réponse, proxy de l'expérience de
+/// navigation sur réseau mobile.
 ///
 /// Critère ARCEP : une page est "réussie" si elle se charge en moins de 10 s.
 class BrowsingTestService {
-  final logger = Logger();
-
-  // Au-delà : la page compte comme un échec (critère ARCEP)
-  static const int _successThresholdMs = 10000;
-  // Sécurité absolue par page (réseaux très lents) avant de passer à la suivante
-  static const int _hardTimeoutMs = 20000;
-
   Future<BrowsingTestResult> runTest({
     List<String> pages = BROWSING_REFERENCE_PAGES,
     BrowsingControllerCallback? onController,
     BrowsingProgressCallback? onProgress,
-  }) async {
-    final loadTimes = <double>[];
-    int successes = 0;
-
-    // Complète à chaque fin de chargement (ou erreur) de la page courante.
-    Completer<void>? pageCompleter;
-    bool currentPageFailed = false;
-
-    final controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageFinished: (_) {
-            if (pageCompleter != null && !pageCompleter!.isCompleted) {
-              pageCompleter!.complete();
-            }
-          },
-          onWebResourceError: (error) {
-            // On n'échoue que sur l'erreur du document principal, pas sur une
-            // sous-ressource secondaire (pub, tracker bloqué, etc.).
-            if (error.isForMainFrame == true &&
-                pageCompleter != null &&
-                !pageCompleter!.isCompleted) {
-              currentPageFailed = true;
-              pageCompleter!.complete();
-            }
-          },
-        ),
-      );
-
-    onController?.call(controller); // le navigateur apparaît à l'écran
-
-    try {
-      for (int i = 0; i < pages.length; i++) {
-        final url = pages[i];
-        onProgress?.call(i / pages.length, 'Chargement de ${_hostOf(url)}');
-
-        pageCompleter = Completer<void>();
-        currentPageFailed = false;
-        final stopwatch = Stopwatch()..start();
-
-        await controller.loadRequest(Uri.parse(url));
-
-        try {
-          await pageCompleter!.future
-              .timeout(const Duration(milliseconds: _hardTimeoutMs));
-        } on TimeoutException {
-          currentPageFailed = true;
-        }
-        stopwatch.stop();
-
-        final ms = stopwatch.elapsedMilliseconds.toDouble();
-        if (!currentPageFailed) {
-          loadTimes.add(ms);
-          if (ms < _successThresholdMs) successes++;
-          logger.i('Browsing ${_hostOf(url)}: ${ms.toStringAsFixed(0)} ms');
-        } else {
-          logger.w('Browsing ${_hostOf(url)}: échec/timeout');
-        }
-
-        // Laisse la page visible un court instant avant la suivante
-        await Future.delayed(const Duration(milliseconds: 600));
-      }
-    } finally {
-      onController?.call(null); // retire le navigateur de l'écran
-    }
-
-    onProgress?.call(1.0, 'Test de navigation terminé');
-
-    final successRate = pages.isEmpty ? 0.0 : successes / pages.length;
-    final avgLoadMs = loadTimes.isEmpty
-        ? 0.0
-        : loadTimes.reduce((a, b) => a + b) / loadTimes.length;
-
-    final result = BrowsingTestResult(
-      avgLoadMs: double.parse(avgLoadMs.toStringAsFixed(0)),
-      successRate: double.parse(successRate.toStringAsFixed(2)),
-      pagesTested: pages.length,
-      score: double.parse(_computeScore(successRate, avgLoadMs).toStringAsFixed(1)),
+  }) {
+    final runner = kIsWeb
+        ? web_impl.WebBrowsingRunner()
+        : native_impl.NativeBrowsingRunner();
+    return runner.runTest(
+      pages: pages,
+      onController: onController,
+      onProgress: onProgress,
     );
-    logger.i(result.toString());
-    return result;
   }
-
-  double _computeScore(double successRate, double avgLoadMs) {
-    double score = 100 * successRate;
-    // Pénalité de lenteur : -1 point par 100 ms au-delà de 2 s
-    if (avgLoadMs > 2000) score -= (avgLoadMs - 2000) / 100;
-    return score.clamp(0, 100);
-  }
-
-  String _hostOf(String url) => Uri.tryParse(url)?.host ?? url;
-}
+}

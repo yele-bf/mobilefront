@@ -32,6 +32,7 @@ class MainActivity : FlutterActivity() {
                     "checkNotificationPermission" -> result.success(hasNotificationPermission())
                     "requestNotificationPermission" -> result.success(requestNotificationPermission())
                     "getRxBytes" -> result.success(rxBytes())
+                    "getTxBytes" -> result.success(txBytes())
                     "startCollect" -> {
                         val interval = call.argument<Int>("intervalMinutes")
                             ?: SignalCollectorService.DEFAULT_INTERVAL_MIN
@@ -98,6 +99,14 @@ class MainActivity : FlutterActivity() {
     /// même UID.
     private fun rxBytes(): Long {
         val bytes = TrafficStats.getUidRxBytes(Process.myUid())
+        return if (bytes == TrafficStats.UNSUPPORTED.toLong()) -1L else bytes
+    }
+
+    /// IMP-01 : octets émis par l'application depuis le démarrage, ou -1 si le
+    /// compteur n'est pas tenu. Même périmètre que [rxBytes] (trafic de l'app,
+    /// WebView inclus).
+    private fun txBytes(): Long {
+        val bytes = TrafficStats.getUidTxBytes(Process.myUid())
         return if (bytes == TrafficStats.UNSUPPORTED.toLong()) -1L else bytes
     }
 

@@ -353,7 +353,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
         children: [
           line('Serveur', r.server),
           line('FAI', r.operator ?? '—'),
-          if ((r.simOperator ?? '').isNotEmpty || (r.cellularTech ?? '').isNotEmpty)
+          // Règle métier : le réseau mobile (SIM) n'est montré que pour un test
+          // fait avec la carte SIM ; en Wi-Fi la ligne est masquée, même si
+          // d'anciens enregistrements contiennent encore ces champs.
+          if (!(r.networkType ?? '').toUpperCase().contains('WIFI') &&
+              ((r.simOperator ?? '').isNotEmpty || (r.cellularTech ?? '').isNotEmpty))
             line(
                 'Réseau mobile',
                 [r.cellularTech, r.simOperator]

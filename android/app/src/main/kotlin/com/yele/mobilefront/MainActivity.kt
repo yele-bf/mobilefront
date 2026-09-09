@@ -26,6 +26,7 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "getTelephony" -> result.success(telephonyInfo())
+                    "getDeviceMarketingName" -> result.success(deviceMarketingName())
                     "requestPhonePermission" -> result.success(ensurePhonePermission())
                     "hasPhonePermission" -> result.success(hasPhonePermission())
                     "checkNotificationPermission" -> result.success(hasNotificationPermission())
@@ -163,6 +164,36 @@ class MainActivity : FlutterActivity() {
             "lastCollectAt" to p.getLong(SignalCollectorService.KEY_LAST_AT, 0L),
             "count" to p.getInt(SignalCollectorService.KEY_COUNT, 0),
         )
+    }
+
+    /// IMP-13 / retour produit : nom commercial du téléphone.
+    ///
+    /// `Build.MODEL` renvoie souvent un code constructeur (ex. « A059 » pour un
+    /// Nothing Phone (3a), « SM-A057F » pour un Galaxy A05s). Le nom marketing
+    /// existe pourtant dans les propriétés système `ro.product.marketname`
+    /// (Samsung, Xiaomi, Oppo, Tecno, Infinix…) ou `ro.vendor.oplus.marketname`
+    /// (Oppo/OnePlus/Realme). On les lit par réflexion sur SystemProperties —
+    /// API interne mais stable, en repli sur Build.MODEL.
+    private fun deviceMarketingName(): String? {
+        val props = listOf(
+            "ro.product.marketname",
+            "ro.vendor.oplus.marketname",
+            "ro.product.odm.marketname",
+            "ro.product.system.marketname",
+        )
+        for (p in props) {
+            try {
+                val sp = Class.forName("android.os.SystemProperties")
+                val get = sp.getMethod("get", String::class.java, String::class.java)
+                val v = get.invoke(null, p, "") as? String
+                if (!v.isNullOrBlank() && v != "") return v.trim()
+            } catch (_: Exception) {
+            }
+        }
+        // Pas de repli sur Build.MODEL ici : c'est souvent un code
+        // constructeur (« A059 », « SM-A057F »). On renvoie null pour laisser
+        // la table de correspondance Dart proposer le nom commercial.
+        return null
     }
 
     /// Retourne { simOperator, mccMnc, cellularTech } — champs null si indisponible.

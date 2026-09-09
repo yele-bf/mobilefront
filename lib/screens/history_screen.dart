@@ -361,6 +361,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     .where((e) => (e ?? '').isNotEmpty)
                     .join(' · ')),
           line('Réseau', r.location ?? '—'),
+          if ((r.deviceModel ?? '').isNotEmpty) line('Appareil', r.deviceModel!),
           line('Latence', '${r.ping.toStringAsFixed(0)} ms'),
           line('Gigue', '${r.jitter.toStringAsFixed(0)} ms'),
           if (r.hasStreamingTest)

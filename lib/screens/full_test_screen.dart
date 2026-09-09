@@ -217,7 +217,7 @@ class _FullTestScreenState extends State<FullTestScreen>
       final gps = await _location.requestGpsPosition();
       final ipLoc = await _location.getCurrentLocation();
       final status = await _net.getStatus();
-      final deviceModel = await _device.getDeviceModel();
+      final deviceModel = await _device.getDeviceDisplayName();
       final osVersion = await _device.getOSVersion();
 
       if (mounted) {

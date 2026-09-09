@@ -402,8 +402,8 @@ class ExportService {
       if ((r.qoeUsage ?? '').isNotEmpty) ['Usage principal', r.qoeUsage!, ''],
       if ((r.qoeSatisfaction ?? '').isNotEmpty)
         ['Commentaire', r.qoeSatisfaction!, ''],
-      ['Appareil', r.deviceModel ?? '—', ''],
-      ['Version OS', r.osVersion ?? '—', ''],
+      if ((r.deviceModel ?? '').isNotEmpty) ['Appareil', r.deviceModel!, ''],
+      if ((r.osVersion ?? '').isNotEmpty) ['Version OS', r.osVersion!, ''],
     ];
   }
 

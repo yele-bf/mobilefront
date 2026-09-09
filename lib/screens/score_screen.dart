@@ -96,6 +96,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
                     _streamingCard(),
                   if (r.hasBrowsingTest) _browsingCard(),
                   _bottomInfo(),
+                  _deviceBar(),
                   _actions(),
                   const SizedBox(height: 16),
                 ],
@@ -397,6 +398,25 @@ class _ScoreScreenState extends State<ScoreScreen> {
           c('Réseau mobile', _mobileLabel),
         ],
       ),
+    );
+  }
+
+  /// IMP-13 / retour produit : rappel de l'appareil sous le bandeau d'infos.
+  Widget _deviceBar() {
+    final device = r.deviceModel;
+    final os = r.osVersion;
+    final label = [
+      if (device != null && device.isNotEmpty) device,
+      if (os != null && os.isNotEmpty) os,
+    ].join(' · ');
+    if (label.isEmpty) return const SizedBox.shrink();
+    return Container(
+      width: double.infinity,
+      color: YeleColors.surface.panel,
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 14),
+      child: Text(label,
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 12, color: YeleColors.surface.muted)),
     );
   }
 

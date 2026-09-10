@@ -77,16 +77,22 @@ Tout est centralisé dans **`lib/constants/config.dart`**.
 | `BROWSING_REFERENCE_PAGES` | Pages du test de navigation | 6 sites dont `lefaso.net` |
 | `BACKGROUND_DEFAULT_INTERVAL_MIN` | Cadence de la collecte passive | `15` min |
 
-Pour pointer sur un backend local :
+Pour pointer sur un backend local ou temporairement exposé :
 
 ```dart
 const String API_BASE_URL = 'http://10.0.2.2:8989';  // émulateur Android
 // const String API_BASE_URL = 'http://192.168.1.42:8989';  // appareil physique
+// const String API_BASE_URL = 'https://wilder-heaviness-fabulous.ngrok-free.dev';  // tunnel ngrok local
 ```
 
 > `10.0.2.2` est l'adresse par laquelle l'émulateur Android voit la machine
 > hôte. Depuis un téléphone réel, il faut l'adresse IP de la machine sur le
 > réseau local.
+>
+> Le tunnel ngrok est utile pour que le dashboard local et l'app mobile
+> appellent le backend via internet sans exposer durablement le backend local.
+> Dans ce cas, nginx continue de servir le dashboard, et le mobile pointe
+> directement sur l'URL ngrok.
 
 ## Structure du code
 

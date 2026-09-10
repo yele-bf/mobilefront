@@ -1,11 +1,20 @@
 // Configuration des constantes de l'application Yélé
 
 // ========== API CONFIGURATION ==========
-// URL du backend local.
-// Depuis un téléphone physique connecté au même réseau, utiliser l'adresse IP de
-// la machine, par exemple http://192.168.11.108:8989.
-// Depuis un émulateur Android, utiliser http://10.0.2.2:8989.
-const String API_BASE_URL = 'http://192.168.11.108:8989';
+// URL du backend. Modifier selon l'environnement ciblé :
+//
+// - Tunnel ngrok local (backend exposé temporairement sur internet) :
+//     https://wilder-heaviness-fabulous.ngrok-free.dev
+// - Émulateur Android (voir la machine hôte depuis l'émulateur) :
+//     http://10.0.2.2:8989
+// - Téléphone physique sur le même réseau local :
+//     http://192.168.11.108:8989
+// - Backend de démonstration distant (défaut actuel) :
+//     https://mobiletest-j0c6.onrender.com
+//
+// Le tunnel ngrok sert uniquement aux tests où le dashboard local et
+// l'app mobile doivent appeler le backend via internet.
+const String API_BASE_URL = 'https://wilder-heaviness-fabulous.ngrok-free.dev';
 
 // Attention : le backend local expose /getIP et non /ip.
 // Ne pas changer cette constante ici si l'appel vise /getIP dans le code client.

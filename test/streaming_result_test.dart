@@ -4,6 +4,27 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:yele/services/streaming_test_service.dart';
 
 void main() {
+  group('StreamingQualityResult.displayLabel', () {
+    test('mesure présente : libellé de la qualité servie', () {
+      const r = StreamingQualityResult(
+        label: '2160p',
+        reached: true,
+        servedLabel: '1440p',
+      );
+      expect(r.displayLabel, '1440p');
+    });
+
+    test('palier sans mesure : libellé de la qualité demandée', () {
+      const r = StreamingQualityResult.unavailable('2160p');
+      expect(r.displayLabel, '2160p');
+    });
+
+    test('qualité servie = demandée : libellé inchangé', () {
+      const r = StreamingQualityResult(label: '1080p', reached: true);
+      expect(r.displayLabel, '1080p');
+    });
+  });
+
   group('StreamingQualityResult.servedHeight', () {
     test('qualité servie différente de la qualité demandée', () {
       const r = StreamingQualityResult(

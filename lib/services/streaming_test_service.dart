@@ -73,6 +73,15 @@ class StreamingQualityResult {
   /// Hauteur en pixels déduite du libellé ('1080p' → 1080).
   int get height => int.tryParse(label.replaceAll('p', '')) ?? 0;
 
+  /// Libellé affiché en en-tête de colonne : la qualité que YouTube a
+  /// réellement servie quand la colonne porte une mesure, sinon la qualité
+  /// demandée (seule information disponible pour un palier sans mesure).
+  /// Décision produit : l'en-tête reflète ce qui a été servi — YouTube
+  /// servant souvent autre chose que la qualité demandée (1440p pour un
+  /// palier 2160p), c'est le seul libellé honnête pour lire les chiffres.
+  String get displayLabel =>
+      (reached && servedLabel.isNotEmpty) ? servedLabel : label;
+
   /// Hauteur réellement servie : celle de [servedLabel] quand YouTube a
   /// livré autre chose que la qualité demandée, sinon [height]. C'est elle
   /// qui alimente la résolution maximale et le score — demander le 4K ne

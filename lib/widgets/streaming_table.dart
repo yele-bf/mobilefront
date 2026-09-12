@@ -3,11 +3,12 @@ import 'package:flutter/material.dart';
 import '../services/streaming_test_service.dart';
 import '../theme/yele_theme.dart';
 
-/// Tableau des mesures de streaming, une colonne par qualité vidéo.
+/// Tableau des mesures de streaming, une colonne par palier testé.
 ///
 /// Quatre lignes : taux de performance, chargement initial, temps de mise en
-/// tampon, données consommées. Une qualité que YouTube n'a pas servie affiche
-/// « — » sur toute sa colonne.
+/// tampon, données consommées. L'en-tête de chaque colonne affiche la qualité
+/// que YouTube a RÉELLEMENT servie (souvent différente de la qualité demandée) ;
+/// un palier sans mesure garde sa colonne, avec « — » sur toute la hauteur.
 class StreamingTable extends StatelessWidget {
   final List<StreamingQualityResult> qualities;
 
@@ -44,8 +45,16 @@ class StreamingTable extends StatelessWidget {
   Widget build(BuildContext context) {
     if (qualities.isEmpty) return const SizedBox.shrink();
 
-    final hasServedNote =
-        qualities.any((q) => q.reached && q.servedLabel.isNotEmpty);
+    // L'en-tête affiche la qualité servie : sans cette légende, un libellé
+    // différent de la qualité demandée (1440p pour un palier 2160p)
+    // ressemblerait à un bug d'affichage.
+    const servedLegend = Text(
+      'Colonnes : qualité réellement servie par YouTube pour chaque palier '
+      'testé — il ajuste lui-même selon le réseau et la taille du lecteur.',
+      style: TextStyle(fontSize: 11, color: YeleColors.muted),
+    );
+    final alwaysShowLegend =
+        qualities.any((q) => q.reached); // au moins un palier mesuré
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
@@ -61,44 +70,31 @@ class StreamingTable extends StatelessWidget {
           _row('Taux de performance', _performance, bold: true),
           _row('Chargement initial', _loading),
           _row('Temps de mise en tampon', _buffering),
-          _row('Données consommées', _data, last: !hasServedNote),
-          if (hasServedNote) _servedLegend(),
-          if (qualities.any((q) => q.reached && !q.stable))
-            _unstableNote(separated: hasServedNote),
+          _row('Données consommées', _data, last: true),
+          if (alwaysShowLegend)
+            Container(
+              width: double.infinity,
+              color: YeleColors.panel2,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: servedLegend,
+            ),
+          if (qualities.any((q) => q.reached && !q.stable)) _unstableNote(),
         ],
-      ),
-    );
-  }
-
-  /// Légende de l'indication « servi : X » affichée dans l'en-tête : sans
-  /// elle, « 2160p / servi : 1440p » ressemble à une erreur d'affichage
-  /// plutôt qu'à l'information qu'une demande 4K n'a tenu qu'en 1440p.
-  Widget _servedLegend() {
-    return Container(
-      width: double.infinity,
-      color: YeleColors.panel2,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: const Text(
-        '« servi » : qualité réellement délivrée par YouTube pour la qualité '
-        'demandée — il ajuste lui-même selon le réseau et la taille du lecteur.',
-        style: TextStyle(fontSize: 11, color: YeleColors.muted),
       ),
     );
   }
 
   /// YouTube peut basculer de qualité en cours de lecture. Le signaler évite
   /// de présenter comme une mesure d'une qualité des chiffres qui en
-  /// mélangent deux. [separated] trace un filet quand la légende « servi »
-  /// précède, pour que les deux notes ne fondent pas en un seul bloc.
-  Widget _unstableNote({required bool separated}) {
+  /// mélangent deux.
+  Widget _unstableNote() {
     return Container(
       width: double.infinity,
-      decoration: BoxDecoration(
-        color: YeleColors.panel2,
-        border: separated
-            ? const Border(top: BorderSide(color: YeleColors.line))
-            : null,
+      decoration: const BoxDecoration(
+        border: Border(top: BorderSide(color: YeleColors.line)),
       ),
+      color: YeleColors.panel2,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: const Text(
         '* qualité modifiée par YouTube pendant la mesure : valeurs indicatives',
@@ -132,30 +128,21 @@ class StreamingTable extends StatelessWidget {
               color: q.label == activeLabel
                   ? YeleColors.primary.withValues(alpha: 0.18)
                   : YeleColors.panel2,
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
+              padding: const EdgeInsets.symmetric(vertical: 14),
               alignment: Alignment.center,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    q.reached && !q.stable ? '${q.label} *' : q.label,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: YeleColors.field),
-                  ),
-                  // Qualité réellement servie quand elle diffère de la
-                  // qualité demandée (colonne) : « servi : 1440p » sous
-                  // « 2160p » dit d'un coup d'œil ce que le réseau a tenu.
-                  if (q.reached && q.servedLabel.isNotEmpty)
-                    Text(
-                      'servi : ${q.servedLabel}',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                          fontSize: 10.5, color: YeleColors.muted),
-                    ),
-                ],
+              child: Text(
+                // En-tête dynamique : la qualité que YouTube a servie pour
+                // ce palier (ex. 1440p affiché sous le palier 2160p), et la
+                // qualité demandée tant qu'aucune mesure n'existe. Les
+                // doublons restent : une colonne par palier testé.
+                q.reached && !q.stable
+                    ? '${q.displayLabel} *'
+                    : q.displayLabel,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: YeleColors.field),
               ),
             ),
           ),

@@ -38,6 +38,15 @@ class StreamingQualityResult {
   /// mélangent plusieurs qualités et sont signalés comme approximatifs.
   final bool stable;
 
+  /// Qualité réellement servie pendant le palier, quand elle diffère de
+  /// [label] (demandée). Vide si YouTube a servi la qualité demandée — cas
+  /// nominal. Exemple : palier 2160p, [label] = '2160p', [servedLabel] =
+  /// '1440p' : YouTube n'avait pas assez de bande passante pour le 4K.
+  /// La mesure reste valide : elle dit ce que le réseau a permis de tenir
+  /// quand on a DEMANDÉ cette qualité, c'est pourquoi elle est rangée dans
+  /// cette colonne au lieu d'être jetée.
+  final String servedLabel;
+
   const StreamingQualityResult({
     required this.label,
     required this.reached,
@@ -47,6 +56,7 @@ class StreamingQualityResult {
     this.rebufferCount = 0,
     this.dataUsedKiB = -1,
     this.stable = true,
+    this.servedLabel = '',
   });
 
   /// Qualité non testée ou non servie par YouTube.
@@ -57,10 +67,18 @@ class StreamingQualityResult {
         bufferingSec = 0,
         rebufferCount = 0,
         dataUsedKiB = -1,
-        stable = true;
+        stable = true,
+        servedLabel = '';
 
   /// Hauteur en pixels déduite du libellé ('1080p' → 1080).
   int get height => int.tryParse(label.replaceAll('p', '')) ?? 0;
+
+  /// Hauteur réellement servie : celle de [servedLabel] quand YouTube a
+  /// livré autre chose que la qualité demandée, sinon [height]. C'est elle
+  /// qui alimente la résolution maximale et le score — demander le 4K ne
+  /// vaut preuve de débit que si le 4K a été servi.
+  int get servedHeight =>
+      int.tryParse(servedLabel.replaceAll(RegExp('[^0-9]'), '')) ?? height;
 
   Map<String, dynamic> toJson() => {
         'label': label,
@@ -71,6 +89,7 @@ class StreamingQualityResult {
         'rebufferCount': rebufferCount,
         'dataUsedKiB': dataUsedKiB,
         'stable': stable,
+        if (servedLabel.isNotEmpty) 'servedLabel': servedLabel,
       };
 
   factory StreamingQualityResult.fromJson(Map<String, dynamic> j) =>
@@ -83,6 +102,7 @@ class StreamingQualityResult {
         rebufferCount: (j['rebufferCount'] as num?)?.toInt() ?? 0,
         dataUsedKiB: (j['dataUsedKiB'] as num?)?.toInt() ?? -1,
         stable: j['stable'] != false,
+        servedLabel: (j['servedLabel'] ?? '').toString(),
       );
 }
 
@@ -296,16 +316,18 @@ class StreamingTestService {
         );
         if (!m.played) continue;
 
-        // La qualité demandée n'est qu'une suggestion : `setPlaybackQuality`
-        // est ignoré par le lecteur depuis 2019. On range donc la mesure dans
-        // la colonne de ce qui a été SERVI, jamais de ce qui a été demandé —
-        // sinon on jetterait des mesures parfaitement valides.
-        served.add(_qualityLabel(m.servedKey));
-        final column = keys.indexOf(m.servedKey);
-        if (column < 0) continue; // qualité hors tableau (360p, 1440p…)
+        // La mesure est rangée dans la colonne du palier DEMANDÉ (colonne i) :
+        // elle dit ce que le réseau a permis de tenir quand on a demandé
+        // cette qualité. La qualité réellement servie est conservée à part
+        // (servedLabel) : YouTube ignore `setPlaybackQuality` depuis 2019 et
+        // sert souvent 1440p quand on demande 2160p — jeter la mesure parce
+        // que la qualité servie n'a pas de colonne laissait le tableau vide,
+        // toutes les mesures partaient ainsi d'un `continue` précoce.
+        final servedLabel = _qualityLabel(m.servedKey);
+        served.add(servedLabel);
 
-        rows[column] = StreamingQualityResult(
-          label: STREAMING_QUALITY_LEVELS[m.servedKey]!,
+        rows[i] = StreamingQualityResult(
+          label: label,
           reached: true,
           performanceRate: m.performanceRate,
           initialLoadingSec: m.initialLoadingSec,
@@ -313,6 +335,7 @@ class StreamingTestService {
           rebufferCount: m.rebufferCount,
           dataUsedKiB: m.dataUsedKiB,
           stable: m.stable,
+          servedLabel: servedLabel == label ? '' : servedLabel,
         );
         onRows?.call(List.of(rows));
       }
@@ -462,9 +485,12 @@ class StreamingTestService {
       {String? error}) {
     final reached = rows.where((r) => r.reached).toList();
 
+    // Résolution maximale et score : basés sur ce que YouTube a réellement
+    // SERVI (servedHeight), pas sur ce qu'on a demandé. Demander 2160p sur
+    // un réseau qui n'a tenu que 1440p ne doit pas rapporter les points du 4K.
     final bestHeight = reached.isEmpty
         ? 0
-        : reached.map((r) => r.height).reduce((a, b) => a > b ? a : b);
+        : reached.map((r) => r.servedHeight).reduce((a, b) => a > b ? a : b);
     final startupMs =
         reached.isEmpty ? 0 : (reached.first.initialLoadingSec * 1000).round();
     final rebuffers =

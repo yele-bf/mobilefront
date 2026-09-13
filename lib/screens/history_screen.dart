@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../models/speed_test_result.dart';
 import '../services/local_storage_service.dart';
+import '../services/reverse_geocoding_service.dart';
 import '../theme/yele_theme.dart';
 import '../widgets/yele_scaffold.dart';
 
@@ -23,6 +24,28 @@ class _HistoryScreenState extends State<HistoryScreen> {
   List<SpeedTestResult> _all = [];
   int _tab = 0; // 0 = Test complet, 1 = Speed test
   String? _expandedId;
+
+  final ReverseGeocodingService _geo = ReverseGeocodingService.instance;
+
+  /// Adresses résolues par géocodage inversé, indexées par clé de cache
+  /// (coordonnées arrondies à 4 décimales). Valeur null = résolution en
+  /// cours ; '' = aucune adresse OSM connue à cet endroit.
+  final Map<String, String?> _addresses = {};
+
+  /// Lance (une fois par coordonnée) la résolution de l'adresse quand un
+  /// test est déplié. Le résultat alimente [_addresses] via setState.
+  void _ensureAddress(SpeedTestResult r) {
+    final lat = r.latitude;
+    final lon = r.longitude;
+    if (lat == null || lon == null || lat == 0 || lon == 0) return;
+    final key = ReverseGeocodingService.cacheKeyFor(lat, lon);
+    if (_addresses.containsKey(key)) return; // déjà résolu ou en cours
+    _addresses[key] = null; // marque « résolution en cours »
+    _geo.resolveAddress(lat, lon).then((addr) {
+      if (!mounted) return;
+      setState(() => _addresses[key] = addr ?? '');
+    });
+  }
 
   @override
   void initState() {
@@ -206,7 +229,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return Column(
       children: [
         InkWell(
-          onTap: () => setState(() => _expandedId = expanded ? null : r.id),
+          onTap: () {
+            setState(() => _expandedId = expanded ? null : r.id);
+            // Déclenche la résolution de l'adresse au dépliage du test.
+            if (!expanded) _ensureAddress(r);
+          },
           child: Container(
             decoration: const BoxDecoration(
               color: Color(0xFF10161F),
@@ -372,13 +399,35 @@ class _HistoryScreenState extends State<HistoryScreen> {
           if (r.hasBrowsingTest)
             line('Navigation',
                 '${(r.browsingAvgLoadMs! / 1000).toStringAsFixed(1)} s · ${r.browsingScore!.toStringAsFixed(0)}/100'),
-          if ((r.latitude ?? 0) != 0)
-            line('Coord.',
-                '${r.latitude!.toStringAsFixed(4)}, ${r.longitude!.toStringAsFixed(4)}'),
+          if ((r.latitude ?? 0) != 0) ..._coordBlock(r, line),
           if (r.qoeRating != null && r.qoeRating! > 0)
             line('QoE', '${r.qoeRating}/5'),
         ],
       ),
     );
+  }
+
+  /// Ligne(s) « Coord. » : adresse lisible (géocodage inversé Nominatim) avec
+  /// les coordonnées brutes en sous-texte. Tant que la résolution est en
+  /// cours, un indicateur discret s'affiche ; en cas d'échec ou d'absence
+  /// d'adresse OSM, on retombe sur les seules coordonnées.
+  List<Widget> _coordBlock(
+      SpeedTestResult r, Widget Function(String k, String v) line) {
+    final key = ReverseGeocodingService.cacheKeyFor(r.latitude!, r.longitude!);
+    final address = _addresses[key];
+    final coords =
+        '${r.latitude!.toStringAsFixed(4)}, ${r.longitude!.toStringAsFixed(4)}';
+    if (address == null) {
+      // Résolution en cours.
+      return [line('Coord.', '$coords — résolution…')];
+    }
+    if (address.isEmpty) {
+      // Aucune adresse OSM connue à ces coordonnées.
+      return [line('Coord.', coords)];
+    }
+    return [
+      line('Coord. (adresse)', address),
+      line('Coordonnées', coords),
+    ];
   }
 }

@@ -185,6 +185,16 @@ class _FullTestScreenState extends State<FullTestScreen>
       final cellularTech = status.isWifi ? null : status.cellularTech;
 
       _log('[DIAG-UI] _start: appel runSpeedTest...');
+      // Métriques de signal : typées selon la connexion utilisée. En Wi-Fi on
+      // ne remonte pas de métriques cellulaires, en données mobiles pas de
+      // RSSI Wi-Fi — chaque famille de champs reste cohérente.
+      final signalDbm = status.isWifi ? null : status.signalDbm;
+      final signalRsrp = status.isWifi ? null : status.signalRsrp;
+      final signalRsrq = status.isWifi ? null : status.signalRsrq;
+      final signalNrRsrp = status.isWifi ? null : status.signalNrRsrp;
+      final signalNrRsrq = status.isWifi ? null : status.signalNrRsrq;
+      final wifiRssi = status.isWifi ? status.wifiRssi : null;
+
       final result = await _api.runSpeedTest(
         latitude: gps?.latitude ?? ipLoc?.latitude,
         longitude: gps?.longitude ?? ipLoc?.longitude,
@@ -193,6 +203,12 @@ class _FullTestScreenState extends State<FullTestScreen>
         operator: ipLoc?.operator,
         simOperator: simOperator,
         cellularTech: cellularTech,
+        signalDbm: signalDbm,
+        signalRsrp: signalRsrp,
+        signalRsrq: signalRsrq,
+        signalNrRsrp: signalNrRsrp,
+        signalNrRsrq: signalNrRsrq,
+        wifiRssi: wifiRssi,
         deviceModel: deviceModel,
         osVersion: osVersion,
         selection: widget.selection,

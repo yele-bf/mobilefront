@@ -21,10 +21,44 @@ class NetworkStatus {
   /// Nom de l'opérateur SIM (Android). null/n.d. sur iOS 16+ ou sans SIM.
   final String? simOperator;
 
+  // ── Métriques de signal (Android ; null = non mesuré) ──
+  // Le couple générique dbm/level couvre toutes les technos ; les métriques
+  // typées LTE/NR ne sont renseignées que si l'appareil les expose.
+
+  /// Puissance générique toutes technos (dBm).
+  final int? signalDbm;
+
+  /// Niveau générique 0 (nul) à 4 (excellent).
+  final int? signalLevel;
+
+  /// RSRP LTE/4G (dBm) — cellule qui sert les données.
+  final int? signalRsrp;
+
+  /// RSRQ LTE/4G (dB).
+  final int? signalRsrq;
+
+  /// SS-RSRP 5G SA (dBm). En 5G NSA l'ancre reste LTE : ce champ reste null
+  /// et [signalRsrp] porte le signal de l'ancre, c'est attendu.
+  final int? signalNrRsrp;
+
+  /// SS-RSRQ 5G SA (dB).
+  final int? signalNrRsrq;
+
+  /// RSSI du point d'accès Wi-Fi associé (dBm). Renseigné seulement si
+  /// Internet passe par le Wi-Fi.
+  final int? wifiRssi;
+
   const NetworkStatus({
     required this.connectionType,
     this.cellularTech,
     this.simOperator,
+    this.signalDbm,
+    this.signalLevel,
+    this.signalRsrp,
+    this.signalRsrq,
+    this.signalNrRsrp,
+    this.signalNrRsrq,
+    this.wifiRssi,
   });
 
   bool get isWifi => connectionType == 'WiFi';
@@ -34,8 +68,9 @@ class NetworkStatus {
       isWifi ? 'WiFi' : (cellularTech ?? connectionType);
 
   @override
-  String toString() =>
-      'NetworkStatus($connectionType, tech=$cellularTech, sim=$simOperator)';
+  String toString() => 'NetworkStatus($connectionType, tech=$cellularTech, '
+      'sim=$simOperator, dbm=$signalDbm, rsrp=$signalRsrp, rsrq=$signalRsrq, '
+      'nrRsrp=$signalNrRsrp, nrRsrq=$signalNrRsrq, wifiRssi=$wifiRssi)';
 }
 
 /// Service d'information réseau : type de connexion (connectivity_plus) +
@@ -65,6 +100,13 @@ class NetworkInfoService {
 
     String? cellularTech;
     String? simOperator;
+    int? signalDbm;
+    int? signalLevel;
+    int? signalRsrp;
+    int? signalRsrq;
+    int? signalNrRsrp;
+    int? signalNrRsrq;
+    int? wifiRssi;
 
     // Sur Android, on s'assure d'avoir la permission avant de lire.
     if (Platform.isAndroid) {
@@ -86,6 +128,20 @@ class NetworkInfoService {
           final mccMnc = (info['mccMnc'] as String?)?.trim();
           simOperator = _operatorFromMccMnc(mccMnc);
         }
+
+        // Métriques de signal : absentes du canal natif = non mesurées.
+        int? readSignal(String key) {
+          final v = info[key];
+          return v is int ? v : (v is num ? v.toInt() : null);
+        }
+
+        signalDbm = readSignal('signalDbm');
+        signalLevel = readSignal('signalLevel');
+        signalRsrp = readSignal('signalRsrp');
+        signalRsrq = readSignal('signalRsrq');
+        signalNrRsrp = readSignal('signalNrRsrp');
+        signalNrRsrq = readSignal('signalNrRsrq');
+        wifiRssi = readSignal('wifiRssi');
       }
     } on MissingPluginException {
       // Canal natif absent (ex. tests) : on reste sur le type de connexion.
@@ -97,6 +153,13 @@ class NetworkInfoService {
       connectionType: connectionType,
       cellularTech: cellularTech,
       simOperator: simOperator,
+      signalDbm: signalDbm,
+      signalLevel: signalLevel,
+      signalRsrp: signalRsrp,
+      signalRsrq: signalRsrq,
+      signalNrRsrp: signalNrRsrp,
+      signalNrRsrq: signalNrRsrq,
+      wifiRssi: wifiRssi,
     );
     logger.i('📶 $status');
     return status;

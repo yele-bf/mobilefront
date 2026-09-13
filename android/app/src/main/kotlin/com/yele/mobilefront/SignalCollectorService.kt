@@ -273,18 +273,21 @@ class SignalCollectorService : Service() {
             } catch (_: Exception) {
             }
 
-            // Puissance du signal : API disponible à partir d'Android 9.
-            // En dessous, le champ est simplement absent.
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                try {
-                    tm.signalStrength?.cellSignalStrengths?.firstOrNull()?.let { s ->
-                        json.put("signalDbm", s.dbm)
-                        json.put("signalLevel", s.level) // 0 (nul) à 4 (excellent)
-                    }
-                } catch (_: Exception) {
-                }
+            // Métriques de signal partagées avec le test actif : générique
+            // (dbm/level) + typées si l'appareil les expose (RSRP/RSRQ en
+            // LTE, SS-RSRP/RSRQ en 5G SA). Une métrique indisponible reste
+            // absente du JSON, jamais mise à 0.
+            val cell = SignalMetrics.cellSignal(tm)
+            for (key in SignalMetrics.CELL_KEYS) {
+                if (cell.has(key)) json.put(key, cell.getInt(key))
             }
         }
+
+        // RSSI du Wi-Fi associé, seulement si Internet passe par le Wi-Fi.
+        if (SignalMetrics.isOnWifi(this)) {
+            SignalMetrics.wifiRssi(this)?.let { json.put("wifiRssi", it) }
+        }
+
         return json
     }
 

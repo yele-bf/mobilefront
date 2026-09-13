@@ -393,6 +393,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           line('Réseau', r.location ?? '—'),
           line('Latence', '${r.ping.toStringAsFixed(0)} ms'),
           line('Gigue', '${r.jitter.toStringAsFixed(0)} ms'),
+          ..._signalLines(r, line),
           if (r.hasStreamingTest)
             line('Streaming',
                 '${r.streamingMaxResolution ?? '—'} · ${r.streamingScore!.toStringAsFixed(0)}/100'),
@@ -405,6 +406,45 @@ class _HistoryScreenState extends State<HistoryScreen> {
         ],
       ),
     );
+  }
+
+  /// Ligne(s) « Signal » : métriques radio typées selon la connexion utilisée
+  /// pour le test. Rien ne s'affiche si rien n'a été mesuré (iOS, Android < 9,
+  /// appareils qui n'exposent pas les compteurs).
+  List<Widget> _signalLines(
+      SpeedTestResult r, Widget Function(String k, String v) line) {
+    String qualityLabel(int dbm, {required bool isRsrp}) {
+      final t = isRsrp ? [-80, -90, -100] : [-70, -85, -95];
+      if (dbm >= t[0]) return 'excellent';
+      if (dbm >= t[1]) return 'bon';
+      if (dbm >= t[2]) return 'moyen';
+      return 'faible';
+    }
+
+    final parts = <String>[];
+    if ((r.signalRsrp ?? 0) != 0) {
+      parts.add(
+          'RSRP ${r.signalRsrp} dBm (${qualityLabel(r.signalRsrp!, isRsrp: true)})');
+    }
+    if ((r.signalRsrq ?? 0) != 0) {
+      parts.add('RSRQ ${r.signalRsrq} dB');
+    }
+    if ((r.signalNrRsrp ?? 0) != 0) {
+      parts.add('NR RSRP ${r.signalNrRsrp} dBm');
+    }
+    if ((r.signalNrRsrq ?? 0) != 0) {
+      parts.add('NR RSRQ ${r.signalNrRsrq} dB');
+    }
+    if ((r.wifiRssi ?? 0) != 0) {
+      parts.add(
+          'RSSI ${r.wifiRssi} dBm (${qualityLabel(r.wifiRssi!, isRsrp: false)})');
+    }
+    // Repli : générique seul, si aucune métrique typée n'est disponible.
+    if (parts.isEmpty && (r.signalDbm ?? 0) != 0) {
+      parts.add('${r.signalDbm} dBm');
+    }
+    if (parts.isEmpty) return const [];
+    return [line('Signal', parts.join(' · '))];
   }
 
   /// Ligne(s) « Coord. » : adresse lisible (géocodage inversé Nominatim) avec

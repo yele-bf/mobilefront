@@ -7,6 +7,7 @@ import '../models/speed_test_result.dart';
 import '../services/local_storage_service.dart';
 import '../services/reverse_geocoding_service.dart';
 import '../theme/yele_theme.dart';
+import '../widgets/history_detail_card.dart';
 import '../widgets/yele_scaffold.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -347,127 +348,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
           ),
         ),
-        if (expanded) _detail(r),
+        if (expanded)
+          HistoryDetailCard(result: r, resolvedAddresses: _addresses),
       ],
     );
   }
 
-  Widget _detail(SpeedTestResult r) {
-    Widget line(String k, String v) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 3),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('$k :',
-                  style: const TextStyle(color: Color(0xFF1F3A00), fontSize: 12)),
-              Flexible(
-                child: Text(v,
-                    textAlign: TextAlign.right,
-                    style: const TextStyle(
-                        color: Color(0xFF1F3A00),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700)),
-              ),
-            ],
-          ),
-        );
-
-    return Container(
-      width: double.infinity,
-      color: YeleColors.testMid,
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        children: [
-          line('Serveur', r.server),
-          line('FAI', r.operator ?? '—'),
-          // Règle métier : le réseau mobile (SIM) n'est montré que pour un test
-          // fait avec la carte SIM ; en Wi-Fi la ligne est masquée, même si
-          // d'anciens enregistrements contiennent encore ces champs.
-          if (!(r.networkType ?? '').toUpperCase().contains('WIFI') &&
-              ((r.simOperator ?? '').isNotEmpty || (r.cellularTech ?? '').isNotEmpty))
-            line(
-                'Réseau mobile',
-                [r.cellularTech, r.simOperator]
-                    .where((e) => (e ?? '').isNotEmpty)
-                    .join(' · ')),
-          line('Réseau', r.location ?? '—'),
-          line('Latence', '${r.ping.toStringAsFixed(0)} ms'),
-          line('Gigue', '${r.jitter.toStringAsFixed(0)} ms'),
-          ..._signalLines(r, line),
-          if (r.hasStreamingTest)
-            line('Streaming',
-                '${r.streamingMaxResolution ?? '—'} · ${r.streamingScore!.toStringAsFixed(0)}/100'),
-          if (r.hasBrowsingTest)
-            line('Navigation',
-                '${(r.browsingAvgLoadMs! / 1000).toStringAsFixed(1)} s · ${r.browsingScore!.toStringAsFixed(0)}/100'),
-          if ((r.latitude ?? 0) != 0) ..._coordBlock(r, line),
-          if (r.qoeRating != null && r.qoeRating! > 0)
-            line('QoE', '${r.qoeRating}/5'),
-        ],
-      ),
-    );
-  }
-
-  /// Ligne(s) « Signal » : métriques radio typées selon la connexion utilisée
-  /// pour le test. Rien ne s'affiche si rien n'a été mesuré (iOS, Android < 9,
-  /// appareils qui n'exposent pas les compteurs).
-  List<Widget> _signalLines(
-      SpeedTestResult r, Widget Function(String k, String v) line) {
-    String qualityLabel(int dbm, {required bool isRsrp}) {
-      final t = isRsrp ? [-80, -90, -100] : [-70, -85, -95];
-      if (dbm >= t[0]) return 'excellent';
-      if (dbm >= t[1]) return 'bon';
-      if (dbm >= t[2]) return 'moyen';
-      return 'faible';
-    }
-
-    final parts = <String>[];
-    if ((r.signalRsrp ?? 0) != 0) {
-      parts.add(
-          'RSRP ${r.signalRsrp} dBm (${qualityLabel(r.signalRsrp!, isRsrp: true)})');
-    }
-    if ((r.signalRsrq ?? 0) != 0) {
-      parts.add('RSRQ ${r.signalRsrq} dB');
-    }
-    if ((r.signalNrRsrp ?? 0) != 0) {
-      parts.add('NR RSRP ${r.signalNrRsrp} dBm');
-    }
-    if ((r.signalNrRsrq ?? 0) != 0) {
-      parts.add('NR RSRQ ${r.signalNrRsrq} dB');
-    }
-    if ((r.wifiRssi ?? 0) != 0) {
-      parts.add(
-          'RSSI ${r.wifiRssi} dBm (${qualityLabel(r.wifiRssi!, isRsrp: false)})');
-    }
-    // Repli : générique seul, si aucune métrique typée n'est disponible.
-    if (parts.isEmpty && (r.signalDbm ?? 0) != 0) {
-      parts.add('${r.signalDbm} dBm');
-    }
-    if (parts.isEmpty) return const [];
-    return [line('Signal', parts.join(' · '))];
-  }
-
-  /// Ligne(s) « Coord. » : adresse lisible (géocodage inversé Nominatim) avec
-  /// les coordonnées brutes en sous-texte. Tant que la résolution est en
-  /// cours, un indicateur discret s'affiche ; en cas d'échec ou d'absence
-  /// d'adresse OSM, on retombe sur les seules coordonnées.
-  List<Widget> _coordBlock(
-      SpeedTestResult r, Widget Function(String k, String v) line) {
-    final key = ReverseGeocodingService.cacheKeyFor(r.latitude!, r.longitude!);
-    final address = _addresses[key];
-    final coords =
-        '${r.latitude!.toStringAsFixed(4)}, ${r.longitude!.toStringAsFixed(4)}';
-    if (address == null) {
-      // Résolution en cours.
-      return [line('Coord.', '$coords — résolution…')];
-    }
-    if (address.isEmpty) {
-      // Aucune adresse OSM connue à ces coordonnées.
-      return [line('Coord.', coords)];
-    }
-    return [
-      line('Coord. (adresse)', address),
-      line('Coordonnées', coords),
-    ];
-  }
 }

@@ -67,4 +67,51 @@ void main() {
       expect(StreamingTestResult.decodeError(r.encodeQualities()), isNull);
     });
   });
+
+  group('Contrats de la page lecteur HLS (invariants de mesure)', () {
+    // Ces invariants ont causé le bug terrain « seul le 720p est servi » :
+    // sans reset d'état par palier, l'événement 'start' ne part qu'au
+    // premier palier et les suivants tombent en timeout. Chaque test gèle
+    // une propriété de la page, pas un détail d'implémentation.
+    final page = StreamingTestServiceHls().playerHtml();
+
+    test('resetTierState est appelé au début de chaque palier', () {
+      expect(page.contains('function resetTierState()'), isTrue);
+      expect('resetTierState();'.allMatches(page).length,
+          greaterThanOrEqualTo(2),
+          reason: 'un appel dans startHls et un dans startDash');
+    });
+
+    test("l'événement 'start' part à chaque première image, pas une seule fois",
+        () {
+      // Ancien bug : garde 'if (startupMs < 0)' remplie une seule fois par
+      // page — les paliers 2 et 3 n'envoyaient jamais 'start'.
+      expect(page.contains('if (!started) {'), isTrue);
+      expect(page.contains('if (startupMs < 0) {'), isFalse);
+    });
+
+    test('chargement des segments piloté par palier (trafic attribuable)', () {
+      // Sans autoStartLoad:false, hls.js précharge tout dès le manifeste : le
+      // trafic d'un palier partait dans la fenêtre de mesure du précédent.
+      expect(page.contains('autoStartLoad: false'), isTrue);
+      expect(page.contains('engine.startLoad()'), isTrue);
+      expect(page.contains('engine.stopLoad()'), isTrue);
+    });
+
+    test('verrou unique : le rattrapage LEVEL_SWITCHED est enregistré une fois',
+        () {
+      // On compte l'ENREGISTREMENT du listener (et non toute mention du nom
+      // d'événement, présente aussi dans les commentaires de la page).
+      expect('Hls.Events.LEVEL_SWITCHED'.allMatches(page).length, 1,
+          reason: 'un listener par palier se battaient entre eux dès le 2e');
+      expect(page.contains('wantedLevel'), isTrue);
+    });
+
+    test("le buffering d'amorçage reste hors interruptions (convention YouTube)",
+        () {
+      // Le stall avant la 1re image appartient au chargement initial
+      // (startupMs), pas aux rebuffers.
+      expect(page.contains('if (started && bufferStart === 0)'), isTrue);
+    });
+  });
 }

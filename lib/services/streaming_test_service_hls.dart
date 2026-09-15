@@ -112,7 +112,7 @@ class StreamingTestServiceHls {
       onProgress?.call(0.02, 'Préparation du lecteur…');
       // Le gabarit HLS n'a pas besoin de l'origine (pas d'IFrame API à
       // valider) ; le serveur local reste utile pour un contexte HTTP propre.
-      await controller.loadRequest(await host.start((_) => _playerHtml()));
+      await controller.loadRequest(await host.start((_) => playerHtml()));
       onController?.call(controller);
 
       _ready = Completer<void>();
@@ -292,7 +292,12 @@ class StreamingTestServiceHls {
   /// La qualité est verrouillée via `hls.currentLevel` (hls.js, ABR coupé) ou
   /// en bornant l'ABR dash.js au seul niveau voulu : l'adaptatif ne décide
   /// plus rien, c'est toute la différence avec YouTube.
-  String _playerHtml() => '''
+  ///
+  /// Public pour tests de contrat : [streaming_hls_service_test] gèle les
+  /// invariants de mesure (reset d'état par palier, chargement des segments
+  /// piloté par palier, buffering d'amorçage hors interruptions) — c'est leur
+  /// violation qui a fait ne servir que le 720p en terrain.
+  String playerHtml() => '''
 <!DOCTYPE html>
 <html>
 <head>
@@ -306,7 +311,17 @@ class StreamingTestServiceHls {
 <video id="video" muted playsinline autoplay></video>
 <script>
 var video = null, engine = null, engineKind = '';
-var t0 = 0, startupMs = -1, bufferMs = 0, bufferStart = 0, rebuffers = 0, started = false;
+// État du palier courant. Remis à zéro à CHAQUE startLevel() : c'est la
+// convention du backend YouTube (un lecteur neuf par palier) transposée ici —
+// sans reset, 'start' ne part qu'au premier palier et les suivants timeout.
+var t0 = 0, startupMs = -1, bufferMs = 0, bufferStart = 0, rebuffers = 0;
+var started = false, wantedLevel = -1;
+
+function resetTierState() {
+  t0 = Date.now();
+  startupMs = -1; bufferMs = 0; bufferStart = 0; rebuffers = 0;
+  started = false;
+}
 
 function send(o) { YeleStream.postMessage(JSON.stringify(o)); }
 
@@ -316,7 +331,9 @@ window.onerror = function (msg) { send({ e: 'jserror', msg: String(msg) }); };
 // d'amorçage fait partie du « chargement initial », pas des interruptions :
 // on ne compte que ce qui survient après la 1re image.
 function onPlaying() {
-  if (startupMs < 0) {
+  // Première image DU PALIER : 'start' part à chaque palier (le backend
+  // YouTube envoie pareil pour chaque lecteur neuf).
+  if (!started) {
     startupMs = Date.now() - t0;
     started = true;
     send({ e: 'start', startupMs: startupMs });
@@ -324,6 +341,9 @@ function onPlaying() {
   if (bufferStart > 0) { bufferMs += Date.now() - bufferStart; bufferStart = 0; }
 }
 function onStall() {
+  // Le buffering d'amorçage (stall avant la 1re image) fait partie du
+  // « chargement initial » — c'est déjà dans startupMs. On ne compte comme
+  // interruption que les stalls APRÈS la 1re image : conventions YouTube.
   if (started && bufferStart === 0) { bufferStart = Date.now(); rebuffers++; }
 }
 
@@ -334,16 +354,18 @@ function attach() {
   video.addEventListener('stalled', onStall);
 }
 
-// Verrouille le niveau hls.js : currentLevel bascule immédiatement et coupe
-// l'ABR. Le LEVEL_SWITCHED de rattrapage reposera le verrou si le CDN a
-// déclassé un segment.
+// Verrouille le niveau hls.js : currentLevel AVANT startLoad (le premier
+// fragment demandé est déjà le niveau verrouillé), puis startLoad explicite —
+// avec autoStartLoad:false, AUCUN octet ne circule entre les paliers : le
+// trafic mesuré (rxBefore/rxAfter côté Dart) appartient au seul palier courant.
+// Le rattrapage LEVEL_SWITCHED (enregistré une seule fois, cf. onLibReady)
+// repose le verrou si le CDN déclassait un segment.
 function startHls(levelIndex) {
-  engine.on(Hls.Events.LEVEL_SWITCHED, function (e, d) {
-    if (d.level !== levelIndex) engine.currentLevel = levelIndex;
-  });
+  resetTierState();
+  wantedLevel = levelIndex;
   engine.currentLevel = levelIndex;
   engine.nextLevel = levelIndex;
-  t0 = Date.now();
+  engine.startLoad();
   video.play().catch(function () {});
 }
 
@@ -351,6 +373,8 @@ function startHls(levelIndex) {
 // documenté est de couper les règles ABR par défaut et de borner le choix au
 // niveau voulu.
 function startDash(levelIndex) {
+  resetTierState();
+  wantedLevel = levelIndex;
   engine.updateSettings({
     streaming: { abr: {
       useDefaultABRRules: false,
@@ -372,6 +396,11 @@ function stopLevel() {
   if (!video) { send({ e: 'level', startupMs: 0, bufferMs: 0, rebuffers: 0 }); return; }
   if (bufferStart > 0) { bufferMs += Date.now() - bufferStart; bufferStart = 0; }
   try { video.pause(); } catch (e) {}
+  // Coupe le chargement des segments : sans ça, hls.js continuerait à
+  // précharger pendant la fenêtre de trafic du palier suivant.
+  if (engineKind === 'hls' && engine && engine.stopLoad) {
+    try { engine.stopLoad(); } catch (e) {}
+  }
   send({
     e: 'level',
     startupMs: startupMs < 0 ? 0 : startupMs,
@@ -411,10 +440,22 @@ function onLibReady() {
     engine.on(dashjs.MediaPlayer.events.STREAM_INITIALIZED, report);
   } else {
     engineKind = 'hls';
-    engine = new Hls({ capLevelToPlayerSize: false, startLevel: -1 });
+    // autoStartLoad:false : le chargement des segments n'est déclenché que
+    // par startLoad() dans startHls — condition d'une mesure de trafic par
+    // palier (sinon hls.js précharge tout dès le manifeste parsé).
+    engine = new Hls({ capLevelToPlayerSize: false, startLevel: -1,
+                       autoStartLoad: false });
     engine.loadSource('$streamTestStreamUrl');
     engine.attachMedia(video);
     engine.on(Hls.Events.MANIFEST_PARSED, report);
+    // Rattrapage du verrou : UN SEUL listener, qui applique le niveau du
+    // palier courant (l'ancien code en enregistrait un par palier — ils se
+    // battaient entre eux dès le deuxième palier).
+    engine.on(Hls.Events.LEVEL_SWITCHED, function (e, d) {
+      if (wantedLevel >= 0 && d.level !== wantedLevel) {
+        engine.currentLevel = wantedLevel;
+      }
+    });
   }
 }
 

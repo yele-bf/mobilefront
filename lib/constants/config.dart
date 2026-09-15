@@ -77,6 +77,24 @@ const int STREAMING_LEVEL_TIMEOUT_SEC = 20;
 // qualité d'après l'ancienne taille : c'est la principale source de résultats
 // non reproductibles.
 const int STREAMING_STAGE_SETTLE_MS = 900;
+
+// ── Backend du test de streaming (test A/B) ─────────────────────────────
+// 'youtube' : lecteur IFrame YouTube ; la qualité servie reste à la discrétion
+//   de l'ABR de YouTube (setPlaybackQuality ignoré depuis 2019).
+// 'hls' : flux HLS/DASH joué par hls.js/dash.js avec qualité VERROUILLÉE
+//   (hls.currentLevel) : le palier servi est le palier demandé, la mesure est
+//   déterministe. Voir StreamingTestServiceHls.
+const String streamingBackend = 'youtube';
+
+// Flux utilisé par le backend 'hls'. Échelle HLS auto-hébergée sur Netlify
+// (site yele-test-assets, CORS `*` via fichier _headers), construite depuis le
+// ladder DASH public Big Buck Bunny 30fps (libre de droits, même vidéo que le
+// backend YouTube) SANS ré-encodage : 3 variantes 720p/1080p/2160p + audio
+// HE-AAC, segments fMP4 de 4 s (clip de 40 s). Master HLS (.m3u8 → hls.js).
+// Régénération/extension : scripts/fetch_akamai_clip.sh (mobilefront), puis
+// redéploiement : NETLIFY_TOKEN=… scripts/deploy_netlify.sh
+const String streamTestStreamUrl =
+    'https://yele-test-assets.netlify.app/bbb/master.m3u8';
 // Pages de référence du test de navigation web (critère ARCEP : chargée en < 10 s)
 const List<String> BROWSING_REFERENCE_PAGES = [
   'https://www.google.com',

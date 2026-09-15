@@ -1,14 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show ContentType, HttpServer, InternetAddress;
-import 'dart:ui' show Color;
 
 import 'package:logger/logger.dart';
 import 'package:webview_flutter/webview_flutter.dart';
-import 'package:webview_flutter_android/webview_flutter_android.dart';
-import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
 import '../constants/config.dart';
+import 'streaming_shared.dart';
 import 'traffic_stats_service.dart';
 
 /// Mesures d'une qualité vidéo — une colonne du tableau de résultats.
@@ -124,7 +121,7 @@ class StreamingTestResult {
   final int rebufferCount; // interruptions cumulées
   final double rebufferRatio; // part du temps en mise en tampon (0-1)
   final String maxResolution; // plus haute qualité réellement servie
-  final double score; // score synthétique 0-100
+  final double score; // performance globale : moyenne des taux servis (0-100)
 
   /// Raison d'un test sans mesure, affichée à l'utilisateur. null si tout va
   /// bien. Sans cela, un échec est indiscernable d'un réseau catastrophique :
@@ -282,8 +279,9 @@ class StreamingTestService {
     final served = <String>[];
     onRows?.call(List.of(rows));
 
-    final controller = _buildController();
-    final host = _PlayerHost();
+    final controller =
+        buildStreamingWebViewController(onMessage: _onJsMessage);
+    final host = PlayerHost();
 
     try {
       onProgress?.call(0.02, 'Ouverture du lecteur YouTube…');
@@ -296,12 +294,12 @@ class StreamingTestService {
         await _ready!.future.timeout(const Duration(seconds: 25));
       } on TimeoutException {
         logger.w('Streaming: lecteur YouTube non chargé (réseau ou ID vidéo)');
-        return _aggregate(rows,
+        return aggregateStreamingResults(rows,
             error: 'Lecteur YouTube injoignable. Vérifiez la connexion '
                 'Internet, puis relancez le test.');
       }
       if (_playerError != null) {
-        return _aggregate(rows, error: _playerError);
+        return aggregateStreamingResults(rows, error: _playerError);
       }
 
       for (int i = 0; i < keys.length; i++) {
@@ -361,7 +359,8 @@ class StreamingTestService {
       await host.stop();
     }
 
-    final result = _aggregate(rows, error: _playerError ?? _servedNote(rows, served));
+    final result = aggregateStreamingResults(rows,
+        error: _playerError ?? _servedNote(rows, served));
     logger.i('$result — servi : ${served.join(', ')}');
     return result;
   }
@@ -488,89 +487,6 @@ class StreamingTestService {
     }
   }
 
-  /// Consolide les mesures par qualité en indicateurs globaux (stockés dans
-  /// l'historique et envoyés au serveur).
-  StreamingTestResult _aggregate(List<StreamingQualityResult> rows,
-      {String? error}) {
-    final reached = rows.where((r) => r.reached).toList();
-
-    // Résolution maximale et score : basés sur ce que YouTube a réellement
-    // SERVI (servedHeight), pas sur ce qu'on a demandé. Demander 2160p sur
-    // un réseau qui n'a tenu que 1440p ne doit pas rapporter les points du 4K.
-    final bestHeight = reached.isEmpty
-        ? 0
-        : reached.map((r) => r.servedHeight).reduce((a, b) => a > b ? a : b);
-    final startupMs =
-        reached.isEmpty ? 0 : (reached.first.initialLoadingSec * 1000).round();
-    final rebuffers =
-        reached.fold<int>(0, (sum, r) => sum + r.rebufferCount);
-
-    final buffering = reached.fold<double>(0, (sum, r) => sum + r.bufferingSec);
-    final watched = reached.fold<double>(
-        0, (sum, r) => sum + STREAMING_LEVEL_DURATION_SEC - r.bufferingSec);
-    final measured = watched + buffering;
-    final ratio = measured > 0 ? (buffering / measured).clamp(0.0, 1.0) : 0.0;
-
-    final score = _computeScore(
-        bestHeight.toDouble(), startupMs, ratio.toDouble(), rebuffers);
-
-    return StreamingTestResult(
-      qualities: rows,
-      startupMs: startupMs,
-      rebufferCount: rebuffers,
-      rebufferRatio: double.parse(ratio.toStringAsFixed(3)),
-      maxResolution: bestHeight > 0 ? '${bestHeight}p' : 'inconnue',
-      score: double.parse(score.toStringAsFixed(1)),
-      error: error,
-    );
-  }
-
-  double _computeScore(
-      double maxHeight, int startupMs, double rebufferRatio, int rebufferCount) {
-    final double base = maxHeight >= 2160
-        ? 100
-        : maxHeight >= 1080
-            ? 90
-            : maxHeight >= 720
-                ? 75
-                : maxHeight >= 480
-                    ? 55
-                    : maxHeight > 0
-                        ? 35
-                        : 0;
-    double score = base;
-    if (startupMs > 2000) score -= (startupMs - 2000) / 500;
-    score -= 40 * rebufferRatio + 2 * rebufferCount;
-    return score.clamp(0, 100);
-  }
-
-  // ── WebView ────────────────────────────────────────────────────────────────
-
-  WebViewController _buildController() {
-    // iOS : sans `allowsInlineMediaPlayback` la vidéo part en plein écran natif
-    // et l'utilisateur perd de vue le test.
-    final params = WebViewPlatform.instance is WebKitWebViewPlatform
-        ? WebKitWebViewControllerCreationParams(
-            allowsInlineMediaPlayback: true,
-            mediaTypesRequiringUserAction: const <PlaybackMediaTypes>{},
-          )
-        : const PlatformWebViewControllerCreationParams();
-
-    final controller = WebViewController.fromPlatformCreationParams(params)
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(const Color(0xFF000000))
-      ..addJavaScriptChannel('YeleStream', onMessageReceived: _onJsMessage);
-
-    // Android : sans ceci, `playVideo()` déclenché par du JS est bloqué faute
-    // de geste utilisateur, et aucun palier ne démarrerait jamais.
-    final platform = controller.platform;
-    if (platform is AndroidWebViewController) {
-      platform.setMediaPlaybackRequiresUserGesture(false);
-    }
-
-    return controller;
-  }
-
   void _onJsMessage(JavaScriptMessage message) {
     Map<String, dynamic> event;
     try {
@@ -643,8 +559,8 @@ class StreamingTestService {
     }
   }
 
-  /// Page hôte du lecteur YouTube, servie par [_PlayerHost] depuis
-  /// `http://127.0.0.1:<port>`.
+  /// Page hôte du lecteur YouTube, servie par [PlayerHost]
+  /// (streaming_shared.dart) depuis `http://127.0.0.1:<port>`.
   ///
   /// L'IFrame API valide l'origine de la page hôte par un échange
   /// `postMessage` avant d'émettre `onReady`. Une page injectée via
@@ -808,39 +724,4 @@ function stopLevel() {
 ''';
 }
 
-/// Sert la page hôte du lecteur sur la boucle locale, le temps du test.
-///
-/// L'unique raison d'être de ce serveur est de donner à la page une **origine
-/// HTTP réelle** : l'IFrame Player API la vérifie avant d'initialiser le
-/// lecteur, et rejette les pages injectées sans origine.
-class _PlayerHost {
-  HttpServer? _server;
 
-  /// Démarre le serveur et retourne l'URL à charger. [builder] reçoit
-  /// l'origine effective, à recopier dans le playerVar `origin`.
-  Future<Uri> start(String Function(String origin) builder) async {
-    // Port 0 : le système en attribue un libre, ce qui évite tout conflit
-    // avec une autre application.
-    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    _server = server;
-
-    final origin = 'http://127.0.0.1:${server.port}';
-    final html = builder(origin);
-
-    server.listen((request) async {
-      request.response
-        ..statusCode = 200
-        ..headers.contentType = ContentType.html
-        ..headers.set('Cache-Control', 'no-store')
-        ..write(html);
-      await request.response.close();
-    });
-
-    return Uri.parse('$origin/');
-  }
-
-  Future<void> stop() async {
-    await _server?.close(force: true);
-    _server = null;
-  }
-}

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../constants/config.dart';
 import '../services/background_collection_service.dart';
+import '../services/streaming_backend_setting.dart';
 import '../theme/yele_theme.dart';
 import '../widgets/yele_scaffold.dart';
 
@@ -19,10 +20,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   CollectStatus _status = CollectStatus.unavailable;
   bool _busy = false;
 
+  final _backendSetting = StreamingBackendSetting();
+  String _streamBackend = streamingBackend; // moteur effectif affiché
+
   @override
   void initState() {
     super.initState();
     _refreshStatus();
+    _loadBackend();
+  }
+
+  Future<void> _loadBackend() async {
+    await _backendSetting.initialize();
+    if (!mounted) return;
+    setState(() => _streamBackend = _backendSetting.effectiveBackend);
   }
 
   Future<void> _refreshStatus() async {
@@ -49,6 +60,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'Active/désactive la géolocalisation des tests', _useGps,
                 (v) => setState(() => _useGps = v)),
             if (_collect.isSupported) ..._collectSection(),
+            ..._debugSection(),
             const SizedBox(height: 24),
           ],
         ),
@@ -303,6 +315,107 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _snack(String message) {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  // ── Débogage ─────────────────────────────────────────────────────────────
+
+  /// Sélection à chaud du moteur du test de streaming : la surcharge est
+  /// persistée et s'applique dès le prochain test, sans recompiler l'APK.
+  /// Outil de test A/B terrain — les deux moteurs produisent le même résultat.
+  List<Widget> _debugSection() {
+    return [
+      _section('Débogage'),
+      _streamingBackendTile(),
+    ];
+  }
+
+  Widget _streamingBackendTile() {
+    final override = _backendSetting.hasOverride;
+    return InkWell(
+      onTap: _pickStreamingBackend,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: Color(0x11000000))),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.science_outlined, size: 20, color: YeleColors.muted),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Moteur du test de streaming',
+                      style: TextStyle(fontSize: 16, color: YeleColors.ink)),
+                  const SizedBox(height: 2),
+                  Text(
+                    override
+                        ? '$_streamBackend (surcharge runtime)'
+                        : '$_streamBackend (défaut compilé)',
+                    style: const TextStyle(fontSize: 13, color: YeleColors.muted),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, size: 20, color: YeleColors.muted),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickStreamingBackend() async {
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Moteur du test de streaming'),
+        content: RadioGroup<String>(
+          groupValue: _streamBackend,
+          onChanged: (v) => Navigator.pop(ctx, v),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final c in StreamingBackendSetting.choices)
+                RadioListTile<String>(
+                  value: c,
+                  title: Text(c == 'youtube'
+                      ? 'YouTube (ABR dynamique)'
+                      : 'HLS/DASH (qualité verrouillée)'),
+                  subtitle: Text(
+                    c == 'youtube'
+                        ? 'Ce que sert l\'algorithme de YouTube — proche de l\'usage réel'
+                        : 'Paliers servis tels que demandés — mesure reproductible',
+                  ),
+                ),
+            const SizedBox(height: 4),
+            Text('Défaut compilé : $streamingBackend',
+                style:
+                    const TextStyle(fontSize: 12, color: YeleColors.muted)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, ''),
+            child: const Text('Retour au défaut'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
+        ],
+      ),
+    );
+    if (choice == null) return; // annulé
+    if (choice.isEmpty) {
+      await _backendSetting.resetToDefault();
+    } else {
+      await _backendSetting.setBackend(choice);
+    }
+    if (!mounted) return;
+    setState(() => _streamBackend = _backendSetting.effectiveBackend);
+    _snack('Moteur effectif dès le prochain test : $_streamBackend');
   }
 
   // ── Éléments de liste ─────────────────────────────────────────────────────

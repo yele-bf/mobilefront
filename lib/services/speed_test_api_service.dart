@@ -11,7 +11,9 @@ import '../constants/config.dart';
 import '../models/speed_test_result.dart';
 import '../models/test_selection.dart';
 import 'browsing_test_service.dart';
+import 'streaming_backend_setting.dart';
 import 'streaming_test_service.dart';
+import 'streaming_test_service_hls.dart';
 
 enum SpeedTestPhase {
   initializing,
@@ -380,7 +382,26 @@ class SpeedTestApiService {
           ),
         );
         try {
-          streaming = await StreamingTestService().runTest(
+          // Backend choisi à chaud : surcharge persistée (Réglages →
+          // Débogage) si elle existe, sinon drapeau de configuration.
+          // 'hls' = qualité verrouillée via hls.js ; 'youtube' = IFrame
+          // Player, qualité servie décidée par l'ABR de YouTube.
+          streaming = StreamingBackendSetting().effectiveBackend == 'hls'
+              ? await StreamingTestServiceHls().runTest(
+                  onController: onStreamingController,
+                  onRows: onStreamingRows,
+                  onProgress: (progress, message) => onProgress?.call(
+                    SpeedTestProgress(
+                      phase: SpeedTestPhase.streaming,
+                      message: message,
+                      downloadSpeed: dlMbps,
+                      uploadSpeed: ulMbps,
+                      ping: pingMs,
+                      jitter: jitterMs,
+                    ),
+                  ),
+                )
+              : await StreamingTestService().runTest(
             onController: onStreamingController,
             onRows: onStreamingRows,
             onProgress: (progress, message) => onProgress?.call(

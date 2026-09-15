@@ -48,3 +48,7 @@ app.*.map.json
 # Le workspace multi-depots de Yele vit AU-DESSUS des depots, jamais dedans.
 *.code-workspace
 .vscode/
+
+# Artefacts de build streaming (publiés via le dépôt stream-assets)
+/out/
+/tools/

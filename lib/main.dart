@@ -6,12 +6,14 @@ import 'screens/full_test_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/settings_screen.dart';
 import 'services/local_storage_service.dart';
+import 'services/streaming_backend_setting.dart';
 import 'theme/yele_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
     await LocalStorageService().initialize();
+    await StreamingBackendSetting().initialize();
   } catch (_) {
     // Le stockage local n'est pas bloquant pour lancer un test.
   }

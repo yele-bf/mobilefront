@@ -73,7 +73,9 @@ Tout est centralisé dans **`lib/constants/config.dart`**.
 | `API_BASE_URL` | URL du backend Go | `https://mobiletest-j0c6.onrender.com` |
 | `SPEED_PHASE_DURATION_SEC` | Durée d'une phase de mesure de débit | `10` s |
 | `SPEED_WARMUP_MS` | Montée en charge exclue du calcul | `1000` ms |
-| `STREAMING_YOUTUBE_VIDEO_ID` | Vidéo de référence du test streaming | `aqz-KE-bpKQ` |
+| `STREAMING_YOUTUBE_VIDEO_ID` | Vidéo de référence du backend streaming `youtube` | `aqz-KE-bpKQ` |
+| `streamingBackend` | Moteur du test streaming : `youtube` (ABR) ou `hls` (qualité verrouillée) — **surchargeable à chaud** en Réglages → Débogage | `youtube` |
+| `streamTestStreamUrl` | Échelle HLS du backend `hls` (auto-hébergée, CORS ouvert) | Netlify `yele-test-assets` |
 | `BROWSING_REFERENCE_PAGES` | Pages du test de navigation | 6 sites dont `lefaso.net` |
 | `BACKGROUND_DEFAULT_INTERVAL_MIN` | Cadence de la collecte passive | `15` min |
 
@@ -113,7 +115,9 @@ lib/
 │   └── settings_screen.dart     Réglages + pilotage de la collecte passive
 ├── services/
 │   ├── speed_test_api_service.dart         Moteur de mesure du débit
-│   ├── streaming_test_service.dart         Test de streaming YouTube
+│   ├── streaming_test_service.dart         Test de streaming YouTube (ABR)
+│   ├── streaming_test_service_hls.dart     Test de streaming HLS qualité verrouillée
+│   ├── streaming_shared.dart               Partagé : WebView, agrégation, score
 │   ├── browsing_test_service.dart          Test de navigation web
 │   ├── background_collection_service.dart  Pont vers le service Android
 │   ├── network_info_service.dart           Opérateur, techno radio, signal
@@ -147,13 +151,75 @@ Deux précautions donnent des chiffres comparables d'un test à l'autre :
   Sans elle, le ping mesuré est celui d'un réseau saturé par le test lui-même
   (bufferbloat), pas celui du réseau au repos.
 
-### 2. Le streaming — `streaming_test_service.dart`
+### 2. Le streaming — `streaming_test_service*.dart`
 
-Plutôt que d'estimer la qualité vidéo à partir du débit, le test **lit réellement
-une vidéo YouTube** dans une WebView via l'IFrame Player API. Il demande
-successivement 720p, 1080p puis 2160p et mesure ce que le réseau tient
-effectivement : temps de démarrage, nombre de coupures, résolution maximale
-atteinte. C'est l'approche utilisée par nPerf.
+Le test lit réellement de la vidéo (pas d'estimation à partir du débit brut) et
+mesure, pour chaque palier 720p → 1080p → 2160p : le temps de démarrage (première
+image), les interruptions (rebuffers), les données consommées et le **taux de
+performance** — la part du temps passée à regarder plutôt qu'à attendre :
+
+    performance = temps réellement regardé / temps total écoulé
+
+**La performance globale affichée en fin de test est la moyenne des taux des
+qualités réellement servies** (règle nPerf) : chaque palier servi pèse autant,
+et un palier non tenu ne tire pas la moyenne vers zéro.
+
+#### Deux moteurs, un drapeau
+
+| | `youtube` (défaut) | `hls` |
+|---|---|---|
+| Moteur | IFrame Player YouTube dans la WebView | hls.js / dash.js dans la même WebView |
+| Choix de la qualité | ABR de YouTube (dynamique) | **Verrouillée** par palier (`hls.currentLevel`) |
+| Ce que mesure le test | Le comportement combiné réseau + algorithme tiers | La capacité brute du réseau à tenir chaque palier |
+| Reproductibilité | Faible (estimation de bande passante du lecteur, charge CDN) | Totale — protocole de mesure |
+| Dépendance tierce | YouTube (API ignorées depuis 2019, politique d'intégration) | Aucune (échelle auto-hébergée) |
+
+Le drapeau `streamingBackend` (`lib/constants/config.dart`) fixe le moteur à la
+compilation ; il est **surchargeable à chaud sans recompiler** via Réglages →
+Débogage → « Moteur du test de streaming » (`StreamingBackendSetting`, persisté
+dans Hive, effectif dès le test suivant, bouton « Retour au défaut » pour
+revenir au drapeau compilé). Les deux moteurs produisent le même
+`StreamingTestResult` : l'historique, le tableau de résultats et l'envoi au
+serveur sont identiques.
+
+#### Pourquoi deux approches
+
+Un test de streaming mesure deux objets distincts :
+
+1. **La capacité du réseau** — le lien peut-il soutenir ~5 / ~10 / ~15 Mb/s
+   soutenus (720p / 1080p / 2160p) ? C'est une mesure d'infrastructure.
+2. **L'expérience vécue (QoE)** — que ressent l'utilisateur d'une application
+   adaptative ? Là, la qualité servie résulte d'un compromis arbitré par le
+   lecteur : résolution contre continuité.
+
+L'approche **à qualités fixées** (`hls`) est le **protocole de référence** :
+
+- **Reproductible** — même demande à chaque exécution, deux tests sur le même
+  réseau donnent les mêmes paliers ;
+- **Comparable** — entre opérateurs, zones et dates, condition indispensable
+  pour alimenter la carte de couverture au même titre que les critères ARCEP ;
+- **Diagnostique** — elle situe précisément la frontière du réseau (« il tient
+  le 1080p mais pas le 2160p »), là où l'ABR mélange les deux causes ;
+- **Sans dépendance** — ni API d'un tiers, ni politique d'intégration, ni
+  variation de comportement d'un lecteur propriétaire.
+
+Un lecteur adaptatif bien réglé sert au final « le plus haut palier que le
+réseau tient » : c'est exactement ce que mesure le backend HLS, mais de façon
+déterministe. L'expérience adaptative peut donc être **reconstituée** à partir
+d'une mesure propre (le plus haut palier dont le taux de performance reste
+proche de 100 %).
+
+L'approche **ABR** (`youtube`) reste disponible car elle est plus proche du
+scénario réel de l'utilisateur : YouTube baisse lui-même en qualité pour éviter
+les coupures, si bien que l'utilisateur ne subira jamais les rebuffers que
+ferait apparaître un 2160p forcé. Elle sert aux démonstrations produit et à la
+comparaison avec nPerf — pas comme métrique de référence.
+
+> Avec le moteur YouTube, `setPlaybackQuality()` est ignoré depuis 2019 : la
+> qualité demandée n'est qu'une suggestion. Le tableau affiche donc en en-tête
+> de colonne la qualité **réellement servie** (`servedLabel`, ex. 1440p pour un
+> palier 2160p demandé) et les paliers non servis restent à « — ». C'est le
+> comportement observé chez nPerf.
 
 > La vidéo de référence **doit** être disponible en 2160p, sinon la colonne 4K
 > restera systématiquement vide. Vérifier `STREAMING_YOUTUBE_VIDEO_ID` avant

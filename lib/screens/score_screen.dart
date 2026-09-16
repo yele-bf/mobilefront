@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/speed_test_result.dart';
+import '../services/dashboard_api_service.dart';
 import '../services/local_storage_service.dart';
 import '../services/speed_test_api_service.dart';
 import '../theme/yele_theme.dart';
@@ -25,12 +26,29 @@ class ScoreScreen extends StatefulWidget {
 class _ScoreScreenState extends State<ScoreScreen> {
   final _api = SpeedTestApiService();
   final _storage = LocalStorageService();
+  final _dashboard = DashboardApiService();
+  BarometerResult? _barometer;
   bool _saved = false;
   bool _qoeDone = false;
 
   SpeedTestResult get r => widget.result;
 
   bool get _speedDone => r.downloadSpeed > 0 || r.uploadSpeed > 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // IMP-11 — Baromètre : situe le résultat par rapport à la base dès
+    // l'ouverture du bilan. Non bloquant : la carte n'apparaît que si
+    // l'API répond (et seulement pour un test de débit).
+    if (_speedDone) {
+      _dashboard
+          .fetchBarometer(r.downloadSpeed, r.uploadSpeed, r.ping)
+          .then((v) {
+        if (mounted && v != null) setState(() => _barometer = v);
+      });
+    }
+  }
 
   Future<void> _finalize() async {
     if (_saved) return;
@@ -91,6 +109,8 @@ class _ScoreScreenState extends State<ScoreScreen> {
                   _serverBar(),
                   // N'affiche que les sections du/des test(s) réellement faits.
                   if (_speedDone) ...[_metrics(), _qualityBand()],
+                  // IMP-11 — Baromètre de comparaison « mon résultat vs les autres ».
+                  if (_speedDone) _barometerCard(),
                   // Affiché aussi en cas d'échec, pour en montrer la raison.
                   if (r.hasStreamingTest || r.streamingError != null)
                     _streamingCard(),
@@ -191,6 +211,103 @@ class _ScoreScreenState extends State<ScoreScreen> {
       return '${(kib / 1024).toStringAsFixed(1)} Mo';
     }
     return '$kib Ko';
+  }
+
+  // ── IMP-11 : baromètre de comparaison ─────────────────────────────────
+
+  /// Carte « Baromètre » : position du résultat par rapport à toutes les
+  /// mesures de la base. Silencieuse tant que l'API n'a pas répondu.
+  Widget _barometerCard() {
+    final b = _barometer;
+    if (b == null) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10)],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('📊', style: TextStyle(fontSize: 18)),
+              const SizedBox(width: 8),
+              Text('Baromètre',
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: YeleColors.surface.ink)),
+              const Spacer(),
+              Text('${b.sampleSize} mesures',
+                  style: TextStyle(
+                      fontSize: 12, color: YeleColors.surface.muted)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _barometerRow('▼ Download', b.downloadPercentile,
+              'plus rapide que ${b.downloadPercentile.toStringAsFixed(0)} % des mesures'),
+          _barometerRow('▲ Upload', b.uploadPercentile,
+              'plus rapide que ${b.uploadPercentile.toStringAsFixed(0)} % des mesures'),
+          _barometerRow('↔ Latence', b.pingPercentile,
+              'meilleure que ${b.pingPercentile.toStringAsFixed(0)} % des mesures'),
+        ],
+      ),
+    );
+  }
+
+  /// Une ligne du baromètre : métrique + mini-jauge de centile.
+  Widget _barometerRow(String label, double percentile, String caption) {
+    final color = percentile >= 75
+        ? YeleColors.good
+        : percentile >= 40
+            ? YeleColors.warn
+            : YeleColors.danger;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 92,
+                child: Text(label,
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: YeleColors.surface.ink)),
+              ),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: (percentile / 100).clamp(0.0, 1.0),
+                    minHeight: 8,
+                    backgroundColor: YeleColors.surface.line,
+                    valueColor: AlwaysStoppedAnimation(color),
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 46,
+                child: Text('${percentile.toStringAsFixed(0)} %',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: color)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(caption,
+              style: TextStyle(fontSize: 11, color: YeleColors.surface.muted)),
+        ],
+      ),
+    );
   }
 
   Widget _qualityBand() {

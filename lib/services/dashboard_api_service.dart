@@ -28,6 +28,33 @@ class CoveragePoint {
       );
 }
 
+/// IMP-11 — Position d'un résultat dans le baromètre de comparaison.
+class BarometerResult {
+  /// % de mesures de la base plus lentes que le résultat testé.
+  final double downloadPercentile;
+  final double uploadPercentile;
+
+  /// % de mesures de la base avec une latence pire (supérieure) au résultat.
+  final double pingPercentile;
+
+  /// Nombre de mesures prises en compte.
+  final int sampleSize;
+
+  BarometerResult({
+    required this.downloadPercentile,
+    required this.uploadPercentile,
+    required this.pingPercentile,
+    required this.sampleSize,
+  });
+
+  factory BarometerResult.fromJson(Map<String, dynamic> j) => BarometerResult(
+        downloadPercentile: (j['downloadPercentile'] as num?)?.toDouble() ?? 0,
+        uploadPercentile: (j['uploadPercentile'] as num?)?.toDouble() ?? 0,
+        pingPercentile: (j['pingPercentile'] as num?)?.toDouble() ?? 0,
+        sampleSize: (j['sampleSize'] as num?)?.toInt() ?? 0,
+      );
+}
+
 /// Accès aux données agrégées du backend (couverture, stats opérateurs).
 class DashboardApiService {
   final logger = Logger();
@@ -53,6 +80,26 @@ class DashboardApiService {
     } catch (e) {
       logger.w('Couverture indisponible: $e');
       return [];
+    }
+  }
+
+  /// IMP-11 — Situe un résultat ([download]/[upload] en Mb/s, [ping] en ms)
+  /// par rapport à toutes les mesures de la base. null si indisponible.
+  Future<BarometerResult?> fetchBarometer(
+      double download, double upload, double ping) async {
+    try {
+      final res = await _dio.get('/api/dashboard/barometer', queryParameters: {
+        'download': download,
+        'upload': upload,
+        'ping': ping,
+      });
+      if (res.data is Map) {
+        return BarometerResult.fromJson(Map<String, dynamic>.from(res.data));
+      }
+      return null;
+    } catch (e) {
+      logger.w('Baromètre indisponible: $e');
+      return null;
     }
   }
 }

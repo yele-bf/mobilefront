@@ -13,8 +13,18 @@
          dont l'autorisation par Google Play est longue et incertaine. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
+    <!-- Débit temps réel : service de premier plan de type dataSync —
+         permission obligatoire à partir d'Android 14 (targetSdk 34+).
+         Sans elle, startForeground() lève une exception et l'application
+         plante au démarrage du service. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
     <!-- Android 13+ : la notification permanente du service doit être autorisée -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Compteur de débit en surimpression (taille de l'horloge) : sans
+         cette permission, l'icône de notification est forcée par Android à
+         la taille du slot d'icônes, illisible. Permission spéciale : se
+         demande via Settings.ACTION_MANAGE_OVERLAY_PERMISSION. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 
     <application
@@ -50,6 +60,13 @@
             android:name=".SignalCollectorService"
             android:exported="false"
             android:foregroundServiceType="location"/>
+
+        <!-- Débit temps réel : lecture des compteurs de trafic (API publique,
+             aucune permission spéciale) et mise à jour de la notification. -->
+        <service
+            android:name=".ThroughputService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"/>
 
         <!-- Reprise de la collecte après redémarrage du téléphone -->
         <receiver

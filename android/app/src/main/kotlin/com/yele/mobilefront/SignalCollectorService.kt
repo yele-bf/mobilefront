@@ -18,6 +18,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.Process
+import android.net.TrafficStats
 import android.telephony.TelephonyManager
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -58,6 +60,14 @@ class SignalCollectorService : Service() {
         // IMP-13 : UUID d'appareil anonyme (généré côté Dart, repris ici pour
         // que les relèves passives soient traçables au même appareil).
         const val KEY_DEVICE_ID = "device_id"
+
+        // IMP-01d — Comptage du trafic de la collecte en arrière-plan : le
+        // suivi de consommation (UsageTrackerService côté Dart) ne voit que le
+        // trafic quand l'app est au premier plan. Le service relève ici les
+        // compteurs UID (TrafficStats) autour de chaque relève et persiste le
+        // delta dans les prefs ; l'app le réintègre dans la box Hive au
+        // démarrage / au retour au premier plan.
+        const val KEY_BG_USAGE_BYTES = "bg_usage_bytes"
 
         const val DEFAULT_INTERVAL_MIN = 15
 
@@ -205,6 +215,10 @@ class SignalCollectorService : Service() {
         if (collecting) return
         collecting = true
 
+        // IMP-01d — Instantané des compteurs réseau de l'app avant la relève.
+        val rxBefore = TrafficStats.getUidRxBytes(Process.myUid())
+        val txBefore = TrafficStats.getUidTxBytes(Process.myUid())
+
         requestLocation { location ->
             val sample = buildSample(location)
             val tech = sample.optString("cellularTech", "").ifEmpty { "réseau inconnu" }
@@ -220,6 +234,17 @@ class SignalCollectorService : Service() {
 
             Thread {
                 val ok = postSample(sample)
+                // IMP-01d — Volume consommé par cette relève (requête HTTP de
+                // télémétrie, ~1 Ko) : persisté, réintégré par l'app.
+                val rxAfter = TrafficStats.getUidRxBytes(Process.myUid())
+                val txAfter = TrafficStats.getUidTxBytes(Process.myUid())
+                var delta = 0L
+                if (rxBefore != TrafficStats.UNSUPPORTED.toLong() &&
+                    txBefore != TrafficStats.UNSUPPORTED.toLong() &&
+                    rxAfter >= rxBefore && txAfter >= txBefore
+                ) {
+                    delta = (rxAfter - rxBefore) + (txAfter - txBefore)
+                }
                 handler.post {
                     collecting = false
                     if (ok) {
@@ -228,6 +253,14 @@ class SignalCollectorService : Service() {
                             .putLong(KEY_LAST_AT, System.currentTimeMillis())
                             .putInt(KEY_COUNT, p.getInt(KEY_COUNT, 0) + 1)
                             .apply()
+                        // IMP-01d — On ne compte que les relèves envoyées avec
+                        // succès (une relève ignorée sans position ne consomme
+                        // rien ; un échec d'envoi sera compté à la relève
+                        // suivante qui réessaiera).
+                        if (ok && delta > 0) {
+                            val usage = p.getLong(KEY_BG_USAGE_BYTES, 0L) + delta
+                            p.edit().putLong(KEY_BG_USAGE_BYTES, usage).apply()
+                        }
                         updateNotification("Dernière relève : $tech, $dbm")
                     } else {
                         updateNotification("Envoi impossible — nouvelle tentative dans ${intervalMin} min")

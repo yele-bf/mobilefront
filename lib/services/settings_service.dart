@@ -148,6 +148,37 @@ class SettingsService {
     }
   }
 
+  // ── Suivi de consommation ───────────────────────────────────────────────
+
+  /// Seuil mensuel de consommation (Go), 0 = pas d'alerte.
+  static final ValueNotifier<double> monthlyLimitGbNotifier =
+      ValueNotifier(0);
+
+  /// Débit temps réel dans la barre d'état — désactivé par défaut : c'est le
+  /// seul élément de l'app qui consomme des ressources en continu (batterie).
+  static final ValueNotifier<bool> realtimeSpeedNotifier =
+      ValueNotifier(false);
+
+  static const _kMonthlyLimitGb = 'monthlyLimitGb';
+
+  double get monthlyLimitGb =>
+      _b.get(_kMonthlyLimitGb) as double? ?? 0;
+
+  set monthlyLimitGb(double gb) {
+    _set(_kMonthlyLimitGb, gb);
+    monthlyLimitGbNotifier.value = gb;
+  }
+
+  static const _kRealtimeSpeed = 'realtimeSpeed';
+
+  bool get realtimeSpeed =>
+      _b.get(_kRealtimeSpeed) as bool? ?? false;
+
+  set realtimeSpeed(bool v) {
+    _set(_kRealtimeSpeed, v);
+    realtimeSpeedNotifier.value = v;
+  }
+
   // ── Style de fond ────────────────────────────────────────────────────────
 
   static const _kAppStyle = 'appStyle';

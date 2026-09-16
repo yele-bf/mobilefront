@@ -17,6 +17,7 @@ class YeleDrawer extends StatelessWidget {
       '/browsing': AppLocale.t('Test de navigation', 'Browsing test'),
       '/streaming': AppLocale.t('Test de streaming', 'Streaming test'),
       '/history': AppLocale.t('Historique', 'History'),
+      '/usage': AppLocale.t('Consommation', 'Data usage'),
       '/coverage': AppLocale.t('Cartes de couverture', 'Coverage maps'),
       '/settings': AppLocale.t('Réglages', 'Settings'),
     };
@@ -33,6 +34,7 @@ class YeleDrawer extends StatelessWidget {
             _item(context, Icons.play_circle_outline, labels['/streaming']!,
                 '/streaming'),
             _item(context, Icons.history, labels['/history']!, '/history'),
+            _item(context, Icons.data_usage, labels['/usage']!, '/usage'),
             _item(context, Icons.map_outlined, labels['/coverage']!,
                 '/coverage'),
             _item(context, Icons.settings, labels['/settings']!, '/settings'),

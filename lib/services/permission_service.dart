@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:logger/logger.dart';
 
+import '../widgets/app_localizations.dart';
+
 /// État d'une permission du point de vue de l'app.
 enum PermissionState {
   /// Accordée (ou sans objet, ex. notifications avant Android 13).
@@ -27,27 +29,32 @@ enum YelePermission {
   phoneState,
   notifications;
 
-  /// Nom court affiché dans les Réglages.
+  /// Nom court affiché dans les Réglages (localisé fr/en, ISS-12).
   String get label {
     switch (this) {
       case YelePermission.location:
-        return 'Localisation';
+        return AppLocale.t('Localisation', 'Location');
       case YelePermission.phoneState:
-        return 'Réseau mobile';
+        return AppLocale.t('Réseau mobile', 'Mobile network');
       case YelePermission.notifications:
-        return 'Notifications';
+        return AppLocale.t('Notifications', 'Notifications');
     }
   }
 
-  /// Explication en langage simple de l'usage de la permission.
+  /// Explication en langage simple de l'usage de la permission (localisée).
   String get description {
     switch (this) {
       case YelePermission.location:
-        return 'Géolocalise chaque test sur la carte de couverture.';
+        return AppLocale.t('Géolocalise chaque test sur la carte de couverture.',
+            'Geo-locates each test on the coverage map.');
       case YelePermission.phoneState:
-        return 'Détecte l\'opérateur de la carte SIM et la technologie 2G/3G/4G/5G.';
+        return AppLocale.t(
+            'Détecte l\'opérateur de la carte SIM et la technologie 2G/3G/4G/5G.',
+            'Detects the SIM operator and the 2G/3G/4G/5G technology.');
       case YelePermission.notifications:
-        return 'Affiche la notification de la collecte de couverture en arrière-plan.';
+        return AppLocale.t(
+            'Affiche la notification de la collecte de couverture en arrière-plan.',
+            'Shows the notification of background coverage collection.');
     }
   }
 

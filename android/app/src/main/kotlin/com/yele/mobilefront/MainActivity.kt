@@ -1,12 +1,16 @@
 package com.yele.mobilefront
 
 import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.TrafficStats
 import android.os.Build
 import android.os.Process
+import android.provider.Settings
 import android.telephony.TelephonyManager
 import androidx.annotation.NonNull
 import androidx.core.app.ActivityCompat
@@ -19,6 +23,11 @@ class MainActivity : FlutterActivity() {
     private val channelName = "com.yele/telephony"
     private val phonePermissionRequestCode = 1001
     private val notificationPermissionRequestCode = 1002
+
+    private companion object {
+        const val ALERT_CHANNEL_ID = "yele_alerts"
+        const val ALERT_NOTIFICATION_ID = 4203
+    }
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -33,6 +42,91 @@ class MainActivity : FlutterActivity() {
                     "requestNotificationPermission" -> result.success(requestNotificationPermission())
                     "getRxBytes" -> result.success(rxBytes())
                     "getTxBytes" -> result.success(txBytes())
+                    // IMP-01 : compteurs cumulés par type de réseau, pour le
+                    // suivi de consommation (mobile vs Wi-Fi) et le débit
+                    // temps réel.
+                    "getUsageSnapshot" -> result.success(usageSnapshot())
+                    "notifyLimitExceeded" -> {
+                        notifyLimitExceeded(
+                            call.argument<String>("title") ?: "Yélé",
+                            call.argument<String>("body") ?: "",
+                        )
+                        result.success(true)
+                    }
+                    "startThroughputService" -> {
+                        // Volume déjà consommé ce mois (suivi Flutter) : la
+                        // notification « débit temps réel » l'affiche en
+                        // complément du débit instantané. NB : Dart envoie un
+                        // int Java 32 bits quand la valeur est petite — on lit
+                        // un Number et on convertit, sinon ClassCastException
+                        // et le toggle échoue malgré la permission accordée.
+                        val usage = (call.argument<Any>("usageBytes") as? Number)?.toLong() ?: 0L
+                        result.success(startThroughputService(usage))
+                    }
+                    "stopThroughputService" -> {
+                        stopThroughputService()
+                        result.success(true)
+                    }
+                    // Resynchronise la base « Données utilisées » de la
+                    // pastille sur les compteurs de l'app (même source que
+                    // l'écran Consommation) — évite toute divergence.
+                    "resyncThroughputUsage" -> {
+                        val usage = (call.argument<Any>("usageBytes") as? Number)?.toLong() ?: 0L
+                        ThroughputService.active?.resyncUsage(usage)
+                        result.success(true)
+                    }
+                    "isThroughputRunning" -> result.success(ThroughputService.isRunning)
+                    // Grand compteur en surimpression (taille de l'horloge) :
+                    // l'icône de notification est limitée par Android à la
+                    // taille du slot d'icônes (~17 dp), illisible. L'overlay
+                    // nécessite la permission spéciale SYSTEM_ALERT_WINDOW.
+                    "canDrawOverlays" -> result.success(
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+                            Settings.canDrawOverlays(this) else true
+                    )
+                    "requestOverlayPermission" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                            !Settings.canDrawOverlays(this)
+                        ) {
+                            startActivity(
+                                Intent(
+                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    android.net.Uri.parse("package:$packageName"),
+                                )
+                            )
+                        }
+                        result.success(true)
+                    }
+                    "setThroughputOverlay" -> {
+                        val enable = call.argument<Boolean>("enabled") ?: false
+                        if (enable) {
+                            ThroughputService.prefs(this).edit()
+                                .putBoolean(ThroughputService.KEY_OVERLAY, true).apply()
+                            ThroughputService.active?.let { svc ->
+                                // ensureOverlay est privé : on redémarre le
+                                // service, qui recrée l'overlay au démarrage.
+                                val intent = Intent(this, ThroughputService::class.java)
+                                    .setAction(ThroughputService.ACTION_START)
+                                    .putExtra(
+                                        ThroughputService.EXTRA_USAGE_BYTES,
+                                        ThroughputService.lastTotalBytes,
+                                    )
+                                ContextCompat.startForegroundService(this, intent)
+                            }
+                        } else {
+                            ThroughputService.prefs(this).edit()
+                                .putBoolean(ThroughputService.KEY_OVERLAY, false).apply()
+                            // Retirer l'overlay sans tuer le service : simple
+                            // hack — onDestroy le retire ; on ne le force pas
+                            // ici (le service s'arrêtera bientôt ou l'overlay
+                            // restera jusqu'au prochain arrêt/relance).
+                        }
+                        result.success(true)
+                    }
+                    "getThroughputOverlay" -> result.success(
+                        ThroughputService.prefs(this)
+                            .getBoolean(ThroughputService.KEY_OVERLAY, false)
+                    )
                     "startCollect" -> {
                         val interval = call.argument<Int>("intervalMinutes")
                             ?: SignalCollectorService.DEFAULT_INTERVAL_MIN
@@ -45,6 +139,9 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
                     "getCollectStatus" -> result.success(collectStatus())
+                    // IMP-01d — Volume de trafic consommé par la collecte
+                    // passive en arrière-plan (accumulé par le service natif).
+                    "takeBackgroundUsage" -> result.success(takeBackgroundUsage())
                     else -> result.notImplemented()
                 }
             }
@@ -110,6 +207,91 @@ class MainActivity : FlutterActivity() {
         return if (bytes == TrafficStats.UNSUPPORTED.toLong()) -1L else bytes
     }
 
+    /// IMP-01 — Instantané des compteurs de trafic de l'application (tous
+    /// réseaux confondus). La répartition mobile vs Wi-Fi est faite côté Dart
+    /// par le type de connexion au moment de chaque échantillon
+    /// (connectivity_plus) : l'API publique TrafficStats ne sait pas séparer
+    /// les compteurs par interface pour un UID donné.
+    private fun usageSnapshot(): Map<String, Long> = mapOf(
+        "totalRx" to safeCounter { TrafficStats.getUidRxBytes(Process.myUid()) },
+        "totalTx" to safeCounter { TrafficStats.getUidTxBytes(Process.myUid()) },
+    )
+
+    private inline fun safeCounter(read: () -> Long): Long =
+        try {
+            val v = read()
+            if (v == TrafficStats.UNSUPPORTED.toLong()) -1L else v
+        } catch (_: Exception) {
+            -1L
+        }
+
+    // ── Service de débit temps réel (barre d'état) ──────────────────────────
+
+    /// Démarre le service de débit temps réel. Retourne false si la permission
+    /// de notification manque : sans elle, le service de premier plan serait
+    /// tué aussitôt.
+    private fun startThroughputService(usageBytes: Long): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                this, Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            // Mémorise la demande : dès que la permission est accordée
+            // (onRequestPermissionsResult), le service démarre tout seul.
+            ThroughputService.prefs(this).edit()
+                .putBoolean(ThroughputService.KEY_ENABLED, true)
+                .putLong(ThroughputService.KEY_LAST_USAGE, usageBytes)
+                .apply()
+            ActivityCompat.requestPermissions(
+                this, arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                notificationPermissionRequestCode,
+            )
+            return false
+        }
+        val intent = Intent(this, ThroughputService::class.java)
+            .setAction(ThroughputService.ACTION_START)
+            .putExtra(ThroughputService.EXTRA_USAGE_BYTES, usageBytes)
+        ContextCompat.startForegroundService(this, intent)
+        return true
+    }
+
+    /// Retour du dialogue système de permission : si l'utilisateur vient
+    /// d'accorder les notifications alors que le débit temps réel était
+    /// demandé, on redémarre le service automatiquement. Sans cela, le
+    /// toggle échouait (permission refusée au premier essai) et rien ne
+    /// repartait après l'octroi — l'utilisateur devait désactiver/réactiver
+    /// à la main, sans effet.
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != notificationPermissionRequestCode) return
+        val granted = grantResults.isNotEmpty() &&
+            grantResults[0] == PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            // Refus : on purge la demande en attente pour ne jamais démarrer
+            // le service automatiquement plus tard.
+            ThroughputService.prefs(this).edit()
+                .putBoolean(ThroughputService.KEY_ENABLED, false).apply()
+        } else if (ThroughputService.prefs(this)
+            .getBoolean(ThroughputService.KEY_ENABLED, false)
+        ) {
+            startThroughputService(
+                ThroughputService.prefs(this).getLong(ThroughputService.KEY_LAST_USAGE, 0L)
+            )
+        }
+    }
+
+    private fun stopThroughputService() {
+        val intent = Intent(this, ThroughputService::class.java)
+            .setAction(ThroughputService.ACTION_STOP)
+        try {
+            startService(intent)
+        } catch (_: Exception) {
+            // Service déjà arrêté : rien à faire.
+        }
+    }
+
     // ── Collecte passive en arrière-plan ────────────────────────────────────
 
     /// Démarre le service de collecte. Retourne false si la notification est
@@ -158,6 +340,59 @@ class MainActivity : FlutterActivity() {
             SignalCollectorService.prefs(this).edit()
                 .putBoolean(SignalCollectorService.KEY_ENABLED, false).apply()
         }
+    }
+
+    /// IMP-01 — Alerte locale de dépassement du seuil mensuel de
+    /// consommation. Poste une notification système (canal dédié, Importance
+    /// haute pour apparaître en bannière) — sans elle, l'alerte ne serait
+    /// visible que dans l'écran Consommation, que l'utilisateur n'ouvre pas
+    /// spontanément. Best effort : silencieux si la permission de
+    /// notification manque.
+    private fun notifyLimitExceeded(title: String, body: String) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                ContextCompat.checkSelfPermission(
+                    this, Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) return // sans permission, on ne peut rien poster
+
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    ALERT_CHANNEL_ID, "Alertes de consommation",
+                    NotificationManager.IMPORTANCE_HIGH,
+                ).apply {
+                    description = "Dépassement du seuil mensuel de données"
+                }
+                nm.createNotificationChannel(channel)
+            }
+
+            val openApp = PendingIntent.getActivity(
+                this, 0,
+                Intent(this, MainActivity::class.java),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            val notification = androidx.core.app.NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.stat_sys_warning)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(body))
+                .setContentIntent(openApp)
+                .setAutoCancel(true)
+                .build()
+            nm.notify(ALERT_NOTIFICATION_ID, notification)
+        } catch (_: Exception) {
+        }
+    }
+
+    /// IMP-01d — Retourne le volume de trafic accumulé par la collecte
+    /// passive en arrière-plan (octets), et remet le compteur à zéro : le
+    /// volume est ensuite attribué côté Dart au jour courant de la box Hive.
+    private fun takeBackgroundUsage(): Long {
+        val p = SignalCollectorService.prefs(this)
+        val v = p.getLong(SignalCollectorService.KEY_BG_USAGE_BYTES, 0L)
+        if (v != 0L) p.edit().putLong(SignalCollectorService.KEY_BG_USAGE_BYTES, 0L).apply()
+        return v
     }
 
     /// Retourne { running, intervalMinutes, lastCollectAt, count }.

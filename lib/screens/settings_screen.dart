@@ -1,10 +1,14 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../constants/config.dart';
 import '../services/background_collection_service.dart';
 import '../services/permission_service.dart';
 import '../services/settings_service.dart';
+import '../services/throughput_service.dart';
 import '../theme/yele_theme.dart';
 import '../widgets/app_localizations.dart';
 import '../widgets/yele_scaffold.dart';
@@ -34,6 +38,14 @@ class _SettingsScreenState extends State<SettingsScreen>
   SpeedUnit _speedUnit = SpeedUnit.auto;
   AppStyle _appStyle = AppStyle.green;
 
+  /// IMP-01 — Suivi de consommation : seuil mensuel + débit temps réel.
+  double _monthlyLimitGb = 0;
+  bool _realtimeSpeed = false;
+
+  /// Grand compteur en surimpression (taille de l'horloge) — voir
+  /// [_toggleBigDisplay].
+  bool _bigDisplay = false;
+
   @override
   void initState() {
     super.initState();
@@ -50,12 +62,27 @@ class _SettingsScreenState extends State<SettingsScreen>
     if (mounted) setState(() {});
   }
 
+  Future<void> _readOverlayState() async {
+    try {
+      const channel = MethodChannel('com.yele/telephony');
+      final on = await channel.invokeMethod<bool>('getThroughputOverlay') ?? false;
+      if (!mounted) return;
+      setState(() => _bigDisplay = on);
+    } catch (_) {}
+  }
+
   void _loadSettings() {
     setState(() {
       _language = _settings.language;
       _defaultTest = _settings.defaultTest;
       _speedUnit = _settings.speedUnit;
       _appStyle = _settings.appStyle;
+      if (_usageSupported) {
+        _monthlyLimitGb = _settings.monthlyLimitGb;
+        _realtimeSpeed = _settings.realtimeSpeed;
+        // État initial de l'overlay : lu dans les préférences natives.
+        _readOverlayState();
+      }
     });
   }
 
@@ -73,6 +100,9 @@ class _SettingsScreenState extends State<SettingsScreen>
       _refreshStatus();
       _refreshPermissions();
       _loadSettings();
+      // IMP-01 : si l'utilisateur a arrêté le débit temps réel depuis la
+      // notification, on resynchronise le réglage.
+      ThroughputService.instance.syncFromNative();
     }
   }
 
@@ -126,6 +156,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               _pickAppStyle,
             ),
             ..._permissionsSection(),
+            if (_usageSupported) ..._usageSection(),
             if (_collect.isSupported) ..._collectSection(),
             const SizedBox(height: 24),
           ],
@@ -142,18 +173,28 @@ class _SettingsScreenState extends State<SettingsScreen>
   List<Widget> _permissionsSection() {
     final web = kIsWeb;
     return [
-      _section('Autorisations'),
+      _section(AppLocale.t('Autorisations', 'Permissions')),
       Container(
         padding: const EdgeInsets.fromLTRB(18, 2, 18, 10),
         child: Text(
           web
-              ? 'Ces autorisations s\'appliquent à l\'application Android '
+              ? AppLocale.t(
+                  'Ces autorisations s\'appliquent à l\'application Android '
                   'installée sur le téléphone. Sur le web, aucune permission '
-                  'système n\'est requise : la localisation utilise l\'adresse IP.'
-              : 'Localisation et Réseau mobile sont obligatoires pour des '
+                  'système n\'est requise : la localisation utilise '
+                  'l\'adresse IP.',
+                  'These permissions apply to the Android app installed on '
+                  'your phone. On the web, no system permission is required: '
+                  'location uses your IP address.')
+              : AppLocale.t(
+                  'Localisation et Réseau mobile sont obligatoires pour des '
                   'mesures exploitables (position sur la carte, opérateur, '
                   'technologie). Notifications est facultative : elle sert '
                   'uniquement à la collecte de couverture en arrière-plan.',
+                  'Location and Mobile network are required for meaningful '
+                  'measurements (map position, operator, technology). '
+                  'Notifications is optional: it is only used by background '
+                  'coverage collection.'),
           style: TextStyle(fontSize: 13, color: YeleColors.surface.muted),
         ),
       ),
@@ -203,7 +244,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                 Row(
                   children: [
                     Flexible(
-                      child:                Text(p.label,
+                      child: Text(p.label,
                           style: TextStyle(
                               fontSize: 16, color: YeleColors.surface.ink)),
                     ),
@@ -216,7 +257,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
-                        required ? 'Obligatoire' : 'Facultative',
+                        required
+                            ? AppLocale.t('Obligatoire', 'Required')
+                            : AppLocale.t('Facultative', 'Optional'),
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
@@ -233,8 +276,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                 if (deniedForever) ...[
                   const SizedBox(height: 5),
                   Text(
-                    'Refus définitif : touchez la bascule pour ouvrir les '
-                    'réglages Android et autoriser.',
+                    AppLocale.t(
+                      'Refus définitif : touchez la bascule pour ouvrir les '
+                      'réglages Android et autoriser.',
+                      'Permanently denied: tap the switch to open the Android '
+                      'settings and allow it.',
+                    ),
                     style: const TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w600,
@@ -246,11 +293,18 @@ class _SettingsScreenState extends State<SettingsScreen>
                   const SizedBox(height: 5),
                   Text(
                     web
-                        ? 'Non requise sur le web (la localisation utilise '
-                            'l\'adresse IP).'
-                        : 'Non requise sur cette plateforme.',
+                        ? AppLocale.t(
+                            'Non requise sur le web (la localisation utilise '
+                            'l\'adresse IP).',
+                            'Not required on the web (location uses the IP '
+                            'address).')
+                        : AppLocale.t(
+                            'Non requise sur cette plateforme.',
+                            'Not required on this platform.'),
                     style: TextStyle(
-                        fontSize: 12.5, color: YeleColors.surface.muted, height: 1.3),
+                        fontSize: 12.5,
+                        color: YeleColors.surface.muted,
+                        height: 1.3),
                   ),
                 ],
                 if (gpsWarn) ...[
@@ -262,8 +316,12 @@ class _SettingsScreenState extends State<SettingsScreen>
                       const SizedBox(width: 5),
                       Expanded(
                         child: Text(
-                          'GPS du téléphone éteint : les tests resteront '
-                          'bloqués tant qu\'il est désactivé.',
+                          AppLocale.t(
+                            'GPS du téléphone éteint : les tests resteront '
+                            'bloqués tant qu\'il est désactivé.',
+                            'Phone GPS is off: tests will stay blocked while '
+                            'it is disabled.',
+                          ),
                           style: const TextStyle(
                               fontSize: 12.5,
                               color: YeleColors.warn,
@@ -307,11 +365,17 @@ class _SettingsScreenState extends State<SettingsScreen>
 
     if (!target) {
       final go = await _showPermissionDialog(
-        title: 'Désactiver « ${p.label} » ?',
-        message: 'Yélé ne peut pas retirer elle-même une autorisation déjà '
-            'accordée à Android. La page « Applications → Yélé » va '
-            's\'ouvrir : désactivez-y l\'interrupteur « ${p.label} », puis '
-            'revenez dans l\'application.',
+        title: AppLocale.t(
+            'Désactiver « ${p.label} » ?', 'Turn off "${p.label}"?'),
+        message: AppLocale.t(
+          'Yélé ne peut pas retirer elle-même une autorisation déjà accordée '
+          'à Android. La page « Applications → Yélé » va s\'ouvrir : '
+          'désactivez-y l\'interrupteur « ${p.label} », puis revenez dans '
+          'l\'application.',
+          'Yélé cannot revoke a permission already granted to Android. The '
+          '"Apps → Yélé" page will open: turn off "${p.label}" there, then '
+          'return to the app.',
+        ),
       );
       if (go != true || !mounted) return;
       await _openSettings(p);
@@ -320,10 +384,15 @@ class _SettingsScreenState extends State<SettingsScreen>
 
     if (state == PermissionState.deniedForever) {
       final go = await _showPermissionDialog(
-        title: 'Autoriser « ${p.label} » ?',
-        message: 'Android a mémorisé votre refus et ne réaffichera plus la '
-            'demande. La page « Applications → Yélé » va s\'ouvrir : '
-            'autorisez-y « ${p.label} », puis revenez dans l\'application.',
+        title: AppLocale.t('Autoriser « ${p.label} » ?', 'Allow "${p.label}"?'),
+        message: AppLocale.t(
+          'Android a mémorisé votre refus et ne réaffichera plus la demande. '
+          'La page « Applications → Yélé » va s\'ouvrir : autorisez-y '
+          '« ${p.label} », puis revenez dans l\'application.',
+          'Android remembered your denial and will not show the prompt again. '
+          'The "Apps → Yélé" page will open: allow "${p.label}" there, then '
+          'return to the app.',
+        ),
       );
       if (go != true || !mounted) return;
       await _openSettings(p);
@@ -349,11 +418,11 @@ class _SettingsScreenState extends State<SettingsScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Annuler'),
+            child: Text(AppLocale.t('Annuler', 'Cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Ouvrir les réglages'),
+            child: Text(AppLocale.t('Ouvrir les réglages', 'Open settings')),
           ),
         ],
       ),
@@ -371,10 +440,15 @@ class _SettingsScreenState extends State<SettingsScreen>
     setState(() => _busyPerms.remove(p));
     final after = _permStates[p];
     if (after == PermissionState.deniedForever) {
-      _snack('Refus définitif : touchez la bascule pour ouvrir les réglages '
-          'Android et autoriser.');
+      _snack(AppLocale.t(
+          'Refus définitif : touchez la bascule pour ouvrir les réglages '
+          'Android et autoriser.',
+          'Permanently denied: tap the switch to open the Android settings '
+          'and allow it.'));
     } else if (after == PermissionState.denied) {
-      _snack('Si la fenêtre système est affichée, accordez l\'autorisation.');
+      _snack(AppLocale.t(
+          'Si la fenêtre système est affichée, accordez l\'autorisation.',
+          'If the system dialog is shown, grant the permission.'));
     }
   }
 
@@ -382,14 +456,265 @@ class _SettingsScreenState extends State<SettingsScreen>
     await _perms.openAppSettings();
   }
 
+  // ── Suivi de consommation ─────────────────────────────────────────────
+
+  bool get _usageSupported =>
+      !kIsWeb && !Platform.isIOS;
+
+  List<Widget> _usageSection() {
+    return [
+      _section(AppLocale.t('Suivi de consommation', 'Data usage tracking')),
+      // Seuil mensuel en Go (0 = alerte désactivée) — l'alerte locale est
+      // levée par UsageTrackerService au franchissement.
+      _choiceItem(
+        AppLocale.t('Seuil mensuel', 'Monthly limit'),
+        _monthlyLimitGb <= 0
+            ? AppLocale.t('Aucune alerte', 'No alert')
+            : '${AppLocale.t('Alerte à', 'Alert at')} '
+                '${_formatGb(_monthlyLimitGb)} ${AppLocale.t('Go', 'GB')}',
+        _pickMonthlyLimit,
+      ),
+      // Débit temps réel : désactivé par défaut — seul élément qui consomme
+      // des ressources en continu (notification de premier plan + mesure/s).
+      _toggle(
+        AppLocale.t('Débit en temps réel', 'Real-time speed'),
+        AppLocale.t(
+            'Affiche le débit dans la barre d\'état, même application fermée '
+            '(consomme un peu plus de batterie)',
+            'Shows the speed in the status bar, even with the app closed '
+            '(uses a bit more battery)'),
+        _realtimeSpeed,
+        _toggleRealtimeSpeed,
+      ),
+      if (_realtimeSpeed) ...[
+        _choiceItem(
+          AppLocale.t('Affichage en grand (compteur lisible)',
+              'Large display (readable counter)'),
+          _bigDisplay
+              ? AppLocale.t('Activé — compteur à la taille de l\'horloge',
+                  'On — counter the size of the clock')
+              : AppLocale.t(
+                  'Désactivé — compteur minuscule (limite Android)',
+                  'Off — tiny counter (Android limit)'),
+          _toggleBigDisplay,
+        ),
+      ],
+    ];
+  }
+
+  /// Grand compteur en surimpression : la taille des icônes de notification
+  /// est limitée par Android (~17 dp) — illisible. La surimpression dessine
+  /// le débit à la taille de l'horloge. Nécessite la permission spéciale
+  /// « Afficher par-dessus les autres applications ».
+  Future<void> _toggleBigDisplay() async {
+    const channel = MethodChannel('com.yele/telephony');
+    if (!_bigDisplay) {
+      try {
+        final ok = await channel.invokeMethod<bool>('canDrawOverlays') ?? false;
+        if (!ok) {
+          await channel.invokeMethod('requestOverlayPermission');
+          if (!mounted) return;
+          _snack(AppLocale.t(
+              'Autorisez « Afficher par-dessus les autres applications », '
+              'puis revenez : le compteur s\'affichera en grand.',
+              'Allow "Display over other apps", then come back: the '
+              'counter will show up large.'));
+        }
+        const channel2 = MethodChannel('com.yele/telephony');
+        await channel2.invokeMethod('setThroughputOverlay', {'enabled': true});
+        if (!mounted) return;
+        setState(() => _bigDisplay = true);
+      } catch (_) {}
+    } else {
+      try {
+        const channel3 = MethodChannel('com.yele/telephony');
+        await channel3.invokeMethod('setThroughputOverlay', {'enabled': false});
+      } catch (_) {}
+      if (!mounted) return;
+      setState(() => _bigDisplay = false);
+    }
+  }
+
+  /// Formatage d'un seuil en Go : sans décimale si entier, sinon une décimale.
+  String _formatGb(double gb) =>
+      gb % 1 == 0 ? gb.toStringAsFixed(0) : gb.toStringAsFixed(1);
+
+  /// Choix du seuil mensuel : valeurs prédéfinies ou saisie manuelle au
+  /// clavier (retour utilisateur : les paliers fixes ne suffisent pas).
+  Future<void> _pickMonthlyLimit() async {
+    // Ordre voulu (retour utilisateur) : Aucune alerte, Saisir manuellement,
+    // puis les paliers croissants. Le palier 100 Go a été retiré.
+    const choices = <double>[1, 2, 5, 10, 20, 50];
+    final gbUnit = AppLocale.t('Go', 'GB');
+    Icon? checkIcon(bool selected) => selected
+        ? const Icon(Icons.check, color: YeleColors.primary, size: 22)
+        : null;
+    final picked = await showModalBottomSheet<double>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        // Défilement obligatoire : sans lui, sur un petit écran la ligne
+        // « Saisir manuellement… » était coupée et invisible (retour terrain).
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 8),
+              child: Text(
+                  AppLocale.t('Seuil mensuel de données mobiles',
+                      'Monthly mobile data limit'),
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w700)),
+            ),
+            // 1. Aucune alerte (valeur 0).
+            ListTile(
+              title: Text(AppLocale.t('Aucune alerte', 'No alert')),
+              trailing: checkIcon(_monthlyLimitGb <= 0),
+              onTap: () => Navigator.pop(ctx, 0.0),
+            ),
+            // 2. Saisie manuelle libre (0,1–9999 Go).
+            ListTile(
+              leading: const Icon(Icons.edit, size: 20),
+              title: Text(_isPresetLimit(_monthlyLimitGb)
+                  ? AppLocale.t('Saisir manuellement…', 'Enter manually…')
+                  : '${AppLocale.t('Personnalisé', 'Custom')} : ${_formatGb(_monthlyLimitGb)} $gbUnit'),
+              trailing: checkIcon(!_isPresetLimit(_monthlyLimitGb)),
+              onTap: () async {
+                Navigator.pop(ctx); // ferme la feuille de choix
+                final manual = await _promptManualLimit();
+                if (manual == null || manual == _monthlyLimitGb) return;
+                if (!mounted) return;
+                setState(() => _monthlyLimitGb = manual);
+                _settings.monthlyLimitGb = manual;
+              },
+            ),
+            // 3+. Paliers prédéfinis croissants.
+            for (final gb in choices)
+              ListTile(
+                title: Text('${_formatGb(gb)} $gbUnit'),
+                trailing: checkIcon(gb == _monthlyLimitGb),
+                onTap: () => Navigator.pop(ctx, gb),
+              ),
+            const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked == null || picked == _monthlyLimitGb) return;
+    setState(() => _monthlyLimitGb = picked);
+    _settings.monthlyLimitGb = picked;
+  }
+
+  /// Saisie clavier libre du seuil mensuel (Go), avec validation : valeur
+  /// décimale acceptée (virgule ou point), bornée à 0,1–9999 Go.
+  Future<double?> _promptManualLimit() {
+    final controller = TextEditingController(
+      text: _monthlyLimitGb > 0 ? _formatGb(_monthlyLimitGb) : '',
+    );
+    final errorText = AppLocale.t(
+        'Entrez un seuil entre 0,1 et 9999 Go.',
+        'Enter a limit between 0.1 and 9999 GB.');
+    return showDialog<double>(
+      context: context,
+      builder: (ctx) {
+        String? error;
+        void submit() {
+          final parsed = _parseGb(controller.text);
+          if (parsed == null) {
+            // Rester dans le dialogue et signaler l'erreur plutôt que de
+            // fermer silencieusement.
+            error = errorText;
+            (ctx as Element).markNeedsBuild();
+          } else {
+            Navigator.pop(ctx, parsed);
+          }
+        }
+
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            title:
+                Text(AppLocale.t('Seuil mensuel (Go)', 'Monthly limit (GB)')),
+            content: TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                // Chiffres + un séparateur décimal + 2 décimales max.
+                FilteringTextInputFormatter.allow(RegExp(r'^\d*[.,]?\d{0,2}')),
+              ],
+              decoration: InputDecoration(
+                hintText: AppLocale.t('Ex. : 3,5', 'E.g. 3.5'),
+                suffixText: AppLocale.t('Go', 'GB'),
+                errorText: error,
+              ),
+              onSubmitted: (_) => submit(),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(AppLocale.t('Annuler', 'Cancel')),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final parsed = _parseGb(controller.text);
+                  if (parsed == null) {
+                    setDialogState(() => error = errorText);
+                  } else {
+                    Navigator.pop(ctx, parsed);
+                  }
+                },
+                child: Text(AppLocale.t('Valider', 'OK')),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Analyse d'une valeur de seuil saisie au clavier : virgule ou point,
+  /// bornée à 0,1–9999 Go. null si invalide.
+  double? _parseGb(String raw) {
+    final v = double.tryParse(raw.trim().replaceAll(',', '.'));
+    if (v == null || v <= 0) return null;
+    return v.clamp(0.1, 9999.0).toDouble();
+  }
+
+  /// Le seuil courant est-il un palier prédéfini (sinon : valeur
+  /// personnalisée saisie manuellement) ?
+  bool _isPresetLimit(double gb) =>
+      gb <= 0 || const <double>[1, 2, 5, 10, 20, 50].contains(gb);
+
+  Future<void> _toggleRealtimeSpeed(bool value) async {
+    setState(() => _realtimeSpeed = value);
+    _settings.realtimeSpeed = value;
+    final ok = await ThroughputService.instance.applySetting(value);
+    if (!ok && value && mounted) {
+      // Permission de notification manquante : la popup système vient
+      // d'être affichée (côté natif) et le service démarre AUTOMATIQUEMENT
+      // dès que l'utilisateur accepte (onRequestPermissionsResult). Le
+      // réglage reste ON : inutile de demander de réactiver à la main —
+      // c'était précisément le bug signalé (réactivation sans effet).
+      _snack(AppLocale.t(
+          'Accordez la notification : le débit temps réel démarrera '
+          'automatiquement.',
+          'Grant the notification: real-time speed will start '
+          'automatically.'));
+    }
+  }
+
   // ── Collecte de couverture ────────────────────────────────────────────────
 
   List<Widget> _collectSection() {
     return [
-      _section('Collecte de couverture'),
+      _section(AppLocale.t('Collecte de couverture', 'Coverage collection')),
       _toggle(
-        'Contribuer en arrière-plan',
-        'Relève la couverture réseau autour de vous, même application fermée',
+        AppLocale.t('Contribuer en arrière-plan', 'Contribute in the background'),
+        AppLocale.t(
+            'Relève la couverture réseau autour de vous, même application fermée',
+            'Reports network coverage around you, even with the app closed'),
         _status.enabled,
         _busy ? null : _onToggleCollect,
       ),
@@ -425,7 +750,9 @@ class _SettingsScreenState extends State<SettingsScreen>
     if (!started) {
       // Le plus souvent : Android vient d'afficher la demande d'autorisation
       // de notification. Sans notification, le service est tué aussitôt.
-      _snack('Autorisez la notification, puis réactivez la collecte.');
+      _snack(AppLocale.t(
+          'Autorisez la notification, puis réactivez la collecte.',
+          'Allow the notification, then re-enable collection.'));
     }
   }
 
@@ -433,35 +760,52 @@ class _SettingsScreenState extends State<SettingsScreen>
     return showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Contribuer à la carte de couverture'),
+        title: Text(AppLocale.t(
+            'Contribuer à la carte de couverture',
+            'Contribute to the coverage map')),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Yélé relèvera régulièrement, même lorsque l\'application est '
-                'fermée :',
-                style: TextStyle(fontSize: 14),
+              Text(
+                AppLocale.t(
+                  'Yélé relèvera régulièrement, même lorsque l\'application '
+                  'est fermée :',
+                  'Yélé will report regularly, even when the app is closed:',
+                ),
+                style: const TextStyle(fontSize: 14),
               ),
               const SizedBox(height: 10),
-              _bullet('votre position'),
-              _bullet('la technologie du réseau (2G, 3G, 4G, 5G)'),
-              _bullet('l\'opérateur de votre carte SIM'),
-              _bullet('la puissance du signal'),
+              _bullet(AppLocale.t('votre position', 'your location')),
+              _bullet(AppLocale.t('la technologie du réseau (2G, 3G, 4G, 5G)',
+                  'the network technology (2G, 3G, 4G, 5G)')),
+              _bullet(AppLocale.t('l\'opérateur de votre carte SIM',
+                  'your SIM card operator')),
+              _bullet(AppLocale.t('la puissance du signal', 'the signal strength')),
               const SizedBox(height: 12),
               Text(
-                'Aucun test de débit n\'est effectué. Chaque relève consomme '
-                'environ 4 Ko, soit une dizaine de mégaoctets par mois à la '
-                'cadence de 15 minutes — moins d\'un centième de ce que '
-                'coûterait un test de débit automatique.',
+                AppLocale.t(
+                  'Aucun test de débit n\'est effectué. Chaque relève consomme '
+                  'environ 4 Ko, soit une dizaine de mégaoctets par mois à la '
+                  'cadence de 15 minutes — moins d\'un centième de ce que '
+                  'coûterait un test de débit automatique.',
+                  'No speed test is performed. Each report uses about 4 KB, '
+                  'i.e. roughly ten megabytes per month at the 15-minute '
+                  'rate — far less than an automatic speed test would cost.',
+                ),
                 style: TextStyle(fontSize: 13, color: YeleColors.surface.muted),
               ),
               const SizedBox(height: 10),
               Text(
-                'Une notification permanente reste affichée tant que la '
-                'collecte est active. Vous pouvez l\'arrêter à tout moment, '
-                'depuis cette notification ou depuis ces réglages.',
+                AppLocale.t(
+                  'Une notification permanente reste affichée tant que la '
+                  'collecte est active. Vous pouvez l\'arrêter à tout moment, '
+                  'depuis cette notification ou depuis ces réglages.',
+                  'A permanent notification stays displayed while collection '
+                  'is active. You can stop it at any time, from the '
+                  'notification or from these settings.',
+                ),
                 style: TextStyle(fontSize: 13, color: YeleColors.surface.muted),
               ),
             ],
@@ -470,11 +814,11 @@ class _SettingsScreenState extends State<SettingsScreen>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Refuser'),
+            child: Text(AppLocale.t('Refuser', 'Decline')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('J\'accepte'),
+            child: Text(AppLocale.t('J\'accepte', 'I agree')),
           ),
         ],
       ),
@@ -501,7 +845,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Fréquence des relèves',
+          Text(AppLocale.t('Fréquence des relèves', 'Report frequency'),
               style: TextStyle(fontSize: 16, color: YeleColors.surface.ink)),
           const SizedBox(height: 8),
           Wrap(
@@ -509,7 +853,9 @@ class _SettingsScreenState extends State<SettingsScreen>
             children: BACKGROUND_INTERVAL_CHOICES.map((minutes) {
               final selected = minutes == _status.intervalMinutes;
               return ChoiceChip(
-                label: Text(minutes < 60 ? '$minutes min' : '${minutes ~/ 60} h'),
+                label: Text(minutes < 60
+                    ? AppLocale.t('$minutes min', '$minutes min')
+                    : '${minutes ~/ 60} h'),
                 selected: selected,
                 selectedColor: YeleColors.primary.withValues(alpha: .18),
                 onSelected: _busy ? null : (_) => _changeInterval(minutes),
@@ -538,8 +884,14 @@ class _SettingsScreenState extends State<SettingsScreen>
   Widget _statusTile() {
     final last = _status.lastCollectAt;
     final lastLabel = last == null
-        ? 'Aucune relève envoyée pour l\'instant'
-        : 'Dernière relève : ${_formatTime(last)}';
+        ? AppLocale.t(
+            'Aucune relève envoyée pour l\'instant', 'No report sent yet')
+        : '${AppLocale.t('Dernière relève :', 'Last report:')} '
+            '${_formatTime(last)}';
+    final countLabel = AppLocale.t(
+        '${_status.count} relève${_status.count > 1 ? 's' : ''} '
+        'envoyée${_status.count > 1 ? 's' : ''}',
+        '${_status.count} report${_status.count > 1 ? 's' : ''} sent');
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
@@ -559,9 +911,10 @@ class _SettingsScreenState extends State<SettingsScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(lastLabel,
-                    style: TextStyle(fontSize: 14, color: YeleColors.surface.ink)),
+                    style:
+                        TextStyle(fontSize: 14, color: YeleColors.surface.ink)),
                 const SizedBox(height: 2),
-                Text('${_status.count} relève${_status.count > 1 ? 's' : ''} envoyée${_status.count > 1 ? 's' : ''}',
+                Text(countLabel,
                     style: TextStyle(
                         fontSize: 13, color: YeleColors.surface.muted)),
               ],
@@ -570,7 +923,7 @@ class _SettingsScreenState extends State<SettingsScreen>
           IconButton(
             icon: const Icon(Icons.refresh, size: 20),
             color: YeleColors.muted,
-            tooltip: 'Actualiser',
+            tooltip: AppLocale.t('Actualiser', 'Refresh'),
             onPressed: _refreshStatus,
           ),
         ],
@@ -595,22 +948,33 @@ class _SettingsScreenState extends State<SettingsScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            children: const [
-              Icon(Icons.battery_alert, size: 18, color: Color(0xFFEA580C)),
-              SizedBox(width: 8),
-              Text('Collecte interrompue par le système',
-                  style: TextStyle(
+            children: [
+              const Icon(Icons.battery_alert, size: 18, color: Color(0xFFEA580C)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  AppLocale.t('Collecte interrompue par le système',
+                      'Collection stopped by the system'),
+                  style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFFEA580C))),
+                      color: Color(0xFFEA580C)),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Votre téléphone a arrêté la collecte pour économiser la batterie. '
-            'Pour qu\'elle continue, ouvrez Paramètres → Applications → Yélé → '
-            'Batterie, et choisissez « Sans restriction ».',
-            style: TextStyle(fontSize: 13, height: 1.4),
+          Text(
+            AppLocale.t(
+              'Votre téléphone a arrêté la collecte pour économiser la '
+              'batterie. Pour qu\'elle continue, ouvrez Paramètres → '
+              'Applications → Yélé → Batterie, et choisissez '
+              '« Sans restriction ».',
+              'Your phone stopped collection to save battery. To keep it '
+              'running, open Settings → Apps → Yélé → Battery, and choose '
+              '"Unrestricted".',
+            ),
+            style: const TextStyle(fontSize: 13, height: 1.4),
           ),
         ],
       ),
@@ -620,10 +984,17 @@ class _SettingsScreenState extends State<SettingsScreen>
   String _formatTime(DateTime t) {
     final now = DateTime.now();
     final diff = now.difference(t);
-    if (diff.inMinutes < 1) return 'à l\'instant';
-    if (diff.inMinutes < 60) return 'il y a ${diff.inMinutes} min';
-    if (diff.inHours < 24) return 'il y a ${diff.inHours} h';
-    return '${t.day}/${t.month} à ${t.hour}h${t.minute.toString().padLeft(2, '0')}';
+    if (diff.inMinutes < 1) return AppLocale.t('à l\'instant', 'just now');
+    if (diff.inMinutes < 60) {
+      return AppLocale.t(
+          'il y a ${diff.inMinutes} min', '${diff.inMinutes} min ago');
+    }
+    if (diff.inHours < 24) {
+      return AppLocale.t('il y a ${diff.inHours} h', '${diff.inHours} h ago');
+    }
+    return AppLocale.t(
+        '${t.day}/${t.month} à ${t.hour}h${t.minute.toString().padLeft(2, '0')}',
+        '${t.day}/${t.month} at ${t.hour}:${t.minute.toString().padLeft(2, '0')}');
   }
 
   void _snack(String message) {
@@ -636,9 +1007,9 @@ class _SettingsScreenState extends State<SettingsScreen>
   String _languageLabel(AppLanguage v) {
     switch (v) {
       case AppLanguage.system:
-        return 'Auto (langue du téléphone)';
+        return AppLocale.t('Auto (langue du téléphone)', 'Auto (phone language)');
       case AppLanguage.fr:
-        return 'Français';
+        return AppLocale.t('Français', 'French');
       case AppLanguage.en:
         return 'English';
     }
@@ -647,20 +1018,20 @@ class _SettingsScreenState extends State<SettingsScreen>
   String _defaultTestLabel(DefaultTest v) {
     switch (v) {
       case DefaultTest.full:
-        return 'Test complet';
+        return AppLocale.t('Test complet', 'Full test');
       case DefaultTest.speed:
         return 'Speed test';
       case DefaultTest.streaming:
-        return 'Test de streaming';
+        return AppLocale.t('Test de streaming', 'Streaming test');
       case DefaultTest.browsing:
-        return 'Test de navigation';
+        return AppLocale.t('Test de navigation', 'Browsing test');
     }
   }
 
   String _speedUnitLabel(SpeedUnit v) {
     switch (v) {
       case SpeedUnit.auto:
-        return 'Auto (Mb/s ou Kb/s)';
+        return AppLocale.t('Auto (Mb/s ou Kb/s)', 'Auto (Mb/s or Kb/s)');
       case SpeedUnit.mbps:
         return 'Mb/s';
       case SpeedUnit.kbps:
@@ -671,9 +1042,9 @@ class _SettingsScreenState extends State<SettingsScreen>
   String _appStyleLabel(AppStyle v) {
     switch (v) {
       case AppStyle.green:
-        return 'Blanc';
+        return AppLocale.t('Blanc', 'Light');
       case AppStyle.dark:
-        return 'Sombre';
+        return AppLocale.t('Sombre', 'Dark');
     }
   }
 
@@ -718,7 +1089,7 @@ class _SettingsScreenState extends State<SettingsScreen>
   }
 
   Future<void> _pickLanguage() => _pick<AppLanguage>(
-        title: 'Langue',
+        title: AppLocale.t('Langue', 'Language'),
         current: _language,
         choices: [
           for (final v in AppLanguage.values) (v, _languageLabel(v)),
@@ -727,7 +1098,8 @@ class _SettingsScreenState extends State<SettingsScreen>
       );
 
   Future<void> _pickDefaultTest() => _pick<DefaultTest>(
-        title: 'Test par défaut au démarrage',
+        title: AppLocale.t(
+            'Test par défaut au démarrage', 'Default test at startup'),
         current: _defaultTest,
         choices: [
           for (final v in DefaultTest.values) (v, _defaultTestLabel(v)),
@@ -743,7 +1115,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       );
 
   Future<void> _pickSpeedUnit() => _pick<SpeedUnit>(
-        title: 'Unité de débit',
+        title: AppLocale.t('Unité de débit', 'Speed unit'),
         current: _speedUnit,
         choices: [
           for (final v in SpeedUnit.values) (v, _speedUnitLabel(v)),
@@ -752,7 +1124,7 @@ class _SettingsScreenState extends State<SettingsScreen>
       );
 
   Future<void> _pickAppStyle() => _pick<AppStyle>(
-        title: 'Style de fond',
+        title: AppLocale.t('Style de fond', 'Background style'),
         current: _appStyle,
         choices: [
           for (final v in AppStyle.values) (v, _appStyleLabel(v)),

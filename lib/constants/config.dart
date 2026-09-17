@@ -72,6 +72,41 @@ const Map<String, String> STREAMING_QUALITY_LEVELS = {
 const int STREAMING_LEVEL_DURATION_SEC = 10;
 // Délai au-delà duquel une qualité est considérée comme non lisible.
 const int STREAMING_LEVEL_TIMEOUT_SEC = 20;
+
+// ── Échelle de débits attendue (moteur HLS) et débit minimal requis ──────
+// L'échelle auto-hébergée est calée sur ce que YouTube sert réellement sur
+// mobile (H.264 30 fps) : ~2,5 Mb/s en 720p et ~4 Mb/s en 1080p — et non les
+// 4,95/9,91 Mb/s du ladder Akamai d'origine, irreprésentatifs du lecteur
+// mobile. Reconstruire l'échelle :
+// scripts/rebuild_ladder_mobile_bitrates.sh (mobilefront), puis redéployer
+// (deploy_netlify.sh). La clé = clé du lecteur YouTube, valeur = BANDWIDTH
+// annoncée par master.m3u8 (bit/s, vidéo + audio, marge d'encodage incluse —
+// à mettre à jour si le manifeste change).
+const Map<String, int> STREAMING_LEVEL_BANDWIDTH_BPS = {
+  'hd720': 2817071,
+  'hd1080': 4317071,
+  'hd2160': 12317071,
+};
+
+// Marge appliquée au BANDWIDTH du manifeste pour estimer le débit minimal
+// réellement nécessaire : l'encodeur autorise des pointes au débit moyen
+// (maxrate = bufsize) et le CDN peut servir un fragment un peu plus lourd que
+// le nominal. 1,15 = ~15 % de tête, constante de calcul — pas une mesure.
+const double hlsMinBandwidthMargin = 1.15;
+
+/// Débit minimal requis (kb/s) pour qu'un palier ait une chance de démarrer.
+///
+/// Le fragment initial du palier (BANDWIDTH × durée d'un segment, audio
+/// compris) doit être reçu ENTIER avant la première image ; le pire cas est
+/// qu'il soit téléchargé pendant tout le timeout de démarrage ([margin]
+/// couvre les pointes d'encodage). Un réseau qui ne tient pas ce débit de
+/// manière continue laisse le palier expirer : c'est la valeur affichée
+/// pour expliquer une colonne vide du tableau HLS.
+int minRequiredKbpsFor(int bandwidthBps,
+        {int segmentSec = 4,
+        int timeoutSec = STREAMING_LEVEL_TIMEOUT_SEC,
+        double margin = hlsMinBandwidthMargin}) =>
+    (bandwidthBps * segmentSec * margin / timeoutSec / 1000).round();
 // Temps laissé au lecteur pour prendre en compte ses nouvelles dimensions
 // avant de lancer la lecture. Sans cette pause, YouTube choisit parfois sa
 // qualité d'après l'ancienne taille : c'est la principale source de résultats
@@ -84,7 +119,9 @@ const int STREAMING_STAGE_SETTLE_MS = 900;
 // 'hls' : flux HLS/DASH joué par hls.js/dash.js avec qualité VERROUILLÉE
 //   (hls.currentLevel) : le palier servi est le palier demandé, la mesure est
 //   déterministe. Voir StreamingTestServiceHls.
-const String streamingBackend = 'youtube';
+// Défaut compilé = 'hls' (17/09) : l'échelle est reconstruite aux débits
+// YouTube mobile — la comparaison des deux moteurs se fait à périmètre égal.
+const String streamingBackend = 'hls';
 
 // Flux utilisé par le backend 'hls'. Échelle HLS auto-hébergée sur Netlify
 // (site yele-test-assets, CORS `*` via fichier _headers), construite depuis le

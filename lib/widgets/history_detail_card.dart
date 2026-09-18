@@ -85,35 +85,25 @@ class HistoryDetailCard extends StatelessWidget {
 
   /// Lignes « Signal » / « Qualité du signal » : métriques radio typées selon
   /// la connexion utilisée pour le test, une métrique par ligne — la puissance
-  /// (RSRP/NR RSRP/RSSI) sur « Signal », la qualité (RSRQ/NR RSRQ) sur
-  /// « Qualité du signal ». Rien ne s'affiche si rien n'a été mesuré (iOS,
+  /// « Signal » / « Qualité du signal ». Rien ne s'affiche si rien n'a été mesuré (iOS,
   /// Android < 9, appareils qui n'exposent pas les compteurs).
   List<Widget> _signalLines(
       SpeedTestResult r, Widget Function(String k, String v) line) {
-    // Seuils et libellés alignés sur le tableau de référence qualité signal
-    // (IUT) : RSRP −80/−95/−105, RSRQ −10/−15/−18, RSSI −65/−75/−85 →
-    // Excellent / Bon-Moyen / Acceptable / Mauvais-Faible.
-    String qualityLabel(int dbm, {required bool isRsrp}) {
-      final t = isRsrp ? [-80, -95, -105] : [-65, -75, -85];
-      if (dbm >= t[0]) return 'Excellent';
-      if (dbm >= t[1]) return 'Bon/Moyen';
-      if (dbm >= t[2]) return 'Acceptable';
-      return 'Mauvais/Faible';
-    }
-
+    // Seuils alignés sur le tableau de référence qualité signal (IUT) :
+    // RSRP −80/−95/−105, RSRQ −10/−15/−18, RSSI −65/−75/−85. Le qualificatif
+    // (Excellent, Bon…) n'est volontairement PAS affiché : les seuils sont
+    // portés par la légende du dashboard, la carte reste sobre.
     final lines = <Widget>[];
 
     // Puissance (dBm), avec libellé de qualité.
     if ((r.signalRsrp ?? 0) != 0) {
-      lines.add(line('Signal',
-          'RSRP ${r.signalRsrp} dBm (${qualityLabel(r.signalRsrp!, isRsrp: true)})'));
+      lines.add(line('Signal', 'RSRP ${r.signalRsrp} dBm'));
     }
     if ((r.signalNrRsrp ?? 0) != 0) {
       lines.add(line('Signal', 'NR RSRP ${r.signalNrRsrp} dBm'));
     }
     if ((r.wifiRssi ?? 0) != 0) {
-      lines.add(line('Signal',
-          'RSSI ${r.wifiRssi} dBm (${qualityLabel(r.wifiRssi!, isRsrp: false)})'));
+      lines.add(line('Signal', 'RSSI ${r.wifiRssi} dBm'));
     }
 
     // Qualité (dB), ligne dédiée « Qualité du signal ».

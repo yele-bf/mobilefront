@@ -4,7 +4,7 @@ import 'package:yele/models/speed_test_result.dart';
 import 'package:yele/widgets/history_detail_card.dart';
 
 /// Résultat 4G réaliste, calqué sur la capture « Historique » : Orange BF à
-/// Ouagadougou, RSRP −77 dBm (Excellent), RSRQ −8 dB.
+/// Ouagadougou, RSRP −77 dBm, RSRQ −8 dB.
 SpeedTestResult _result({
   int? signalRsrp,
   int? signalRsrq,
@@ -68,12 +68,13 @@ void main() {
       expect(find.text('Signal :'), findsOneWidget);
       expect(find.text('Qualité du signal :'), findsOneWidget);
 
-      // Les valeurs attendues, une par ligne.
-      expect(find.text('RSRP -77 dBm (Excellent)'), findsOneWidget);
+      // Les valeurs attendues, une par ligne, SANS qualificatif de qualité.
+      expect(find.text('RSRP -77 dBm'), findsOneWidget);
       expect(find.text('RSRQ -8 dB'), findsOneWidget);
+      expect(find.textContaining('('), findsNothing);
 
       // Plus jamais l'ancien format à une seule ligne jointe par « · ».
-      expect(find.text('RSRP -77 dBm (Excellent) · RSRQ -8 dB'), findsNothing);
+      expect(find.text('RSRP -77 dBm · RSRQ -8 dB'), findsNothing);
 
       // Les deux libellés ne vivent pas dans le même Row.
       final signalRow = _enclosingRow(tester, find.text('Signal :'));
@@ -116,7 +117,7 @@ void main() {
       );
 
       expect(find.text('Signal :'), findsOneWidget);
-      expect(find.text('RSSI -55 dBm (Excellent)'), findsOneWidget);
+      expect(find.text('RSSI -55 dBm'), findsOneWidget);
       expect(find.text('Qualité du signal :'), findsNothing);
     });
 

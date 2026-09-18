@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/speed_test_result.dart';
 import '../services/local_storage_service.dart';
 import '../services/speed_test_api_service.dart';
+import '../services/streaming_test_service.dart';
 import '../theme/yele_theme.dart';
 import '../widgets/qoe_dialog.dart';
 import '../widgets/streaming_table.dart';
@@ -312,7 +313,11 @@ class _ScoreScreenState extends State<ScoreScreen> {
             ],
           ),
         ),
-        StreamingTable(qualities: rows),
+        StreamingTable(
+            qualities: rows,
+            videoEngine:
+                StreamingTestResult.decodeEngine(r.streamingQualitiesJson) ??
+                    'youtube'),
         if (error != null) _streamingError(error),
       ],
     );

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:logger/logger.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../constants/config.dart';
@@ -80,8 +79,32 @@ class _LevelMeasurement {
 /// `constants/config.dart`) — 'hls' pour ce moteur, 'youtube' pour l'ancien ;
 /// le drapeau existe pour le test A/B, basculer ensuite la constante.
 class StreamingTestServiceHls {
-  final logger = Logger();
   final TrafficStatsService _traffic = TrafficStatsService();
+
+  /// Vrai si le flux configuré est un manifeste HLS lu par hls.js. Le débit
+  /// minimal requis n'a de sens QUE pour ce moteur : les fragments du
+  /// manifeste sont connus d'avance (taille × durée) et le palier est
+  /// verrouillé. Un flux DASH (.mpd) joué par dash.js est exclu — la forme
+  /// des fragments (segments complets, pas d'init séparée en l'état) rend
+  /// l'estimation fallacieuse.
+  late final bool hlsEngine = streamTestStreamUrl
+      .toLowerCase()
+      .split('?')
+      .first
+      .endsWith('.m3u8');
+
+  /// Débit mini requis par palier, rempli par [runTest] (label → kb/s).
+  /// Sert au journal de diagnostic (logcat) ; l'affichage utilisateur le
+  /// recalcule côté tableau à partir de la config (mêmes constantes).
+  final Map<String, int> minRequiredKbps = {};
+
+  /// Journal lisible dans logcat sous le tag [YELE-DIAG-HLS] : même convention
+  /// print-based que les autres services ([YELE-DIAG-LOC], [YELE-DIAG-UI]…)
+  /// pour que les captures terrain (`adb logcat | grep YELE-DIAG`) contiennent
+  /// toute la chaîne de décision du moteur HLS — sans elle, un palier non
+  /// servi est indiscernable d'un palier jamais tenté.
+  void _log(String msg) => print('[YELE-DIAG-HLS] $msg');
+  void _logErr(String msg) => print('[YELE-DIAG-HLS-ERR] $msg');
 
   Completer<void>? _ready; // bibliothèque chargée, manifeste parsé
   Completer<void>? _started; // première image du palier courant
@@ -105,6 +128,14 @@ class StreamingTestServiceHls {
     ];
     onRows?.call(List.of(rows));
 
+    // BANDWIDTH annoncée par le manifeste pour chaque palier (bit/s),
+    // retrouvée via la correspondance clé lecteur YouTube → libellé affiché.
+    final bandwidthBps = <String, int>{};
+    for (final e in STREAMING_LEVEL_BANDWIDTH_BPS.entries) {
+      final mapped = levels[e.key];
+      if (mapped != null) bandwidthBps[mapped] = e.value;
+    }
+
     final controller = buildStreamingWebViewController(onMessage: _onJsMessage);
     final host = PlayerHost();
 
@@ -119,17 +150,37 @@ class StreamingTestServiceHls {
       try {
         await _ready!.future.timeout(const Duration(seconds: 25));
       } on TimeoutException {
-        logger.w('Streaming HLS: manifeste non chargé ($streamTestStreamUrl)');
+        _logErr('manifeste non chargé en 25 s ($streamTestStreamUrl) — '
+            'AUCUN palier ne sera mesuré');
         return aggregateStreamingResults(rows,
+            engine: 'hls',
             error: 'Flux de test injoignable. Vérifiez la connexion Internet, '
                 'puis relancez le test.');
       }
       if (_playerError != null) {
-        return aggregateStreamingResults(rows, error: _playerError);
+        return aggregateStreamingResults(rows, engine: 'hls', error: _playerError);
       }
       if (_manifestLevels.isEmpty) {
+        _logErr('manifeste parsé mais aucun niveau exploitable');
         return aggregateStreamingResults(rows,
+            engine: 'hls',
             error: 'Le flux de test n\'expose aucune qualité exploitable.');
+      }
+      _log('manifeste : ${_manifestLevels.length} niveau(x) — '
+          '${_manifestLevels.map((l) => '#${l.index} ${l.height}p '
+              '@${(l.bitrate / 1e6).toStringAsFixed(1)} Mb/s').join(', ')}');
+      // Débit minimal requis par palier : taille du premier fragment (4 s)
+      // rapportée au timeout de démarrage — le réseau doit tenir ce débit
+      // DÈS LA PREMIÈRE SECONDE, sinon le palier expire avant d'afficher une
+      // image. C'est l'explication d'une colonne restée vide.
+      if (hlsEngine) {
+        for (final entry in bandwidthBps.entries) {
+          minRequiredKbps[entry.key] = minRequiredKbpsFor(entry.value);
+        }
+        _log('débit mini requis (frag 4 s ÷ timeout '
+            '$STREAMING_LEVEL_TIMEOUT_SEC s × marge $hlsMinBandwidthMargin) : '
+            '${minRequiredKbps.entries.map((e) => '${e.key} ≥ '
+                '${(e.value / 1e3).toStringAsFixed(2)} Mb/s').join(', ')}');
       }
 
       for (int i = 0; i < levels.length; i++) {
@@ -137,19 +188,33 @@ class StreamingTestServiceHls {
         final target = int.tryParse(label.replaceAll('p', '')) ?? 0;
         final level = matchLevelForHeight(_manifestLevels, target);
         if (level == null) {
-          logger.i('Streaming HLS: $label absente du manifeste, ignorée');
+          _log('palier $label : ABSENT du manifeste, ignoré'
+              '${hlsEngine && minRequiredKbps[label] != null ? ' — débit mini '
+                  'requis était ${(minRequiredKbps[label]! / 1e3).toStringAsFixed(2)} '
+                  'Mb/s' : ''}');
           continue;
         }
+        _log('palier $label : niveau #${level.index} (${level.height}p) '
+            'sélectionné');
 
         onProgress?.call((i + 0.1) / levels.length, 'Chargement en $label…');
         final m = await _measureLevel(
           controller: controller,
           level: level,
           label: label,
+          demandedBps: bandwidthBps[label],
+          manifestLevels: _manifestLevels,
           onProgress: (frac, msg) =>
               onProgress?.call((i + frac) / levels.length, msg),
         );
-        if (!m.played) continue;
+        if (!m.played) {
+          _logErr('palier $label NON DÉMARRÉ (timeout '
+              '$STREAMING_LEVEL_TIMEOUT_SEC s) — restera non servi'
+              '${hlsEngine && minRequiredKbps[label] != null ? ' — débit mini '
+                  'requis : ${(minRequiredKbps[label]! / 1e3).toStringAsFixed(2)} '
+                  'Mb/s' : ''}');
+          continue;
+        }
 
         // Qualité verrouillée : le palier servi EST le palier demandé.
         rows[i] = StreamingQualityResult(
@@ -164,7 +229,7 @@ class StreamingTestServiceHls {
         onRows?.call(List.of(rows));
       }
     } catch (e) {
-      logger.e('Streaming HLS: test interrompu ($e)');
+      _logErr('test interrompu ($e) — paliers restants non servis');
     } finally {
       // Libère la référence côté UI avant de couper la lecture.
       onController?.call(null);
@@ -176,16 +241,31 @@ class StreamingTestServiceHls {
       await host.stop();
     }
 
-    return aggregateStreamingResults(rows);
+    final result = aggregateStreamingResults(rows, engine: 'hls');
+    final served = rows.where((r) => r.reached).map((r) => r.label).toList();
+    _log('bilan : ${served.isEmpty ? 'AUCUN palier servi' : 'paliers servis ${served.join(', ')}'}'
+        ' — score ${result.score}, résolution max ${result.maxResolution}, '
+        'trafic total ${result.totalDataKiB >= 0 ? '${result.totalDataKiB} KiB' : 'non mesurable'}');
+    if (result.error != null) {
+      _logErr("motif remonté à l'écran : ${result.error}");
+    }
+    return result;
   }
 
   /// Joue le niveau [level] pendant [STREAMING_LEVEL_DURATION_SEC] et en
   /// mesure les quatre indicateurs.
+  ///
+  /// [demandedBps] : BANDWIDTH annoncée du palier demandé (bit/s), pour
+  /// estimer le débit que le réseau a dû tenir (requête de calibration du
+  /// manifeste exclue). [manifestLevels] : échelle du manifeste, pour localiser
+  /// le fragment réellement servi quand le CDN déclassait la demande.
   Future<_LevelMeasurement> _measureLevel({
     required WebViewController controller,
     required StreamLevel level,
     required String label,
     required StreamingProgressCallback onProgress,
+    int? demandedBps,
+    List<StreamLevel> manifestLevels = const [],
   }) async {
     final rxBefore = await _traffic.rxBytes();
 
@@ -200,7 +280,7 @@ class StreamingTestServiceHls {
       await _started!.future
           .timeout(const Duration(seconds: STREAMING_LEVEL_TIMEOUT_SEC));
     } on TimeoutException {
-      logger.w("Streaming HLS: $label n'a jamais démarré");
+      _logErr("[$label] aucune première image en $STREAMING_LEVEL_TIMEOUT_SEC s");
       await _stopLevel(controller);
       return _LevelMeasurement.notPlayed;
     }
@@ -225,6 +305,37 @@ class StreamingTestServiceHls {
     final watchedSec =
         (totalSec - initialSec - bufferingSec).clamp(0.0, totalSec);
     final performance = totalSec > 0 ? watchedSec / totalSec * 100 : 0.0;
+    final trafficKiB = TrafficStatsService.kibBetween(rxBefore, rxAfter);
+
+    // Bilan vide = stopLevel n'a jamais reçu l'événement 'level' du pont JS :
+    // la mesure part alors à zéro alors que la lecture a eu lieu. Distinguer
+    // ce cas d'un vrai zéro est ce qui rend les données par palier crédibles.
+    if (report.isEmpty) {
+      _logErr('[$label] bilan du lecteur non reçu (pas d\'événement "level") '
+          '— indicateurs à 0, trafic seul fiable');
+    }
+    _log('[$label] démarrage ${initialSec.toStringAsFixed(3)} s — buffer '
+        '${bufferingSec.toStringAsFixed(3)} s — interruptions '
+        '${report['rebuffers'] ?? '?'} — trafic '
+        '${trafficKiB >= 0 ? '$trafficKiB KiB' : 'non mesurable'} — '
+        'performance ${performance.toStringAsFixed(1)} %');
+    if (demandedBps != null) {
+      // Débit réel = octets mesurés / temps de téléchargement (dont le
+      // démarrage) ; débit requis = fragmentation du palier DEMANDÉ. Le
+      // palier servi peut différer (déclassement CDN) : on le note, sans
+      // requalifier la mesure.
+      final downloadSec = totalSec > 0 ? totalSec : 1;
+      final actualKbps = trafficKiB >= 0
+          ? (trafficKiB * 1024 * 8 / downloadSec / 1e3).round()
+          : -1;
+      final servedBps = matchLevelForHeight(manifestLevels, level.height)?.bitrate;
+      _log('[$label] débit requis ≈ '
+          '${(minRequiredKbpsFor(demandedBps) / 1e3).toStringAsFixed(2)} Mb/s '
+          '(mini) · ${(demandedBps / 1e6).toStringAsFixed(2)} Mb/s '
+          '(BANDWIDTH${servedBps != null && servedBps != demandedBps ? ', '
+              'servi ${(servedBps / 1e6).toStringAsFixed(2)}' : ''}) — '
+          'débit réel ${actualKbps >= 0 ? '${(actualKbps / 1e3).toStringAsFixed(2)} Mb/s' : 'n/m'}');
+    }
 
     return _LevelMeasurement(
       played: true,
@@ -232,7 +343,7 @@ class StreamingTestServiceHls {
       initialLoadingSec: double.parse(initialSec.toStringAsFixed(3)),
       bufferingSec: double.parse(bufferingSec.toStringAsFixed(3)),
       rebufferCount: (report['rebuffers'] as num?)?.toInt() ?? 0,
-      dataUsedKiB: TrafficStatsService.kibBetween(rxBefore, rxAfter),
+      dataUsedKiB: trafficKiB,
     );
   }
 
@@ -257,6 +368,8 @@ class StreamingTestServiceHls {
     switch (event['e']) {
       case 'ready':
         // Le manifeste est parsé : l'échelle réelle est connue.
+        _log('moteur ${event['engine'] ?? '?'} — manifeste parsé, '
+            '${(event['levels'] as List?)?.length ?? 0} niveau(x) annoncés');
         final raw = event['levels'];
         if (raw is List) {
           _manifestLevels = raw
@@ -271,16 +384,32 @@ class StreamingTestServiceHls {
         if (_ready?.isCompleted == false) _ready!.complete();
         break;
       case 'start':
+        _log('première image (palier en cours) : startup=${event['startupMs']} ms');
         if (_started?.isCompleted == false) _started!.complete();
         break;
       case 'level':
+        _log("bilan JS du palier : startup=${event['startupMs']} ms, "
+            'buffer=${event['bufferMs']} ms, rebuffers=${event['rebuffers']}');
         if (_level?.isCompleted == false) _level!.complete(event);
+        break;
+      case 'audio':
+        // Lecture muette malgré le unmute : politique autoplay de la WebView
+        // (rejet de play() puis repli silencieux). Sans cette ligne, le
+        // terrain ne peut pas distinguer un muet imposé d'un défaut de piste.
+        if (event['muted'] == true) {
+          _logErr('lecture MUETTE malgré le unmute — son non audible sur ce '
+              'palier (politique autoplay de la WebView ?)');
+        } else {
+          _log('son autorisé côté page (non mueté) — si le terrain n\'entend '
+              'rien malgré ce log, vérifier le volume multimédia du téléphone '
+              '(invisible depuis la page)');
+        }
         break;
       case 'jserror':
         // Erreur JavaScript dans la page hôte : sans elle, un échec de
         // chargement de la bibliothèque ressemblerait à un simple timeout.
         _playerError ??= 'Erreur du lecteur : ${event['msg']}';
-        logger.w('Streaming HLS: erreur JS — ${event['msg']}');
+        _logErr('erreur JS de la page lecteur — ${event['msg']}');
         if (_ready?.isCompleted == false) _ready!.complete();
         break;
     }
@@ -294,9 +423,10 @@ class StreamingTestServiceHls {
   /// plus rien, c'est toute la différence avec YouTube.
   ///
   /// Public pour tests de contrat : [streaming_hls_service_test] gèle les
-  /// invariants de mesure (reset d'état par palier, chargement des segments
-  /// piloté par palier, buffering d'amorçage hors interruptions) — c'est leur
-  /// violation qui a fait ne servir que le 720p en terrain.
+  /// invariants de mesure (moteur recréé à froid par palier, reset d'état par
+  /// palier, chargement des segments piloté par palier, buffering d'amorçage
+  /// hors interruptions) — c'est leur violation qui a fait ne servir que le
+  /// 720p en terrain, puis mesurer des reprises au lieu de démarrages à froid.
   String playerHtml() => '''
 <!DOCTYPE html>
 <html>
@@ -308,22 +438,33 @@ class StreamingTestServiceHls {
 </style>
 </head>
 <body>
-<video id="video" muted playsinline autoplay></video>
+<video id="video" playsinline autoplay></video>
 <script>
 var video = null, engine = null, engineKind = '';
 // État du palier courant. Remis à zéro à CHAQUE startLevel() : c'est la
 // convention du backend YouTube (un lecteur neuf par palier) transposée ici —
 // sans reset, 'start' ne part qu'au premier palier et les suivants timeout.
 var t0 = 0, startupMs = -1, bufferMs = 0, bufferStart = 0, rebuffers = 0;
-var started = false, wantedLevel = -1;
+var started = false, wantedLevel = -1, audioReported = false, unmuteArmed = false;
 
 function resetTierState() {
   t0 = Date.now();
   startupMs = -1; bufferMs = 0; bufferStart = 0; rebuffers = 0;
-  started = false;
+  started = false; audioReported = false; unmuteArmed = false;
 }
 
 function send(o) { YeleStream.postMessage(JSON.stringify(o)); }
+
+// État audio du palier, remonté UNE seule fois (compteur remis à chaque
+// palier) : sans ce signal, un « pas de son » en terrain est indiscernable
+// d'un muet imposé malgré le unmute. muted:false = son autorisé côté page
+// (le volume multimédia du téléphone reste invisible depuis le JS),
+// muted:true = lecture muette.
+function reportAudio() {
+  if (audioReported) return;
+  audioReported = true;
+  send({ e: 'audio', muted: video.muted === true });
+}
 
 window.onerror = function (msg) { send({ e: 'jserror', msg: String(msg) }); };
 
@@ -339,6 +480,7 @@ function onPlaying() {
     send({ e: 'start', startupMs: startupMs });
   }
   if (bufferStart > 0) { bufferMs += Date.now() - bufferStart; bufferStart = 0; }
+  reportAudio();
 }
 function onStall() {
   // Le buffering d'amorçage (stall avant la 1re image) fait partie du
@@ -347,34 +489,89 @@ function onStall() {
   if (started && bufferStart === 0) { bufferStart = Date.now(); rebuffers++; }
 }
 
+// Démutage ARMÉ : un moteur neuf n'a encore aucune donnée au moment de
+// startLevel — un play() immédiat serait rejeté et déclencherait le repli
+// muet (fausse alerte « MUETTE », palier lu sans son). Le démutage part donc
+// à canplay, quand le premier fragment du palier est décodable.
+function onCanPlay() {
+  if (unmuteArmed) { unmuteArmed = false; unmute(); }
+}
+
 function attach() {
   video = document.getElementById('video');
   video.addEventListener('playing', onPlaying);
   video.addEventListener('waiting', onStall);
   video.addEventListener('stalled', onStall);
+  video.addEventListener('canplay', onCanPlay);
 }
 
-// Verrouille le niveau hls.js : currentLevel AVANT startLoad (le premier
-// fragment demandé est déjà le niveau verrouillé), puis startLoad explicite —
-// avec autoStartLoad:false, AUCUN octet ne circule entre les paliers : le
-// trafic mesuré (rxBefore/rxAfter côté Dart) appartient au seul palier courant.
-// Le rattrapage LEVEL_SWITCHED (enregistré une seule fois, cf. onLibReady)
+// Rend le lecteur audible : la WebView est déjà autorisée à jouer avec le son
+// (setMediaPlaybackRequiresUserGesture(false) côté Android,
+// mediaTypesRequiringUserAction vide côté iOS) mais elle coupe le son d'une
+// lecture automatique sans geste — d'où des vidéos affichées sans audio.
+// Appelé à canplay de chaque palier (moteur neuf) ; en cas de refus du
+// système, on retombe silencieusement en muet pour ne pas bloquer la mesure.
+function unmute() {
+  video.muted = false;
+  var p = video.play();
+  if (p && p.catch) p.catch(function () { video.muted = true; reportAudio(); video.play().catch(function () {}); });
+}
+
+// Détruit le moteur courant : buffers MSE relâchés, listeners supprimés.
+// Sans destruction, le moteur suivant hériterait de l'estimation de bande
+// passante et des buffers du palier précédent — la contamination inter-paliers
+// que le backend YouTube élimine en détruisant son lecteur (buildLevel).
+function destroyEngine() {
+  if (!engine) return;
+  if (engineKind === 'hls') {
+    try { engine.stopLoad(); } catch (e) {}
+    try { engine.destroy(); } catch (e) {}
+  } else {
+    try { engine.reset(); } catch (e) {}
+  }
+  engine = null;
+}
+
+// Verrouille le niveau hls.js avec un moteur NEUF par palier — convention du
+// backend YouTube (« un lecteur neuf par qualité », cf. buildLevel) : le
+// startupMs de chaque palier mesure un vrai démarrage à froid, à périmètre
+// égal entre les deux moteurs. Le verrou est appliqué dans MANIFEST_PARSED :
+// le niveau est forcé AVANT startLoad, donc le premier fragment demandé est
+// déjà au niveau verrouillé ; avec autoStartLoad:false, AUCUN octet ne circule
+// avant ce verrou ni entre les paliers : le trafic mesuré (rxBefore/rxAfter
+// côté Dart) appartient au seul palier courant. Le rattrapage LEVEL_SWITCHED
 // repose le verrou si le CDN déclassait un segment.
 function startHls(levelIndex) {
   resetTierState();
+  destroyEngine();
+  engine = new Hls({ capLevelToPlayerSize: false, startLevel: -1,
+                      autoStartLoad: false });
+  engine.on(Hls.Events.MANIFEST_PARSED, function () {
+    report();
+    engine.currentLevel = wantedLevel;
+    engine.nextLevel = wantedLevel;
+    engine.startLoad();
+  });
+  engine.on(Hls.Events.LEVEL_SWITCHED, function (e, d) {
+    if (wantedLevel >= 0 && d.level !== wantedLevel) {
+      engine.currentLevel = wantedLevel;
+    }
+  });
   wantedLevel = levelIndex;
-  engine.currentLevel = levelIndex;
-  engine.nextLevel = levelIndex;
-  engine.startLoad();
-  video.play().catch(function () {});
+  unmuteArmed = true;
+  engine.loadSource('$streamTestStreamUrl');
+  engine.attachMedia(video);
 }
 
 // Verrouille le niveau dash.js : pas d'API « joue l'index i » — l'usage
 // documenté est de couper les règles ABR par défaut et de borner le choix au
-// niveau voulu.
+// niveau voulu. Même principe qu'en HLS : moteur recréé à froid par palier.
 function startDash(levelIndex) {
   resetTierState();
-  wantedLevel = levelIndex;
+  destroyEngine();
+  engine = dashjs.MediaPlayer().create();
+  engine.initialize(video, '$streamTestStreamUrl', false);
+  engine.on(dashjs.MediaPlayer.events.STREAM_INITIALIZED, report);
   engine.updateSettings({
     streaming: { abr: {
       useDefaultABRRules: false,
@@ -384,8 +581,8 @@ function startDash(levelIndex) {
   });
   try { engine.setQualityFor('video', levelIndex, true); } catch (e) {}
   try { engine.updateData(); } catch (e) {}
-  t0 = Date.now();
-  video.play().catch(function () {});
+  wantedLevel = levelIndex;
+  unmuteArmed = true;
 }
 
 function startLevel(index) {
@@ -440,22 +637,17 @@ function onLibReady() {
     engine.on(dashjs.MediaPlayer.events.STREAM_INITIALIZED, report);
   } else {
     engineKind = 'hls';
-    // autoStartLoad:false : le chargement des segments n'est déclenché que
-    // par startLoad() dans startHls — condition d'une mesure de trafic par
-    // palier (sinon hls.js précharge tout dès le manifeste parsé).
+    // Moteur de DÉCOUVERTE : il ne sert qu'à parser le manifeste et remonter
+    // l'échelle à Dart (condition : l'échelle doit être connue AVANT le
+    // premier palier pour choisir les niveaux). autoStartLoad:false → aucun
+    // fragment, aucune lecture. Chaque palier détruit ce moteur et en recrée
+    // un neuf (cf. startHls) : démarrage à froid, sans estimation de débit
+    // ni buffers hérités du palier précédent.
     engine = new Hls({ capLevelToPlayerSize: false, startLevel: -1,
                        autoStartLoad: false });
     engine.loadSource('$streamTestStreamUrl');
     engine.attachMedia(video);
     engine.on(Hls.Events.MANIFEST_PARSED, report);
-    // Rattrapage du verrou : UN SEUL listener, qui applique le niveau du
-    // palier courant (l'ancien code en enregistrait un par palier — ils se
-    // battaient entre eux dès le deuxième palier).
-    engine.on(Hls.Events.LEVEL_SWITCHED, function (e, d) {
-      if (wantedLevel >= 0 && d.level !== wantedLevel) {
-        engine.currentLevel = wantedLevel;
-      }
-    });
   }
 }
 

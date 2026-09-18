@@ -128,6 +128,12 @@ class StreamingTestResult {
   /// dans les deux cas le tableau n'affiche que des tirets.
   final String? error;
 
+  /// Moteur ayant produit la mesure ('youtube' ou 'hls'), null pour les
+  /// résultats antérieurs au champ (toujours YouTube). L'écran de résultat
+  /// s'en sert pour adapter le tableau : en-tête (YouTube sert sa qualité /
+  /// HLS la verrouille) et ligne « Débit mini requis » (HLS seulement).
+  final String? engine;
+
   const StreamingTestResult({
     required this.qualities,
     required this.startupMs,
@@ -136,6 +142,7 @@ class StreamingTestResult {
     required this.maxResolution,
     required this.score,
     this.error,
+    this.engine,
   });
 
   /// Total des données consommées par le test. -1 si non mesurable.
@@ -148,6 +155,7 @@ class StreamingTestResult {
   String encodeQualities() => jsonEncode({
         'rows': qualities.map((q) => q.toJson()).toList(),
         if (error != null) 'error': error,
+        if (engine != null) 'engine': engine,
       });
 
   /// Relit le tableau des qualités depuis sa forme stockée. Liste vide si
@@ -171,6 +179,15 @@ class StreamingTestResult {
     if (data is! Map) return null;
     final error = data['error']?.toString();
     return (error == null || error.isEmpty) ? null : error;
+  }
+
+  /// Moteur conservé avec le résultat ('youtube'/'hls'), ou null si absent
+  /// (résultats antérieurs : moteur YouTube).
+  static String? decodeEngine(String? json) {
+    final data = _decode(json);
+    if (data is! Map) return null;
+    final engine = data['engine']?.toString();
+    return (engine == null || engine.isEmpty) ? null : engine;
   }
 
   static dynamic _decode(String? json) {
@@ -295,11 +312,13 @@ class StreamingTestService {
       } on TimeoutException {
         logger.w('Streaming: lecteur YouTube non chargé (réseau ou ID vidéo)');
         return aggregateStreamingResults(rows,
+            engine: 'youtube',
             error: 'Lecteur YouTube injoignable. Vérifiez la connexion '
                 'Internet, puis relancez le test.');
       }
       if (_playerError != null) {
-        return aggregateStreamingResults(rows, error: _playerError);
+        return aggregateStreamingResults(rows,
+            engine: 'youtube', error: _playerError);
       }
 
       for (int i = 0; i < keys.length; i++) {
@@ -360,7 +379,7 @@ class StreamingTestService {
     }
 
     final result = aggregateStreamingResults(rows,
-        error: _playerError ?? _servedNote(rows, served));
+        engine: 'youtube', error: _playerError ?? _servedNote(rows, served));
     logger.i('$result — servi : ${served.join(', ')}');
     return result;
   }

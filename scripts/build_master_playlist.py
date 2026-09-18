@@ -10,14 +10,19 @@ Les codecs/bande passantes sont ceux du manifeste DASH Akamai BBB 30fps.
 import os
 import sys
 
+# Débits annoncés : valeurs par défaut = échelle Akamai d'origine. Surchargeables
+# par variables d'environnement BANDWIDTH_720/1080/2160 quand les variantes ont
+# été ré-encodées à d'autres débits (scripts/rebuild_ladder_mobile_bitrates.sh :
+# débits calés sur ce que YouTube sert sur mobile — 720p ~2,5 Mb/s,
+# 1080p ~4 Mb/s — au lieu des 4,95/9,91 Mb/s Akamai).
 VARIANTS = [
     # (répertoire, playlist média, résolution, débit, codecs vidéo, fps)
     ("bbb_30fps_1280x720_4000k", "720p.m3u8", "1280x720",
-     4952892, "avc1.64001f", 30.0),
+     int(os.environ.get("BANDWIDTH_720", "4952892")), "avc1.64001f", 30.0),
     ("bbb_30fps_1920x1080_8000k", "1080p.m3u8", "1920x1080",
-     9914554, "avc1.640028", 30.0),
+     int(os.environ.get("BANDWIDTH_1080", "9914554")), "avc1.640028", 30.0),
     ("bbb_30fps_3840x2160_12000k", "2160p.m3u8", "3840x2160",
-     14931538, "avc1.640033", 30.0),
+     int(os.environ.get("BANDWIDTH_2160", "14931538")), "avc1.640033", 30.0),
 ]
 AUDIO_DIR = "bbb_a64k"
 AUDIO_PLAYLIST = "audio.m3u8"
@@ -62,7 +67,8 @@ def main(out_dir: str) -> None:
     )
     master.append(
         f'#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="Audio",'
-        f"DEFAULT=YES,AUTOSELECT=YES,LANGUAGE=\"und\""
+        f"DEFAULT=YES,AUTOSELECT=YES,LANGUAGE=\"und\","
+        f'URI="{AUDIO_PLAYLIST}"'
     )
 
     for rep, playlist, res, bandwidth, codec, fps in VARIANTS:

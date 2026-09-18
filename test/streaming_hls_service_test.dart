@@ -113,5 +113,79 @@ void main() {
       // (startupMs), pas aux rebuffers.
       expect(page.contains('if (started && bufferStart === 0)'), isTrue);
     });
+
+    test('le lecteur est audible (démutage armé, déclenché à canplay)', () {
+      // Bug terrain 17/09 : la balise vidéo naissait 'muted' et personne ne
+      // la démutait — les vidéos se lisaient sans aucun son. La WebView
+      // autorise pourtant la lecture avec son sans geste utilisateur.
+      // Moteur neuf par palier depuis le correctif « démarrage à froid » : le
+      // play() immédiat serait rejeté (aucune donnée) et déclencherait le
+      // repli muet — le démutage est donc ARMÉ au démarrage du palier et
+      // déclenché à canplay (premier fragment décodable).
+      expect(page.contains('<video id="video" muted'), isFalse,
+          reason: 'la balise ne doit pas naître muette');
+      expect(page.contains('function unmute()'), isTrue,
+          reason: 'la fonction de démutage doit exister');
+      expect('unmuteArmed = true;'.allMatches(page).length,
+          greaterThanOrEqualTo(2),
+          reason: 'armé dans startHls ET startDash (chaque palier)');
+      expect(page.contains("addEventListener('canplay', onCanPlay)"), isTrue,
+          reason: 'le démutage part à canplay, pas avant que des données existent');
+      expect(page.contains('if (unmuteArmed)'), isTrue,
+          reason: 'onCanPlay ne démute que si le palier a armé le démutage');
+      // Filet de sécurité : si le système refuse le son, on retombe en muet
+      // au lieu de bloquer la mesure.
+      expect(page.contains('video.muted = false;'), isTrue);
+    });
+
+    test('le moteur est recréé à froid à CHAQUE palier (convention YouTube)',
+        () {
+      // Le backend YouTube détruit son lecteur par palier (buildLevel) pour
+      // éviter que l'estimation de bande passante ne contamine les paliers
+      // suivants. Le moteur HLS unique faisait démarrer 1080p/2160p avec les
+      // buffers et l'estimation du palier précédent : startupMs mesurait une
+      // reprise, pas un démarrage à froid — périmètre A/B inégal.
+      expect(page.contains('function destroyEngine()'), isTrue);
+      expect('destroyEngine();'.allMatches(page).length, greaterThanOrEqualTo(2),
+          reason: 'appelé dans startHls ET startDash (chaque palier)');
+      expect(page.contains('engine.destroy()'), isTrue,
+          reason: 'hls.js : destroy relâche buffers MSE et listeners');
+      expect(page.contains('engine.reset()'), isTrue,
+          reason: 'dash.js : reset, équivalent documenté du destroy');
+      // Deux instances hls.js au total : le moteur de découverte (échelle
+      // remontée à Dart avant le 1er palier) + le moteur neuf de chaque
+      // palier. Un seul = moteur réutilisé (ancien comportement).
+      expect('new Hls({'.allMatches(page).length, 2);
+      expect('startLevel: -1'.allMatches(page).length, 2,
+          reason: 'moteur de découverte et moteur de palier démarrent sans '
+              'niveau imposé : c\'est le verrou qui décide');
+    });
+
+    test('le verrou est appliqué AVANT startLoad sur le moteur neuf', () {
+      // Sans verrou avant startLoad, le premier fragment du moteur neuf
+      // partirait au niveau par défaut : le trafic du palier serait mêlé et
+      // le palier servi ne serait plus garanti (régression du verrouillage).
+      final lockAt = page.indexOf('engine.currentLevel = wantedLevel;');
+      final loadAt = page.indexOf('engine.startLoad();');
+      expect(lockAt, greaterThan(0));
+      expect(loadAt, greaterThan(lockAt),
+          reason: 'MANIFEST_PARSED applique le verrou avant startLoad');
+      expect('autoStartLoad: false'.allMatches(page).length, 2,
+          reason: 'découverte ET palier : aucun octet sans startLoad explicite '
+              '(attribution du trafic par palier)');
+      expect(page.contains('report();'), isTrue,
+          reason: 'le moteur neuf remonte son échelle : Dart reste synchronisé');
+    });
+
+    test("l'état audio est remonté une fois par palier (diagnostic terrain)", () {
+      // Sans ce signal, un muet imposé par la WebView malgré le unmute est
+      // indiscernable en terrain d'un défaut de piste audio.
+      expect(page.contains('function reportAudio()'), isTrue);
+      expect(page.contains('audioReported = false;'), isTrue,
+          reason: 'compteur remis par resetTierState : 1 signalement par palier');
+      // Signalé à la 1re image (chemin nominal) ET au repli muet du unmute
+      // (play() rejeté) : les deux trajectoires doivent aboutir au log.
+      expect('reportAudio();'.allMatches(page).length, greaterThanOrEqualTo(2));
+    });
   });
 }

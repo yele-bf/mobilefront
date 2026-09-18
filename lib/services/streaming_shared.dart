@@ -20,8 +20,10 @@ import 'streaming_test_service.dart';
 /// Indicateur global affiché à la fin du test (règle nPerf) : la MOYENNE des
 /// taux de performance des qualités réellement servies — chaque palier servi
 /// pèse autant. 0 si aucune qualité n'a pu être lue.
-StreamingTestResult aggregateStreamingResults(List<StreamingQualityResult> rows,
-    {String? error}) {
+StreamingTestResult aggregateStreamingResults(
+    List<StreamingQualityResult> rows,
+    {String? error,
+    String? engine}) {
   final reached = rows.where((r) => r.reached).toList();
 
   // Résolution maximale et score : basés sur la qualité réellement SERVIE
@@ -56,6 +58,7 @@ StreamingTestResult aggregateStreamingResults(List<StreamingQualityResult> rows,
     maxResolution: bestHeight > 0 ? '${bestHeight}p' : 'inconnue',
     score: double.parse(score.toStringAsFixed(1)),
     error: error,
+    engine: engine,
   );
 }
 

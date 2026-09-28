@@ -3,15 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:webview_flutter/webview_flutter.dart';
 
-import '../constants/config.dart';
 import '../models/test_selection.dart';
-import '../services/browsing_test_service.dart';
 import '../services/device_info_service.dart';
 import '../services/location_service.dart';
 import '../services/network_info_service.dart';
-import '../services/settings_service.dart';
 import '../services/speed_test_api_service.dart';
-import '../services/streaming_backend_setting.dart';
 import '../services/streaming_test_service.dart';
 import '../theme/yele_theme.dart';
 import '../widgets/streaming_table.dart';
@@ -66,38 +62,19 @@ class _FullTestScreenState extends State<FullTestScreen>
   String _metricUnit = 'Mb/s';
   double _phaseProgress = 0; // avancement de la phase en cours (0-1)
 
-  /// ISS-12 — Unité d'affichage choisie dans les réglages (auto/Mb-s/Kb-s).
-  final _settings = SettingsService();
-
   double _download = 0, _upload = 0, _ping = 0;
-
-  /// ISS-12 — Convertit un débit (Mb/s) dans l'unité d'affichage choisie.
-  double _displaySpeed(double mbps) =>
-      _settings.speedUnit == SpeedUnit.kbps ? mbps * 1000 : mbps;
-
-  /// ISS-12 — Libellé d'unité pour les débits (jamais « ms »).
-  String _speedUnitLabel() =>
-      _settings.speedUnit == SpeedUnit.kbps ? 'Kb/s' : 'Mb/s';
-
-  /// ISS-12 — Formate un débit selon l'unité choisie (mode auto inclus :
-  /// Kb/s sous 1 Mb/s, comme nPerf).
-  String _fmtSpeed(double mbps) => _settings.formatSpeed(mbps);
+  double? _downloadPeak, _uploadPeak, _pingMin;
 
   String _connection = '—'; // WiFi / Mobile (par où passe Internet)
   String _fai = '—'; // FAI de connexion (déduit de l'IP)
   String _mobileNet = '—'; // Réseau mobile SIM : « 4G · Orange »
 
-  StreamingDisplay? _stream; // test de streaming (lecteur YouTube visible)
-  BrowsingDisplay? _web; // test de navigation (pages visibles)
+  WebViewController? _stream; // test de streaming (lecteur YouTube visible)
+  WebViewController? _web; // test de navigation (pages visibles)
 
   // Tableau des mesures de streaming, rempli qualité par qualité pendant le test.
   List<StreamingQualityResult> _streamRows = const [];
   String? _activeQuality;
-
-  /// Moteur effectif du test (surcharge Réglages → Débogage sinon drapeau
-  /// compilé) : le tableau adapte son en-tête et sa ligne « Débit mini requis ».
-  late final bool _hlsEngine =
-      StreamingBackendSetting().effectiveBackend == 'hls';
 
   @override
   void initState() {
@@ -141,16 +118,11 @@ class _FullTestScreenState extends State<FullTestScreen>
 
   /// « 4G · Orange », « 4G », ou « — » selon ce qui est disponible.
   String _formatMobile(NetworkStatus s) {
-    if (s.isWifi) return '—';
     final tech = s.cellularTech;
     final sim = s.simOperator;
-    final details = [
-      if (tech != null && tech.isNotEmpty) tech,
-      if (sim != null && sim.isNotEmpty) sim,
-      if (s.simCount > 1 && s.dataSimSlot != null)
-        'SIM ${s.dataSimSlot! + 1}',
-    ];
-    return details.isEmpty ? '—' : details.join(' · ');
+    if (tech == null && (sim == null || sim.isEmpty)) return '—';
+    if (sim != null && sim.isNotEmpty && tech != null) return '$tech · $sim';
+    return tech ?? sim ?? '—';
   }
 
   /// Fixe la cible ; le Ticker se charge d'y amener l'aiguille.
@@ -162,62 +134,13 @@ class _FullTestScreenState extends State<FullTestScreen>
     return 1.0;
   }
 
-  /// Garde-fou ISS-09 : ne lance le test que si la localisation est utilisable
-  /// (GPS système activé + permission accordée). Retourne false si le test doit
-  /// rester bloqué, après avoir montré le dialogue approprié.
-  ///
-  /// Sur le web (Chrome), il n'y a pas de GPS système : la vérification renvoie
-  /// toujours « ok » et le test se lance comme avant (repli IP conservé).
-  Future<bool> _ensureGpsAllowed() async {
-    final gate = await _location.ensureGpsForTest();
-    if (gate == GpsGateResult.ok) return true;
-
-    if (!mounted) return false;
-
-    final gpsOff = gate == GpsGateResult.gpsDisabled;
-    final action = await showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Localisation requise'),
-        content: Text(
-          gpsOff
-              ? 'Le GPS de votre téléphone est désactivé. Activez la localisation '
-                    'pour lancer le test de mesure.'
-              : 'L\'accès à la localisation est refusé. Autorisez Yélé à accéder '
-                    'à votre position pour lancer le test de mesure.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop('cancel'),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(gpsOff ? 'settings' : 'app'),
-            child: Text(gpsOff ? 'Ouvrir les paramètres' : 'Autoriser'),
-          ),
-        ],
-      ),
-    );
-
-    if (action == 'settings') {
-      await _location.openLocationSettings();
-    } else if (action == 'app') {
-      await _location.openAppSettings();
-    }
-    // Quoi qu'il arrive, on ne démarre pas automatiquement après le retour :
-    // l'utilisateur relance le test lui-même une fois le GPS activé.
-    return false;
-  }
-
   Future<void> _start() async {
     if (_stage == _Stage.running) return;
-    // ISS-09 : blocage du test tant que la localisation n'est pas disponible.
-    if (!await _ensureGpsAllowed()) return;
     setState(() {
       _stage = _Stage.running;
       _phaseLabel = 'Initialisation…';
       _download = _upload = _ping = 0;
+      _downloadPeak = _uploadPeak = _pingMin = null;
       _coreValue = _coreTarget = 0;
       _arc = _arcTarget = 0;
       _phaseProgress = 0;
@@ -229,16 +152,7 @@ class _FullTestScreenState extends State<FullTestScreen>
       final gps = await _location.requestGpsPosition();
       final ipLoc = await _location.getCurrentLocation();
       final status = await _net.getStatus();
-      // Métriques de signal : typées selon la connexion utilisée. En Wi-Fi on
-      // ne remonte pas de métriques cellulaires, en données mobiles pas de
-      // RSSI Wi-Fi — chaque famille de champs reste cohérente.
-      final signalDbm = status.isWifi ? null : status.signalDbm;
-      final signalRsrp = status.isWifi ? null : status.signalRsrp;
-      final signalRsrq = status.isWifi ? null : status.signalRsrq;
-      final signalNrRsrp = status.isWifi ? null : status.signalNrRsrp;
-      final signalNrRsrq = status.isWifi ? null : status.signalNrRsrq;
-      final wifiRssi = status.isWifi ? status.wifiRssi : null;
-      final deviceModel = await _device.getDeviceDisplayName();
+      final deviceModel = await _device.getDeviceModel();
       final osVersion = await _device.getOSVersion();
 
       if (mounted) {
@@ -249,31 +163,27 @@ class _FullTestScreenState extends State<FullTestScreen>
         });
       }
 
-      // Règle métier : l'opérateur SIM et la techno radio ne sont remontés
-      // que pour les tests faits avec la carte SIM. En Wi-Fi, ces champs
-      // restent vides, même si une SIM est insérée dans l'appareil.
-      final simOperator = status.isWifi ? null : status.simOperator;
-      final cellularTech = status.isWifi ? null : status.cellularTech;
-
       final result = await _api.runSpeedTest(
-        signalDbm: signalDbm,
-        signalRsrp: signalRsrp,
-        signalRsrq: signalRsrq,
-        signalNrRsrp: signalNrRsrp,
-        signalNrRsrq: signalNrRsrq,
-        wifiRssi: wifiRssi,
         latitude: gps?.latitude ?? ipLoc?.latitude,
         longitude: gps?.longitude ?? ipLoc?.longitude,
         location: ipLoc != null ? '${ipLoc.city}, ${ipLoc.countryName}' : null,
         networkType: status.networkBadge,
         operator: ipLoc?.operator,
-        simOperator: simOperator,
-        cellularTech: cellularTech,
-        simSlot: status.simCount > 1 ? status.dataSimSlot : null,
+        simOperator: status.simOperator,
+        cellularTech: status.cellularTech,
         deviceModel: deviceModel,
         osVersion: osVersion,
         selection: widget.selection,
         onProgress: _onProgress,
+        onPeak: (dl, ul, pingMin) {
+          if (mounted) {
+            setState(() {
+              _downloadPeak = dl;
+              _uploadPeak = ul;
+              _pingMin = pingMin;
+            });
+          }
+        },
         onStreamingController: (c) {
           if (mounted) setState(() => _stream = c);
         },
@@ -291,8 +201,8 @@ class _FullTestScreenState extends State<FullTestScreen>
       setState(() {
         _stage = _Stage.idle;
         _phaseLabel = '';
-        _coreTarget = _displaySpeed(_download);
-        _metricUnit = _speedUnitLabel();
+        _coreTarget = _download;
+        _metricUnit = 'Mb/s';
         _phaseProgress = 1;
       });
       _animateArcTo(_fracFor(_download, 100));
@@ -321,8 +231,8 @@ class _FullTestScreenState extends State<FullTestScreen>
 
       switch (p.phase) {
         case SpeedTestPhase.download:
-          _metricUnit = _speedUnitLabel();
-          _coreTarget = _displaySpeed(_download);
+          _metricUnit = 'Mb/s';
+          _coreTarget = _download;
           _animateArcTo(_fracFor(_download, 100));
           break;
         case SpeedTestPhase.ping:
@@ -331,8 +241,8 @@ class _FullTestScreenState extends State<FullTestScreen>
           _animateArcTo(_fracFor(_ping, 500));
           break;
         case SpeedTestPhase.upload:
-          _metricUnit = _speedUnitLabel();
-          _coreTarget = _displaySpeed(_upload);
+          _metricUnit = 'Mb/s';
+          _coreTarget = _upload;
           _animateArcTo(_fracFor(_upload, 100));
           break;
         case SpeedTestPhase.streaming:
@@ -380,7 +290,6 @@ class _FullTestScreenState extends State<FullTestScreen>
                   StreamingTable(
                     qualities: _streamRows,
                     activeLabel: _activeQuality,
-                    videoEngine: _hlsEngine ? 'hls' : 'youtube',
                   ),
                 _serverBar(),
                 _metrics(),
@@ -397,11 +306,10 @@ class _FullTestScreenState extends State<FullTestScreen>
   Widget _centerArea() {
     if (_showVideo) return _videoCard();
     if (_showWeb) return _webCard();
-    // Tous les écrans de test affichent le bouton START : débit inclus.
-    // Sur les tests de débit, la jauge reste visible, mais l'action se
-    // lance explicitement depuis le bouton central, pas depuis la jauge.
+    // Tests streaming / navigation : bouton START simple (façon nPerf),
+    // pas de compteur de vitesse (qui n'a de sens que pour le débit).
     if (!widget.selection.speed) return _startButton();
-    return _gaugeWithStart();
+    return _gauge();
   }
 
   Widget _startButton() {
@@ -443,7 +351,6 @@ class _FullTestScreenState extends State<FullTestScreen>
 
   /// Lecteur YouTube pendant le test de streaming (16:9, comme nPerf).
   Widget _videoCard() {
-    final display = _stream!;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: ClipRRect(
@@ -453,12 +360,7 @@ class _FullTestScreenState extends State<FullTestScreen>
           child: Stack(
             children: [
               Container(color: Colors.black),
-              switch (display) {
-                NativeStreamingDisplay(:final controller) =>
-                  WebViewWidget(controller: controller),
-                WebStreamingDisplay(:final viewType) =>
-                  HtmlElementView(viewType: viewType),
-              },
+              WebViewWidget(controller: _stream!),
               _badge('● TEST STREAMING'
                   '${_activeQuality != null ? ' $_activeQuality' : ''}'),
             ],
@@ -469,7 +371,6 @@ class _FullTestScreenState extends State<FullTestScreen>
   }
 
   Widget _webCard() {
-    final display = _web!;
     return Padding(
       padding: const EdgeInsets.all(16),
       child: ClipRRect(
@@ -479,58 +380,11 @@ class _FullTestScreenState extends State<FullTestScreen>
           width: double.infinity,
           child: Stack(
             children: [
-              switch (display) {
-                NativeBrowsingDisplay(:final controller) =>
-                  WebViewWidget(controller: controller),
-                // Web : pas de page affichable (sites de référence fermés à
-                // l'encadrement) — on montre l'avancement du sondage.
-                WebBrowsingDisplay() => _browsingProbeCard(),
-              },
+              WebViewWidget(controller: _web!),
               _badge('● TEST NAVIGATION WEB'),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  /// Carte d'avancement du test de navigation côté web : chaque site est
-  /// sondé par requête réseau, on affiche le site en cours et la progression.
-  Widget _browsingProbeCard() {
-    return Container(
-      color: const Color(0xFF10150D),
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const SizedBox(
-            width: 28,
-            height: 28,
-            child: CircularProgressIndicator(
-              strokeWidth: 3,
-              color: YeleColors.testTop,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            _phaseLabel,
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white, fontSize: 14),
-          ),
-          const SizedBox(height: 12),
-          LinearProgressIndicator(
-            value: _phaseProgress.clamp(0.0, 1.0).toDouble(),
-            backgroundColor: Colors.white12,
-            color: YeleColors.testBot,
-            minHeight: 6,
-            borderRadius: BorderRadius.circular(3),
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'Mesure du temps de réponse des sites',
-            style: TextStyle(color: Colors.white54, fontSize: 12),
-          ),
-        ],
       ),
     );
   }
@@ -554,8 +408,7 @@ class _FullTestScreenState extends State<FullTestScreen>
     );
   }
 
-  Widget _gaugeWithStart() {
-    final idle = _stage == _Stage.idle;
+  Widget _gauge() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(0, 8, 0, 4),
       child: SizedBox(
@@ -568,11 +421,8 @@ class _FullTestScreenState extends State<FullTestScreen>
               size: const Size(320, 320),
               painter: _GaugePainter(_arc),
             ),
-            // Bouton START explicite, même pour les tests de débit.
-            // Avec la jauge : le bouton est au-dessus de l'image de la jauge
-            // pour que l'action soit claire et répétée sur tous les écrans.
             GestureDetector(
-              onTap: idle ? _start : null,
+              onTap: _stage == _Stage.idle ? _start : null,
               child: Container(
                 width: 165,
                 height: 165,
@@ -582,9 +432,7 @@ class _FullTestScreenState extends State<FullTestScreen>
                     center: Alignment(0, -0.3),
                     colors: [Color(0xFF3A4636), Color(0xFF1C2419)],
                   ),
-                  border: Border.all(
-                      color: idle ? YeleColors.testBot : const Color(0xFF5B6B4D),
-                      width: 6),
+                  border: Border.all(color: const Color(0xFF5B6B4D), width: 6),
                 ),
                 alignment: Alignment.center,
                 child: _coreContent(),
@@ -632,21 +480,59 @@ class _FullTestScreenState extends State<FullTestScreen>
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       child: Row(
         children: [
-          const Icon(Icons.dns_outlined,
-              size: 20, color: Color(0xFF5A6B3A)),
+          Container(width: 26, height: 20, color: const Color(0xFF5A6B3A)),
           const SizedBox(width: 10),
-          Expanded(
-            child: Text('Serveur de test : $serverDisplayName',
-                style: const TextStyle(color: Color(0xFF33402A), fontSize: 13)),
+          const Expanded(
+            child: Text('[BF] yele_serveur — Ouagadougou',
+                style: TextStyle(color: Color(0xFF33402A), fontSize: 13)),
           ),
+          const Text('🇧🇫', style: TextStyle(fontSize: 18)),
         ],
       ),
     );
   }
 
+  /// Textes de métrique secondaire style nPerf : Max (débits) ou Min
+  /// (latence) en valeur principale, moyenne en sous-titre.
+  List<Widget> _metricTexts(
+      String label, double value, String unit, double? peak, double? min) {
+    final dec = unit == 'ms' ? 0 : 2;
+    final main = StringBuffer();
+    final sub = StringBuffer();
+    if (peak != null) {
+      final mx = value > peak ? value : peak;
+      main.write(mx > 0 ? 'Max: ${mx.toStringAsFixed(dec)} $unit' : 'Max: —');
+      sub.write(value > 0 ? 'Moy: ${value.toStringAsFixed(dec)} $unit' : 'Moy: —');
+    } else if (min != null) {
+      final mn = (min > 0 && min < value) ? min : (value > 0 ? value : 0.0);
+      main.write(mn > 0 ? 'Min: ${mn.toStringAsFixed(0)} $unit' : 'Min: —');
+      sub.write(value > 0 ? 'Moy: ${value.toStringAsFixed(0)} $unit' : 'Moy: —');
+    }
+    return [
+      FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Text(main.toString(),
+            maxLines: 1,
+            style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: YeleColors.ink,
+                height: 1.15))),
+      Text(sub.toString(),
+          textAlign: TextAlign.left,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+              fontSize: 9,
+              color: Color(0xFF5A6B3A),
+              height: 1.2)),
+    ];
+  }
+
   Widget _metrics() {
-    Widget cell(String label, String displayValue, Color color,
-        {double? barFrac}) {
+    Widget cell(String label, double value, String unit, Color color,
+        {double? peak, double? min}) {
       return Expanded(
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
@@ -662,15 +548,11 @@ class _FullTestScreenState extends State<FullTestScreen>
                       color: Color(0xFF33402A),
                       fontWeight: FontWeight.w600)),
               const SizedBox(height: 6),
-              SizedBox(
-                  height: 30,
-                  child: barFrac == null ? null : _miniBar(barFrac, color)),
+              SizedBox(height: 30, child: _miniBar(value, color)),
               const SizedBox(height: 4),
-              Text(displayValue,
-                  style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: YeleColors.surface.ink)),
+              // Valeur principale = Max (débits) / Min (latence), style nPerf.
+              // Sous-titre = Moyenne.
+              ..._metricTexts(label, value, unit, peak, min),
             ],
           ),
         ),
@@ -681,27 +563,23 @@ class _FullTestScreenState extends State<FullTestScreen>
       color: const Color(0xFFEEF1EE),
       child: Row(
         children: [
-          cell('▼ Download', _download > 0 ? _fmtSpeed(_download) : '—',
-              YeleColors.accent,
-              barFrac: _fracFor(_download, 100)),
-          cell('▲ Upload', _upload > 0 ? _fmtSpeed(_upload) : '—',
-              YeleColors.good,
-              barFrac: _fracFor(_upload, 100)),
-          cell('↔ Latence',
-              _ping > 0 ? '${_ping.toStringAsFixed(0)} ms' : '—',
-              YeleColors.muted,
-              barFrac: _fracFor(_ping, 500)),
+          cell('▼ Download', _download, 'Mb/s', YeleColors.accent,
+              peak: _downloadPeak),
+          cell('▲ Upload', _upload, 'Mb/s', YeleColors.good,
+              peak: _uploadPeak),
+          cell('↔ Latence', _ping, 'ms', YeleColors.muted, min: _pingMin),
         ],
       ),
     );
   }
 
-  Widget _miniBar(double frac, Color color) {
+  Widget _miniBar(double value, Color color) {
+    final frac = _fracFor(value, value > 100 ? value : 100);
     return Align(
       alignment: Alignment.bottomLeft,
       child: FractionallySizedBox(
         widthFactor: 1,
-        heightFactor: frac > 0 ? (0.25 + 0.75 * frac) : 0.06,
+        heightFactor: value > 0 ? (0.25 + 0.75 * frac) : 0.06,
         child: Container(
           decoration: BoxDecoration(
             color: color.withValues(alpha: 0.8),
@@ -717,8 +595,8 @@ class _FullTestScreenState extends State<FullTestScreen>
       return Expanded(
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          decoration: BoxDecoration(
-            border: Border(right: BorderSide(color: YeleColors.surface.line)),
+          decoration: const BoxDecoration(
+            border: Border(right: BorderSide(color: YeleColors.line)),
           ),
           child: Column(
             children: [
@@ -738,8 +616,8 @@ class _FullTestScreenState extends State<FullTestScreen>
     }
 
     return Container(
-      decoration: BoxDecoration(
-        color: YeleColors.surface.panel,
+      decoration: const BoxDecoration(
+        color: YeleColors.panel,
         border: Border(top: BorderSide(color: YeleColors.primary, width: 2)),
       ),
       child: Row(

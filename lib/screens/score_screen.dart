@@ -1,15 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../constants/config.dart';
 import '../models/speed_test_result.dart';
-import '../services/dashboard_api_service.dart';
 import '../services/local_storage_service.dart';
-import '../services/packet_loss_service.dart';
 import '../services/speed_test_api_service.dart';
-import '../services/streaming_test_service.dart';
-import '../services/yele_scoring_engine.dart';
 import '../theme/yele_theme.dart';
-import '../widgets/export_sheet.dart';
 import '../widgets/qoe_dialog.dart';
 import '../widgets/streaming_table.dart';
 import '../widgets/yele_scaffold.dart';
@@ -30,30 +24,12 @@ class ScoreScreen extends StatefulWidget {
 class _ScoreScreenState extends State<ScoreScreen> {
   final _api = SpeedTestApiService();
   final _storage = LocalStorageService();
-  final _dashboard = DashboardApiService();
-  BarometerResult? _barometer;
   bool _saved = false;
   bool _qoeDone = false;
 
   SpeedTestResult get r => widget.result;
 
   bool get _speedDone => r.downloadSpeed > 0 || r.uploadSpeed > 0;
-
-  @override
-  void initState() {
-    super.initState();
-    // IMP-09 — Baromètre : situe le résultat par rapport à la base dès
-    // l'ouverture du bilan. Non bloquant : la carte n'apparaît que si
-    // l'API répond (et seulement pour un test de débit).
-    if (_speedDone) {
-      _dashboard
-          .fetchBarometer(r.downloadSpeed, r.uploadSpeed, r.ping,
-              operator: barometerOperatorOf(r))
-          .then((v) {
-        if (mounted && v != null) setState(() => _barometer = v);
-      });
-    }
-  }
 
   Future<void> _finalize() async {
     if (_saved) return;
@@ -114,17 +90,11 @@ class _ScoreScreenState extends State<ScoreScreen> {
                   _serverBar(),
                   // N'affiche que les sections du/des test(s) réellement faits.
                   if (_speedDone) ...[_metrics(), _qualityBand()],
-                  // IMP-12 — même score qu'en historique : la valeur en points
-                  // est la seule valeur de référence (docs/echelle-score.md).
-                  if (r.scoringVersion != null) _scoreCard(),
-                  // IMP-09 — Baromètre de comparaison « mon résultat vs les autres ».
-                  if (_speedDone) _barometerCard(),
                   // Affiché aussi en cas d'échec, pour en montrer la raison.
                   if (r.hasStreamingTest || r.streamingError != null)
                     _streamingCard(),
                   if (r.hasBrowsingTest) _browsingCard(),
                   _bottomInfo(),
-                  _deviceBar(),
                   _actions(),
                   const SizedBox(height: 16),
                 ],
@@ -137,16 +107,16 @@ class _ScoreScreenState extends State<ScoreScreen> {
   }
 
   Widget _serverBar() {
+    final loc = (r.location?.isNotEmpty == true) ? r.location! : 'Ouagadougou';
     return Container(
       color: YeleColors.panel,
       padding: const EdgeInsets.all(14),
       child: Row(
         children: [
-          const Icon(Icons.dns_outlined,
-              size: 20, color: Color(0xFF16557E)),
+          Container(width: 26, height: 20, color: const Color(0xFF16557E)),
           const SizedBox(width: 10),
           Expanded(
-            child: Text('Serveur de test : $serverDisplayName',
+            child: Text('[BF] yele_serveur — $loc',
                 style: const TextStyle(color: Color(0xFF33402A), fontSize: 13)),
           ),
         ],
@@ -167,194 +137,53 @@ class _ScoreScreenState extends State<ScoreScreen> {
                       color: Color(0xFF2C3650),
                       fontWeight: FontWeight.w600)),
               const SizedBox(height: 6),
-              Text(val,
+              // Une seule ligne garantie : le texte se réduit s'il est trop long.
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(val,
+                  maxLines: 1,
                   style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
                       color: YeleColors.field,
-                      height: 1.1)),
-              Text(unit,
-                  style: const TextStyle(fontSize: 13, color: YeleColors.field)),
+                      height: 1.1))),
               const SizedBox(height: 3),
               Text(sub,
-                  style: TextStyle(fontSize: 11, color: YeleColors.surface.muted)),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 10,
+                      color: YeleColors.muted,
+                      height: 1.2)),
             ],
           ),
         ),
       );
     }
 
+    // Présentation nPerf : Max (débits) / Min (latence) en valeur principale,
+    // moyenne en sous-titre (+ gigue pour la latence).
+    final dlSub = 'Moy: ${r.downloadSpeed.toStringAsFixed(2)} Mb/s';
+    final ulSub = 'Moy: ${r.uploadSpeed.toStringAsFixed(2)} Mb/s';
+    final pingSub =
+        'Moy: ${r.ping.toStringAsFixed(0)} ms / Gig: ${r.jitter.toStringAsFixed(0)} ms';
+
+    final dlMain = (r.downloadPeakSpeed ?? 0) > 0
+        ? r.downloadPeakSpeed!.toStringAsFixed(2)
+        : r.downloadSpeed.toStringAsFixed(2);
+    final ulMain = (r.uploadPeakSpeed ?? 0) > 0
+        ? r.uploadPeakSpeed!.toStringAsFixed(2)
+        : r.uploadSpeed.toStringAsFixed(2);
+    final pingMain = (r.pingMin ?? 0) > 0
+        ? r.pingMin!.toStringAsFixed(0)
+        : r.ping.toStringAsFixed(0);
+
     return Container(
       color: YeleColors.panel,
-      child: Column(
+      child: Row(
         children: [
-          Row(
-            children: [
-              m('▼ Download', r.downloadSpeed.toStringAsFixed(2), 'Mb/s', ''),
-              m('▲ Upload', r.uploadSpeed.toStringAsFixed(2), 'Mb/s', ''),
-              m('↔ Latence', r.ping.toStringAsFixed(0), 'ms', [
-                'Gigue : ${r.jitter.toStringAsFixed(0)} ms',
-                // IMP-07 : perte de paquets, à côté du ping et de la gigue
-                // comme sur nPerf.
-                if (r.packetLoss != null)
-                  'Perte : ${formatPacketLoss(r.packetLoss!)}',
-              ].join('\n')),
-            ],
-          ),
-          // IMP-01 : données consommées par le test (Android ; « — » sur iOS).
-          if (r.dataUsedKiB != null && r.dataUsedKiB! >= 0)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(0, 0, 0, 10),
-              child: Text(
-                '📊 Données consommées : ${_formatData(r.dataUsedKiB!)}',
-                style: const TextStyle(
-                    color: Color(0xFF2C3650),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  /// IMP-01 : formatage lisible d'un volume en KiB (Mo au-delà de 1 Mo).
-  String _formatData(int kib) {
-    if (kib >= 1024) {
-      return '${(kib / 1024).toStringAsFixed(1)} Mo';
-    }
-    return '$kib Ko';
-  }
-
-  // ── IMP-09 : baromètre de comparaison ─────────────────────────────────
-
-  /// Carte « Baromètre » : position du résultat par rapport à toutes les
-  /// mesures de la base. Silencieuse tant que l'API n'a pas répondu.
-  Widget _barometerCard() {
-    final b = _barometer;
-    if (b == null) return const SizedBox.shrink();
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10)],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Text('📊', style: TextStyle(fontSize: 18)),
-              const SizedBox(width: 8),
-              Text('Baromètre',
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: YeleColors.surface.ink)),
-              const Spacer(),
-              Text('${b.sampleSize} mesures',
-                  style: TextStyle(
-                      fontSize: 12, color: YeleColors.surface.muted)),
-            ],
-          ),
-          const SizedBox(height: 10),
-          _barometerRow('▼ Download', b.downloadPercentile,
-              'plus rapide que ${b.downloadPercentile.toStringAsFixed(0)} % des mesures'),
-          _barometerRow('▲ Upload', b.uploadPercentile,
-              'plus rapide que ${b.uploadPercentile.toStringAsFixed(0)} % des mesures'),
-          _barometerRow('↔ Latence', b.pingPercentile,
-              'meilleure que ${b.pingPercentile.toStringAsFixed(0)} % des mesures'),
-          // IMP-09 : même lecture, parmi les seuls clients de l'opérateur.
-          if (b.hasOperatorComparison) ..._operatorBarometer(b),
-        ],
-      ),
-    );
-  }
-
-  /// IMP-09 — Bloc « Parmi les clients de l'opérateur » et débits moyens.
-  List<Widget> _operatorBarometer(BarometerResult b) {
-    final op = b.operator!;
-    final muted = TextStyle(fontSize: 12, color: YeleColors.surface.muted);
-    return [
-      const Divider(height: 22),
-      Row(
-        children: [
-          Expanded(
-            child: Text('Parmi les clients $op',
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: YeleColors.surface.ink)),
-          ),
-          Text('${b.operatorSampleSize} mesures', style: muted),
-        ],
-      ),
-      const SizedBox(height: 4),
-      _barometerRow('▼ Download', b.operatorDownloadPercentile,
-          'plus rapide que ${b.operatorDownloadPercentile.toStringAsFixed(0)} % des clients $op'),
-      _barometerRow('▲ Upload', b.operatorUploadPercentile,
-          'plus rapide que ${b.operatorUploadPercentile.toStringAsFixed(0)} % des clients $op'),
-      _barometerRow('↔ Latence', b.operatorPingPercentile,
-          'meilleure que ${b.operatorPingPercentile.toStringAsFixed(0)} % des clients $op'),
-      const SizedBox(height: 6),
-      Text(
-        'Débit moyen ▼ : vous ${r.downloadSpeed.toStringAsFixed(1)} Mb/s · '
-        '$op ${b.operatorAvgDownload.toStringAsFixed(1)} Mb/s · '
-        'toutes mesures ${b.nationalAvgDownload.toStringAsFixed(1)} Mb/s',
-        style: muted,
-      ),
-    ];
-  }
-
-  /// Une ligne du baromètre : métrique + mini-jauge de centile.
-  Widget _barometerRow(String label, double percentile, String caption) {
-    final color = percentile >= 75
-        ? YeleColors.good
-        : percentile >= 40
-            ? YeleColors.warn
-            : YeleColors.danger;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              SizedBox(
-                width: 92,
-                child: Text(label,
-                    style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: YeleColors.surface.ink)),
-              ),
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: (percentile / 100).clamp(0.0, 1.0),
-                    minHeight: 8,
-                    backgroundColor: YeleColors.surface.line,
-                    valueColor: AlwaysStoppedAnimation(color),
-                  ),
-                ),
-              ),
-              SizedBox(
-                width: 46,
-                child: Text('${percentile.toStringAsFixed(0)} %',
-                    textAlign: TextAlign.right,
-                    style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: color)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 2),
-          Text(caption,
-              style: TextStyle(fontSize: 11, color: YeleColors.surface.muted)),
+          m('▼ Download', 'Max: $dlMain Mb/s', '', dlSub),
+          m('▲ Upload', 'Max: $ulMain Mb/s', '', ulSub),
+          m('↔ Latence', 'Min: $pingMain ms', '', pingSub),
         ],
       ),
     );
@@ -451,11 +280,11 @@ class _ScoreScreenState extends State<ScoreScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(l.k,
-                            style: TextStyle(
-                                color: YeleColors.surface.muted, fontSize: 13)),
+                            style: const TextStyle(
+                                color: YeleColors.muted, fontSize: 13)),
                         Text(l.v,
-                            style: TextStyle(
-                                color: YeleColors.surface.ink,
+                            style: const TextStyle(
+                                color: YeleColors.ink,
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700)),
                       ],
@@ -474,10 +303,6 @@ class _ScoreScreenState extends State<ScoreScreen> {
   Widget _streamingCard() {
     final rows = r.streamingQualities;
     final error = r.streamingError;
-    // Le JSON stocké porte le moteur qui a produit la mesure ; les résultats
-    // antérieurs (sans champ engine) viennent forcément de YouTube.
-    final engine = StreamingTestResult.decodeEngine(r.streamingQualitiesJson) ??
-        'youtube';
     if (rows.isEmpty && error != null) return _streamingError(error);
     if (rows.isEmpty) {
       return _resultCard('🎬', 'Streaming vidéo', YeleColors.g5,
@@ -509,7 +334,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
             ],
           ),
         ),
-        StreamingTable(qualities: rows, videoEngine: engine),
+        StreamingTable(qualities: rows),
         if (error != null) _streamingError(error),
       ],
     );
@@ -534,115 +359,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(message,
-                style: TextStyle(fontSize: 13, color: YeleColors.surface.ink)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// IMP-12 — score YELE en points, identique à la colonne « Score » de
-  /// l'historique. La définition de l'échelle fait autorité dans
-  /// `docs/echelle-score.md` (IMP-05) : unité en points, échelle ouverte,
-  /// jamais de score global sur 100.
-  ///
-  /// Résultat complet → score global ; incomplet → sous-total des composantes
-  /// réellement mesurées, sans points fictifs ; un résultat antérieur au
-  /// scoring n'affiche pas de carte (aucune version attribuée).
-  Widget _scoreCard() {
-    final version = r.scoringVersion;
-    if (version == null) return const SizedBox.shrink();
-    final global = r.scoreGlobal;
-    final sousTotal = r.scoreMeasuredSubtotal;
-    String pts(double v) => v.toStringAsFixed(0);
-    final lignes = <({String k, String v})>[
-      if (r.scoreDownload != null)
-        (k: 'Débit ↓', v: '${pts(r.scoreDownload!)} pts'),
-      if (r.scoreUpload != null)
-        (k: 'Débit ↑', v: '${pts(r.scoreUpload!)} pts'),
-      if (r.scorePingJitter != null)
-        (k: 'Latence', v: '${pts(r.scorePingJitter!)} pts'),
-      if (r.scoreBrowsing != null)
-        (k: 'Navigation', v: '${pts(r.scoreBrowsing!)} pts'),
-      if (r.scoreStreaming != null)
-        (k: 'Streaming', v: '${pts(r.scoreStreaming!)} pts'),
-      (k: 'Référentiel', v: version),
-    ];
-    final String legende;
-    if (global != null) {
-      legende = YeleScoringEngine.classify(global).label;
-    } else if (sousTotal == null) {
-      legende = 'Score global non calculé : aucune composante mesurée';
-    } else {
-      legende = 'Score global non calculé : ${pts(sousTotal)} pts mesurés, '
-          'composantes absentes exclues';
-    }
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10)],
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: YeleColors.primary,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(12)),
-            ),
-            child: Row(
-              children: [
-                const Text('🏅', style: TextStyle(fontSize: 20)),
-                const SizedBox(width: 8),
-                const Text('Score YELE',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700)),
-                const Spacer(),
-                Text(
-                  global != null ? '${pts(global)} pts' : 'incomplet',
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              children: [
-                for (final l in lignes)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 3),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(l.k,
-                            style: TextStyle(
-                                color: YeleColors.surface.muted, fontSize: 13)),
-                        Text(l.v,
-                            style: TextStyle(
-                                color: YeleColors.surface.ink,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700)),
-                      ],
-                    ),
-                  ),
-                const SizedBox(height: 6),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(legende,
-                      style: TextStyle(
-                          fontSize: 12, color: YeleColors.surface.muted)),
-                ),
-              ],
-            ),
+                style: const TextStyle(fontSize: 13, color: YeleColors.ink)),
           ),
         ],
       ),
@@ -669,8 +386,8 @@ class _ScoreScreenState extends State<ScoreScreen> {
       return Expanded(
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          decoration: BoxDecoration(
-            border: Border(right: BorderSide(color: YeleColors.surface.line)),
+          decoration: const BoxDecoration(
+            border: Border(right: BorderSide(color: YeleColors.line)),
           ),
           child: Column(
             children: [
@@ -690,8 +407,8 @@ class _ScoreScreenState extends State<ScoreScreen> {
     }
 
     return Container(
-      decoration: BoxDecoration(
-        color: YeleColors.surface.panel,
+      decoration: const BoxDecoration(
+        color: YeleColors.panel,
         border: Border(top: BorderSide(color: YeleColors.primary, width: 2)),
       ),
       child: Row(
@@ -704,38 +421,17 @@ class _ScoreScreenState extends State<ScoreScreen> {
     );
   }
 
-  /// IMP-13 / retour produit : rappel de l'appareil sous le bandeau d'infos.
-  Widget _deviceBar() {
-    final device = r.deviceModel;
-    final os = r.osVersion;
-    final label = [
-      if (device != null && device.isNotEmpty) device,
-      if (os != null && os.isNotEmpty) os,
-    ].join(' · ');
-    if (label.isEmpty) return const SizedBox.shrink();
-    return Container(
-      width: double.infinity,
-      color: YeleColors.surface.panel,
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 14),
-      child: Text(label,
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 12, color: YeleColors.surface.muted)),
-    );
-  }
-
-  /// « 4G · Orange · SIM 2 » ou « 4G · Orange » selon les mesures disponibles.
+  /// « 4G · Orange », « 4G », ou « — » selon les mesures disponibles.
   String get _mobileLabel {
-    // Règle métier : rien n'est affiché pour un test fait en Wi-Fi, même si
-    // l'enregistrement contient encore des données SIM (anciennes versions).
-    if ((r.networkType ?? '').toUpperCase().contains('WIFI')) return '—';
     final tech = r.cellularTech;
     final sim = r.simOperator;
-    final details = [
-      if (tech != null && tech.isNotEmpty) tech,
-      if (sim != null && sim.isNotEmpty) sim,
-      if (r.simSlot != null) 'SIM ${r.simSlot! + 1}',
-    ];
-    return details.isEmpty ? '—' : details.join(' · ');
+    if ((tech == null || tech.isEmpty) && (sim == null || sim.isEmpty)) {
+      return '—';
+    }
+    if (sim != null && sim.isNotEmpty && tech != null && tech.isNotEmpty) {
+      return '$tech · $sim';
+    }
+    return (tech != null && tech.isNotEmpty) ? tech : sim!;
   }
 
   Widget _actions() {
@@ -743,26 +439,6 @@ class _ScoreScreenState extends State<ScoreScreen> {
       padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
       child: Column(
         children: [
-          // IMP-13 — Export de la mesure, façon nPerf : proposé dès le bilan
-          // (l'export d'un résultat échoué reste possible : les champs mesurés
-          // et la raison d'échec sont dans la mesure).
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () async {
-                await _finalize();
-                if (mounted) showExportSheet(context, r);
-              },
-              icon: const Icon(Icons.ios_share),
-              label: const Text('Exporter la mesure'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: YeleColors.ink,
-                backgroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(

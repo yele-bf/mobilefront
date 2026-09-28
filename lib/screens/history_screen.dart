@@ -4,13 +4,8 @@ import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../models/speed_test_result.dart';
-import '../services/account_service.dart';
 import '../services/local_storage_service.dart';
-import '../services/packet_loss_service.dart';
-import '../services/reverse_geocoding_service.dart';
-import '../services/yele_scoring_engine.dart';
 import '../theme/yele_theme.dart';
-import '../widgets/export_sheet.dart';
 import '../widgets/yele_scaffold.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -25,47 +20,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
   final _date = DateFormat('dd/MM/yy');
   final _time = DateFormat('HH:mm:ss');
 
-  /// IMP-01 : volume lisible en Ko/Mo.
-  static String _formatData(int kib) {
-    if (kib >= 1024) return '${(kib / 1024).toStringAsFixed(1)} Mo';
-    return '$kib Ko';
-  }
-
   List<SpeedTestResult> _all = [];
   int _tab = 0; // 0 = Test complet, 1 = Speed test
   String? _expandedId;
 
-  final ReverseGeocodingService _geo = ReverseGeocodingService.instance;
-
-  /// Adresses résolues par géocodage inversé, indexées par clé de cache
-  /// (coordonnées arrondies à 4 décimales). Valeur null = résolution en
-  /// cours ; '' = aucune adresse OSM connue à cet endroit.
-  final Map<String, String?> _addresses = {};
-
-  /// Lance (une fois par coordonnée) la résolution de l'adresse quand un
-  /// test est déplié. Le résultat alimente [_addresses] via setState.
-  void _ensureAddress(SpeedTestResult r) {
-    final lat = r.latitude;
-    final lon = r.longitude;
-    if (lat == null || lon == null || lat == 0 || lon == 0) return;
-    final key = ReverseGeocodingService.cacheKeyFor(lat, lon);
-    if (_addresses.containsKey(key)) return; // déjà résolu ou en cours
-    _addresses[key] = null; // marque « résolution en cours »
-    _geo.resolveAddress(lat, lon).then((addr) {
-      if (!mounted) return;
-      setState(() => _addresses[key] = addr ?? '');
-    });
-  }
-
   @override
   void initState() {
     super.initState();
-    // IMP-03 : chaque compte ne voit que ses mesures ; déconnecté, on voit
-    // celles faites sans compte.
-    _all = _storage
-        .getResultsSorted()
-        .where((r) => AccountService.isVisible(r.accountId))
-        .toList();
+    _all = _storage.getResultsSorted();
   }
 
   bool _isComplet(SpeedTestResult r) =>
@@ -82,64 +44,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ? 0.0
             : (300 - r.ping) / 280 * 20;
     return (dl + ul + lat).round().clamp(0, 100);
-  }
-
-  /// Score affiché dans la colonne : **score ouvert en points** (IMP-12).
-  ///
-  /// La méthode retenue est celle de nPerf : un score composite ouvert, exprimé
-  /// en points et non plafonné. L'indice /100 n'est qu'une lecture secondaire,
-  /// affichée dans le dépli — il n'est jamais la valeur principale.
-  ///
-  /// Résultat complet → score global ; incomplet → sous-total des composantes
-  /// réellement mesurées, suivi de « * » (jamais de points fictifs) ; résultat
-  /// antérieur au scoring → ancienne note dérivée des débits et de la latence.
-  String _scoreText(SpeedTestResult r) {
-    if (r.scoringVersion == null) return '${_score(r)}';
-    final global = r.scoreGlobal;
-    if (global != null) return global.toStringAsFixed(0);
-    final partial = r.scoreMeasuredSubtotal;
-    return partial == null ? '—' : '${partial.toStringAsFixed(0)}*';
-  }
-
-  /// Détail du scoring ouvert : score global et composantes mesurées.
-  List<Widget> _openScoreLines(
-      SpeedTestResult r, Widget Function(String k, String v) line) {
-    String pts(double v) => v.toStringAsFixed(0);
-    final out = <Widget>[];
-    final global = r.scoreGlobal;
-    if (global != null) {
-      out.add(line(
-          'Score ouvert ${r.scoringVersion}',
-          '${pts(global)} pts · '
-              '${YeleScoringEngine.classify(global).label}'));
-      out.add(line(
-          'Indice (lecture)',
-          '${r.scoreGlobalOn100!.toStringAsFixed(0)}/100'));
-    } else {
-      final sub = r.scoreMeasuredSubtotal;
-      out.add(line(
-          'Score ouvert ${r.scoringVersion}',
-          sub == null
-              ? 'non mesuré'
-              : 'incomplet · ${pts(sub)} pts mesurés '
-                  '(composantes absentes exclues)'));
-    }
-    if (r.scoreDownload != null) {
-      out.add(line('Débit ↓', '${pts(r.scoreDownload!)} pts'));
-    }
-    if (r.scoreUpload != null) {
-      out.add(line('Débit ↑', '${pts(r.scoreUpload!)} pts'));
-    }
-    if (r.scorePingJitter != null) {
-      out.add(line('Latence', '${pts(r.scorePingJitter!)} pts'));
-    }
-    if (r.scoreBrowsing != null) {
-      out.add(line('Navigation (score ouvert)', '${pts(r.scoreBrowsing!)} pts'));
-    }
-    if (r.scoreStreaming != null) {
-      out.add(line('Streaming (score ouvert)', '${pts(r.scoreStreaming!)} pts'));
-    }
-    return out;
   }
 
   List<SpeedTestResult> get _filtered =>
@@ -257,9 +161,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-      decoration: BoxDecoration(
-        color: YeleColors.surface.panel,
-        border: Border(bottom: BorderSide(color: YeleColors.surface.line)),
+      decoration: const BoxDecoration(
+        color: YeleColors.panel,
+        border: Border(bottom: BorderSide(color: YeleColors.line)),
       ),
       child: Row(
         children: [
@@ -302,11 +206,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return Column(
       children: [
         InkWell(
-          onTap: () {
-            setState(() => _expandedId = expanded ? null : r.id);
-            // Déclenche la résolution de l'adresse au dépliage du test.
-            if (!expanded) _ensureAddress(r);
-          },
+          onTap: () => setState(() => _expandedId = expanded ? null : r.id),
           child: Container(
             decoration: const BoxDecoration(
               color: Color(0xFF10161F),
@@ -378,7 +278,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     ],
                   ),
                 ),
-                // Débits
+                // Débits (moyen + crête, style nPerf)
                 Expanded(
                   flex: 14,
                   child: Column(
@@ -386,9 +286,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       Text('${r.downloadSpeed.toStringAsFixed(2)} Mb/s',
                           style: const TextStyle(
                               color: Color(0xFFCFD6E0), fontSize: 11)),
+                      if (r.downloadPeakSpeed != null &&
+                          r.downloadPeakSpeed! > 0)
+                        Text('crête ${r.downloadPeakSpeed!.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                                color: Color(0xFF8FA0B8), fontSize: 9)),
                       Text('${r.uploadSpeed.toStringAsFixed(2)} Mb/s',
                           style: const TextStyle(
                               color: Color(0xFF8FA0B8), fontSize: 10)),
+                      if (r.uploadPeakSpeed != null && r.uploadPeakSpeed! > 0)
+                        Text('crête ${r.uploadPeakSpeed!.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                                color: Color(0xFF8FA0B8), fontSize: 9)),
                     ],
                   ),
                 ),
@@ -397,7 +306,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   flex: 12,
                   child: Column(
                     children: [
-                      Text(_scoreText(r),
+                      Text('${_score(r)}',
                           style: const TextStyle(
                               color: Color(0xFFCFD6E0),
                               fontSize: 16,
@@ -423,30 +332,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
         if (expanded) _detail(r),
       ],
     );
-  }
-
-  /// Ligne(s) « Coord. » : adresse lisible (géocodage inversé Nominatim) avec
-  /// les coordonnées brutes en sous-texte. Tant que la résolution est en
-  /// cours, un indicateur discret s'affiche ; en cas d'échec ou d'absence
-  /// d'adresse OSM, on retombe sur les seules coordonnées.
-  List<Widget> _coordBlock(
-      SpeedTestResult r, Widget Function(String k, String v) line) {
-    final key = ReverseGeocodingService.cacheKeyFor(r.latitude!, r.longitude!);
-    final address = _addresses[key];
-    final coords =
-        '${r.latitude!.toStringAsFixed(4)}, ${r.longitude!.toStringAsFixed(4)}';
-    if (address == null) {
-      // Résolution en cours.
-      return [line('Coord.', '$coords — résolution…')];
-    }
-    if (address.isEmpty) {
-      // Aucune adresse OSM connue à ces coordonnées.
-      return [line('Coord.', coords)];
-    }
-    return [
-      line('Coord. (adresse)', address),
-      line('Coordonnées', coords),
-    ];
   }
 
   Widget _detail(SpeedTestResult r) {
@@ -477,110 +362,40 @@ class _HistoryScreenState extends State<HistoryScreen> {
         children: [
           line('Serveur', r.server),
           line('FAI', r.operator ?? '—'),
-          // Règle métier : le réseau mobile (SIM) n'est montré que pour un test
-          // fait avec la carte SIM ; en Wi-Fi la ligne est masquée, même si
-          // d'anciens enregistrements contiennent encore ces champs.
-          if (!(r.networkType ?? '').toUpperCase().contains('WIFI') &&
-              ((r.simOperator ?? '').isNotEmpty ||
-                  (r.cellularTech ?? '').isNotEmpty ||
-                  r.simSlot != null))
+          if ((r.simOperator ?? '').isNotEmpty || (r.cellularTech ?? '').isNotEmpty)
             line(
                 'Réseau mobile',
-                [
-                  r.cellularTech,
-                  r.simOperator,
-                  if (r.simSlot != null) 'SIM ${r.simSlot! + 1}',
-                ]
+                [r.cellularTech, r.simOperator]
                     .where((e) => (e ?? '').isNotEmpty)
                     .join(' · ')),
           line('Réseau', r.location ?? '—'),
-          if ((r.deviceModel ?? '').isNotEmpty) line('Appareil', r.deviceModel!),
-          line('Latence', '${r.ping.toStringAsFixed(0)} ms'),
+          line('Débit descendant moyen',
+              '${r.downloadSpeed.toStringAsFixed(2)} Mb/s'),
+          if (r.downloadPeakSpeed != null && r.downloadPeakSpeed! > 0)
+            line('Débit descendant crête',
+                '${r.downloadPeakSpeed!.toStringAsFixed(2)} Mb/s'),
+          line('Débit montant moyen',
+              '${r.uploadSpeed.toStringAsFixed(2)} Mb/s'),
+          if (r.uploadPeakSpeed != null && r.uploadPeakSpeed! > 0)
+            line('Débit montant crête',
+                '${r.uploadPeakSpeed!.toStringAsFixed(2)} Mb/s'),
+          if (r.pingMin != null && r.pingMin! > 0)
+            line('Temps de réponse min', '${r.pingMin!.toStringAsFixed(0)} ms'),
+          line('Temps de réponse moyen', '${r.ping.toStringAsFixed(0)} ms'),
           line('Gigue', '${r.jitter.toStringAsFixed(0)} ms'),
-          // IMP-07 : masquée si non mesurée (anciens résultats).
-          if (r.packetLoss != null)
-            line('Perte de paquets', formatPacketLoss(r.packetLoss!)),
-          // IMP-01 : données consommées par le test (masqué si non mesuré).
-          if ((r.dataUsedKiB ?? -1) >= 0) line('Données', _formatData(r.dataUsedKiB!)),
-          ..._signalLines(r, line),
           if (r.hasStreamingTest)
             line('Streaming',
                 '${r.streamingMaxResolution ?? '—'} · ${r.streamingScore!.toStringAsFixed(0)}/100'),
           if (r.hasBrowsingTest)
             line('Navigation',
                 '${(r.browsingAvgLoadMs! / 1000).toStringAsFixed(1)} s · ${r.browsingScore!.toStringAsFixed(0)}/100'),
-          // IMP-12 : score global ouvert et composantes mesurées.
-          if (r.scoringVersion != null) ..._openScoreLines(r, line),
-          if ((r.latitude ?? 0) != 0) ..._coordBlock(r, line),
+          if ((r.latitude ?? 0) != 0)
+            line('Coord.',
+                '${r.latitude!.toStringAsFixed(4)}, ${r.longitude!.toStringAsFixed(4)}'),
           if (r.qoeRating != null && r.qoeRating! > 0)
             line('QoE', '${r.qoeRating}/5'),
-          // IMP-13 — Export de cette mesure (CSV / Excel / PDF / PNG).
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () => showExportSheet(context, r),
-              icon: const Icon(Icons.ios_share, size: 18),
-              label: const Text('Exporter la mesure'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: YeleColors.ink,
-                elevation: 0,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-            ),
-          ),
         ],
       ),
     );
   }
-
-  /// Ligne(s) « Signal » : métriques radio typées selon la connexion utilisée
-  /// pour le test. Rien ne s'affiche si rien n'a été mesuré (iOS, Android < 9,
-  /// appareils qui n'exposent pas les compteurs).
-  List<Widget> _signalLines(
-      SpeedTestResult r, Widget Function(String k, String v) line) {
-    // Seuils et libellés alignés sur le tableau de référence qualité signal
-    // (IUT) : RSRP −80/−95/−105, RSSI −65/−75/−85 → Excellent / Bon-Moyen /
-    // Acceptable / Mauvais-Faible.
-    String qualityLabel(int dbm, {required bool isRsrp}) {
-      final t = isRsrp ? [-80, -95, -105] : [-65, -75, -85];
-      if (dbm >= t[0]) return 'Excellent';
-      if (dbm >= t[1]) return 'Bon/Moyen';
-      if (dbm >= t[2]) return 'Acceptable';
-      return 'Mauvais/Faible';
-    }
-
-    final lines = <Widget>[];
-
-    // Puissance (dBm), avec libellé de qualité.
-    if ((r.signalRsrp ?? 0) != 0) {
-      lines.add(line('Signal',
-          'RSRP ${r.signalRsrp} dBm (${qualityLabel(r.signalRsrp!, isRsrp: true)})'));
-    }
-    if ((r.signalNrRsrp ?? 0) != 0) {
-      lines.add(line('Signal', 'NR RSRP ${r.signalNrRsrp} dBm'));
-    }
-    if ((r.wifiRssi ?? 0) != 0) {
-      lines.add(line('Signal',
-          'RSSI ${r.wifiRssi} dBm (${qualityLabel(r.wifiRssi!, isRsrp: false)})'));
-    }
-
-    // Qualité (dB), ligne dédiée « Qualité du signal ».
-    if ((r.signalRsrq ?? 0) != 0) {
-      lines.add(line('Qualité du signal', 'RSRQ ${r.signalRsrq} dB'));
-    }
-    if ((r.signalNrRsrq ?? 0) != 0) {
-      lines.add(line('Qualité du signal', 'NR RSRQ ${r.signalNrRsrq} dB'));
-    }
-
-    // Repli : mesure générique seule, si aucune métrique typée n'est
-    // disponible — affichée sur « Signal » sans libellé de qualité.
-    if (lines.isEmpty && (r.signalDbm ?? 0) != 0) {
-      lines.add(line('Signal', '${r.signalDbm} dBm'));
-    }
-    return lines;
-  }
-
-
 }

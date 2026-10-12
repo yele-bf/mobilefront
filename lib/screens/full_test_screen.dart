@@ -362,10 +362,11 @@ class _FullTestScreenState extends State<FullTestScreen>
   Widget _centerArea() {
     if (_showVideo) return _videoCard();
     if (_showWeb) return _webCard();
-    // Tests streaming / navigation : bouton START simple (façon nPerf),
-    // pas de compteur de vitesse (qui n'a de sens que pour le débit).
+    // Tous les écrans de test affichent le bouton START : débit inclus.
+    // Sur les tests de débit, la jauge reste visible, mais l'action se
+    // lance explicitement depuis le bouton central, pas depuis la jauge.
     if (!widget.selection.speed) return _startButton();
-    return _gauge();
+    return _gaugeWithStart();
   }
 
   Widget _startButton() {
@@ -518,7 +519,8 @@ class _FullTestScreenState extends State<FullTestScreen>
     );
   }
 
-  Widget _gauge() {
+  Widget _gaugeWithStart() {
+    final idle = _stage == _Stage.idle;
     return Padding(
       padding: const EdgeInsets.fromLTRB(0, 8, 0, 4),
       child: SizedBox(
@@ -531,8 +533,11 @@ class _FullTestScreenState extends State<FullTestScreen>
               size: const Size(320, 320),
               painter: _GaugePainter(_arc),
             ),
+            // Bouton START explicite, même pour les tests de débit.
+            // Avec la jauge : le bouton est au-dessus de l'image de la jauge
+            // pour que l'action soit claire et répétée sur tous les écrans.
             GestureDetector(
-              onTap: _stage == _Stage.idle ? _start : null,
+              onTap: idle ? _start : null,
               child: Container(
                 width: 165,
                 height: 165,
@@ -542,7 +547,9 @@ class _FullTestScreenState extends State<FullTestScreen>
                     center: Alignment(0, -0.3),
                     colors: [Color(0xFF3A4636), Color(0xFF1C2419)],
                   ),
-                  border: Border.all(color: const Color(0xFF5B6B4D), width: 6),
+                  border: Border.all(
+                      color: idle ? YeleColors.testBot : const Color(0xFF5B6B4D),
+                      width: 6),
                 ),
                 alignment: Alignment.center,
                 child: _coreContent(),

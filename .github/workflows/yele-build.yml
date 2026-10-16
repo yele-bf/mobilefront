@@ -26,3 +26,6 @@ jobs:
 
       - name: Analyse (erreurs bloquantes, avertissements signalés)
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Tests unitaires
+        run: flutter test

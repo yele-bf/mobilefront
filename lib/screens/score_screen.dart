@@ -38,7 +38,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
   @override
   void initState() {
     super.initState();
-    // IMP-11 — Baromètre : situe le résultat par rapport à la base dès
+    // IMP-09 — Baromètre : situe le résultat par rapport à la base dès
     // l'ouverture du bilan. Non bloquant : la carte n'apparaît que si
     // l'API répond (et seulement pour un test de débit).
     if (_speedDone) {
@@ -109,7 +109,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
                   _serverBar(),
                   // N'affiche que les sections du/des test(s) réellement faits.
                   if (_speedDone) ...[_metrics(), _qualityBand()],
-                  // IMP-11 — Baromètre de comparaison « mon résultat vs les autres ».
+                  // IMP-09 — Baromètre de comparaison « mon résultat vs les autres ».
                   if (_speedDone) _barometerCard(),
                   // Affiché aussi en cas d'échec, pour en montrer la raison.
                   if (r.hasStreamingTest || r.streamingError != null)
@@ -213,7 +213,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
     return '$kib Ko';
   }
 
-  // ── IMP-11 : baromètre de comparaison ─────────────────────────────────
+  // ── IMP-09 : baromètre de comparaison ─────────────────────────────────
 
   /// Carte « Baromètre » : position du résultat par rapport à toutes les
   /// mesures de la base. Silencieuse tant que l'API n'a pas répondu.

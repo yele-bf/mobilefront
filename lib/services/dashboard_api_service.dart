@@ -28,7 +28,7 @@ class CoveragePoint {
       );
 }
 
-/// IMP-11 — Position d'un résultat dans le baromètre de comparaison.
+/// IMP-09 — Position d'un résultat dans le baromètre de comparaison.
 class BarometerResult {
   /// % de mesures de la base plus lentes que le résultat testé.
   final double downloadPercentile;
@@ -83,7 +83,7 @@ class DashboardApiService {
     }
   }
 
-  /// IMP-11 — Situe un résultat ([download]/[upload] en Mb/s, [ping] en ms)
+  /// IMP-09 — Situe un résultat ([download]/[upload] en Mb/s, [ping] en ms)
   /// par rapport à toutes les mesures de la base. null si indisponible.
   Future<BarometerResult?> fetchBarometer(
       double download, double upload, double ping) async {

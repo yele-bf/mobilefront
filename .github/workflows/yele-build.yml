@@ -24,7 +24,7 @@ jobs:
       - name: Dépendances
         run: flutter pub get
 
-      - name: Analyse statique (stricte : aucun avertissement toléré)
+      - name: Analyse statique (stricte, aucun avertissement toléré)
         run: flutter analyze
 
       - name: Tests unitaires

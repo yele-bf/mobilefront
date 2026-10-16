@@ -4,6 +4,7 @@ import 'browsing_test_service.dart';
 /// instancié : la façade ne l'utilise que lorsque `kIsWeb` est vrai, auquel
 /// cas la vraie implémentation est importée à la place.
 class WebBrowsingRunner implements BrowsingRunner {
+  @override
   Future<BrowsingTestResult> runTest({
     required List<String> pages,
     BrowsingControllerCallback? onController,

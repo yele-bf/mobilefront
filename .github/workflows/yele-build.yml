@@ -24,8 +24,8 @@ jobs:
       - name: Dépendances
         run: flutter pub get
 
-      - name: Analyse (erreurs bloquantes, avertissements signalés)
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Analyse statique (stricte : aucun avertissement toléré)
+        run: flutter analyze
 
       - name: Tests unitaires
         run: flutter test

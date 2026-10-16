@@ -20,6 +20,7 @@ class NativeBrowsingRunner implements BrowsingRunner {
   // Sécurité absolue par page (réseaux très lents) avant de passer à la suivante
   static const int _hardTimeoutMs = 20000;
 
+  @override
   Future<BrowsingTestResult> runTest({
     required List<String> pages,
     BrowsingControllerCallback? onController,
@@ -37,8 +38,8 @@ class NativeBrowsingRunner implements BrowsingRunner {
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageFinished: (_) {
-            if (pageCompleter != null && !pageCompleter!.isCompleted) {
-              pageCompleter!.complete();
+            if (pageCompleter != null && !pageCompleter.isCompleted) {
+              pageCompleter.complete();
             }
           },
           onWebResourceError: (error) {
@@ -46,9 +47,9 @@ class NativeBrowsingRunner implements BrowsingRunner {
             // sous-ressource secondaire (pub, tracker bloqué, etc.).
             if (error.isForMainFrame == true &&
                 pageCompleter != null &&
-                !pageCompleter!.isCompleted) {
+                !pageCompleter.isCompleted) {
               currentPageFailed = true;
-              pageCompleter!.complete();
+              pageCompleter.complete();
             }
           },
         ),
@@ -68,7 +69,7 @@ class NativeBrowsingRunner implements BrowsingRunner {
         await controller.loadRequest(Uri.parse(url));
 
         try {
-          await pageCompleter!.future
+          await pageCompleter.future
               .timeout(const Duration(milliseconds: _hardTimeoutMs));
         } on TimeoutException {
           currentPageFailed = true;

@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:ui_web' as ui_web;
 
-import 'package:logger/logger.dart';
 import 'package:web/web.dart' as web;
 
 import '../constants/config.dart';
@@ -28,7 +27,8 @@ external void _stopLevelJs();
 /// sont faites par le même script JavaScript que la version WebView, qui
 /// remonte ses événements par `window.postMessage`.
 class WebStreamingRunner extends StreamingRunner {
-  final Logger logger = Logger();
+  // Journalisation : le champ `logger` de [StreamingRunner] est réutilisé
+  // (auparavant redéclaré ici, ce qui masquait celui de la classe mère).
 
   /// Préfixe des messages du lecteur, pour ne pas confondre avec les messages
   /// internes de l'API YouTube (qui passent aussi par `window.postMessage`).

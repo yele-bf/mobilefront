@@ -27,6 +27,13 @@ linter:
   # `// ignore_for_file: name_of_lint` syntax on the line or in the file
   # producing the lint.
   rules:
+    # Les constantes de lib/constants/config.dart suivent la convention
+    # SCREAMING_CASE (BASE_URL, ENDPOINT_GET_SERVERS, ...), volontairement
+    # conservée pour rester aligné sur le reste du projet : la règle de style
+    # est donc neutralisée pour tout le dépôt (l'analyse tourne sans
+    # avertissement, ce qui rend le contrôle CI réellement strict).
+    constant_identifier_names: false
+
     # avoid_print: false  # Uncomment to disable the `avoid_print` rule
     # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
 

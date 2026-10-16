@@ -23,6 +23,7 @@ class WebBrowsingRunner implements BrowsingRunner {
   // Sécurité absolue par page (réseaux très lents) avant de passer à la suivante
   static const int _hardTimeoutMs = 20000;
 
+  @override
   Future<BrowsingTestResult> runTest({
     required List<String> pages,
     BrowsingControllerCallback? onController,

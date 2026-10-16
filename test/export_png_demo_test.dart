@@ -1,8 +1,7 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pdf/pdf.dart';
-import '../lib/models/speed_test_result.dart';
-import '../lib/services/export_service.dart';
+import 'package:yele/models/speed_test_result.dart';
+import 'package:yele/services/export_service.dart';
 
 void main() {
   test('génère le PDF du rapport pour vérification PNG', () async {

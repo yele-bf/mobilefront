@@ -247,6 +247,7 @@ class SpeedTestApiService {
     String? operator,
     String? simOperator,
     String? cellularTech,
+    int? simSlot,
     String? deviceModel,
     String? osVersion,
     TestSelection selection = const TestSelection(),
@@ -437,6 +438,7 @@ class SpeedTestApiService {
         osVersion: osVersion,
         simOperator: simOperator,
         cellularTech: cellularTech,
+        simSlot: simSlot,
         // JSON complet -> le backend en extrait city/country/coordonnées IP.
         testLog: ipRawJson ?? ipInfo,
         streamingStartupMs: streaming?.startupMs,

@@ -360,10 +360,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
         children: [
           line('Serveur', r.server),
           line('FAI', r.operator ?? '—'),
-          if ((r.simOperator ?? '').isNotEmpty || (r.cellularTech ?? '').isNotEmpty)
+          if ((r.simOperator ?? '').isNotEmpty ||
+              (r.cellularTech ?? '').isNotEmpty ||
+              r.simSlot != null)
             line(
                 'Réseau mobile',
-                [r.cellularTech, r.simOperator]
+                [
+                  r.cellularTech,
+                  r.simOperator,
+                  if (r.simSlot != null) 'SIM ${r.simSlot! + 1}',
+                ]
                     .where((e) => (e ?? '').isNotEmpty)
                     .join(' · ')),
           line('Réseau', r.location ?? '—'),

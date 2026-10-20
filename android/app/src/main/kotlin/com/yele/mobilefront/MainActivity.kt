@@ -11,6 +11,7 @@ import android.net.TrafficStats
 import android.os.Build
 import android.os.Process
 import android.provider.Settings
+import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import androidx.annotation.NonNull
 import androidx.core.app.ActivityCompat
@@ -440,14 +441,37 @@ class MainActivity : FlutterActivity() {
         return null
     }
 
-    /// Retourne { simOperator, mccMnc, cellularTech } — champs null si indisponible.
+    /// Retourne l'opérateur de la SIM data active et sa techno — null si indisponible.
     private fun telephonyInfo(): Map<String, Any?> {
         val info = HashMap<String, Any?>()
         info["simOperator"] = null
         info["mccMnc"] = null
         info["cellularTech"] = null
+        info["dataSimSlot"] = null
+        info["simCount"] = 0
 
-        val tm = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager ?: return info
+        val base = getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager ?: return info
+        val tm = telephonyForActiveData(base)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
+                val subscriptions = getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE)
+                    as? SubscriptionManager
+                if (subscriptions != null) {
+                    val subId = SubscriptionManager.getDefaultDataSubscriptionId()
+                    if (subId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+                        info["dataSimSlot"] =
+                            subscriptions.getActiveSubscriptionInfo(subId)?.simSlotIndex
+                    }
+                    info["simCount"] = subscriptions.activeSubscriptionInfoCount
+                }
+            } catch (_: SecurityException) {
+                // L'opérateur reste lisible si les détails d'abonnement sont restreints.
+            } catch (_: Exception) {
+                // Certains appareils n'exposent pas les détails d'abonnement.
+            }
+        }
+
         try {
             // Nom de l'opérateur du réseau mobile (SIM enregistrée sur le réseau).
             val name = tm.networkOperatorName?.trim()
@@ -478,6 +502,20 @@ class MainActivity : FlutterActivity() {
         }
 
         return info
+    }
+
+    /// Rattache la lecture à l'abonnement data actif, et non à la SIM 1 par défaut.
+    private fun telephonyForActiveData(base: TelephonyManager): TelephonyManager {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return base
+        return try {
+            val subId = SubscriptionManager.getDefaultDataSubscriptionId()
+            if (subId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) base
+            else base.createForSubscriptionId(subId)
+        } catch (_: SecurityException) {
+            base
+        } catch (_: Exception) {
+            base
+        }
     }
 
     private fun techLabel(type: Int): String? {

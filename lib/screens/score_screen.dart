@@ -561,17 +561,16 @@ class _ScoreScreenState extends State<ScoreScreen> {
     );
   }
 
-  /// « 4G · Orange », « 4G », ou « — » selon les mesures disponibles.
+  /// « 4G · Orange · SIM 2 » ou « 4G · Orange » selon les mesures disponibles.
   String get _mobileLabel {
     final tech = r.cellularTech;
     final sim = r.simOperator;
-    if ((tech == null || tech.isEmpty) && (sim == null || sim.isEmpty)) {
-      return '—';
-    }
-    if (sim != null && sim.isNotEmpty && tech != null && tech.isNotEmpty) {
-      return '$tech · $sim';
-    }
-    return (tech != null && tech.isNotEmpty) ? tech : sim!;
+    final details = [
+      if (tech != null && tech.isNotEmpty) tech,
+      if (sim != null && sim.isNotEmpty) sim,
+      if (r.simSlot != null) 'SIM ${r.simSlot! + 1}',
+    ];
+    return details.isEmpty ? '—' : details.join(' · ');
   }
 
   Widget _actions() {

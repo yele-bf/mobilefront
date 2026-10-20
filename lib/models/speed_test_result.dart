@@ -118,6 +118,9 @@ class SpeedTestResult extends HiveObject {
   @HiveField(34)
   int? dataUsedKiB; // Total rx + tx du test, en kibioctets (-1 = non mesuré)
 
+  @HiveField(35)
+  int? simSlot; // Emplacement 0-indexé de la SIM data active (ISS-02)
+
   SpeedTestResult({
     String? id,
     DateTime? timestamp,
@@ -153,6 +156,7 @@ class SpeedTestResult extends HiveObject {
     this.cellularTech,
     this.streamingQualitiesJson,
     this.dataUsedKiB,
+    this.simSlot,
   }) {
     this.id = id ?? const Uuid().v4();
     this.timestamp = timestamp ?? DateTime.now();
@@ -178,6 +182,7 @@ class SpeedTestResult extends HiveObject {
       'osVersion': osVersion,
       'simOperator': simOperator,
       'cellularTech': cellularTech,
+      'simSlot': simSlot,
       'testLog': testLog,
       'qoeRating': qoeRating,
       'qoeUsage': qoeUsage,
@@ -261,6 +266,7 @@ class SpeedTestResult extends HiveObject {
       osVersion: json['osVersion']?.toString(),
       simOperator: json['simOperator']?.toString(),
       cellularTech: json['cellularTech']?.toString(),
+      simSlot: readInt(['simSlot', 'dataSimSlot']),
       streamingQualitiesJson: json['streamingQualities'] as String?,
       dataUsedKiB: readInt(['dataUsedKiB']),
       imagePath: json['imagePath'] as String?,

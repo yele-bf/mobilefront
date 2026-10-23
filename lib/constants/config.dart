@@ -67,6 +67,49 @@ const int STREAMING_LEVEL_TIMEOUT_SEC = 20;
 // qualité d'après l'ancienne taille : c'est la principale source de résultats
 // non reproductibles.
 const int STREAMING_STAGE_SETTLE_MS = 900;
+
+// ── Backend du test de streaming (test A/B) ─────────────────────────────
+// 'youtube' : lecteur IFrame YouTube ; la qualité servie reste à la discrétion
+//   de l'ABR de YouTube (setPlaybackQuality ignoré depuis 2019).
+// 'hls' : flux HLS/DASH joué par hls.js/dash.js avec qualité VERROUILLÉE
+//   (hls.currentLevel) : le palier servi est le palier demandé, la mesure est
+//   déterministe. Voir StreamingTestServiceHls.
+const String streamingBackend = 'youtube';
+
+// Flux utilisé par le backend 'hls'. Échelle HLS auto-hébergée sur Netlify
+// (site yele-test-assets, CORS `*` via fichier _headers), construite depuis le
+// ladder DASH public Big Buck Bunny 30fps (libre de droits, même vidéo que le
+// backend YouTube) SANS ré-encodage : 3 variantes 720p/1080p/2160p + audio
+// HE-AAC, segments fMP4 de 4 s (clip de 40 s). Master HLS (.m3u8 → hls.js).
+const String streamTestStreamUrl =
+    'https://yele-test-assets.netlify.app/bbb/master.m3u8';
+
+// ── Échelle de débits attendue (moteur HLS) et débit minimal requis ──────
+// BANDWIDTH annoncée par master.m3u8 (bit/s, vidéo + audio, marge d'encodage
+// incluse). À mettre à jour si le manifeste change.
+const Map<String, int> STREAMING_LEVEL_BANDWIDTH_BPS = {
+  'hd720': 2817071,
+  'hd1080': 4317071,
+  'hd2160': 12317071,
+};
+
+// Marge appliquée au BANDWIDTH du manifeste pour estimer le débit minimal
+// réellement nécessaire : l'encodeur autorise des pointes au débit moyen
+// (maxrate = bufsize) et le CDN peut servir un fragment un peu plus lourd que
+// le nominal. 1,15 = ~15 % de tête, constante de calcul — pas une mesure.
+const double hlsMinBandwidthMargin = 1.15;
+
+/// Débit minimal requis (kb/s) pour qu'un palier ait une chance de démarrer.
+///
+/// Le fragment initial du palier (BANDWIDTH × durée d'un segment, audio
+/// compris) doit être reçu ENTIER avant la première image ; le pire cas est
+/// qu'il soit téléchargé pendant tout le timeout de démarrage ([margin]
+/// couvre les pointes d'encodage).
+int minRequiredKbpsFor(int bandwidthBps,
+        {int segmentSec = 4,
+        int timeoutSec = STREAMING_LEVEL_TIMEOUT_SEC,
+        double margin = hlsMinBandwidthMargin}) =>
+    (bandwidthBps * segmentSec * margin / timeoutSec / 1000).round();
 // Pages de référence du test de navigation web (critère ARCEP : chargée en < 10 s)
 const List<String> BROWSING_REFERENCE_PAGES = [
   'https://www.google.com',

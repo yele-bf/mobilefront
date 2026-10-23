@@ -5,6 +5,7 @@ import '../models/speed_test_result.dart';
 import '../services/dashboard_api_service.dart';
 import '../services/local_storage_service.dart';
 import '../services/speed_test_api_service.dart';
+import '../services/streaming_test_service.dart';
 import '../theme/yele_theme.dart';
 import '../widgets/export_sheet.dart';
 import '../widgets/qoe_dialog.dart';
@@ -425,6 +426,10 @@ class _ScoreScreenState extends State<ScoreScreen> {
   Widget _streamingCard() {
     final rows = r.streamingQualities;
     final error = r.streamingError;
+    // Le JSON stocké porte le moteur qui a produit la mesure ; les résultats
+    // antérieurs (sans champ engine) viennent forcément de YouTube.
+    final engine = StreamingTestResult.decodeEngine(r.streamingQualitiesJson) ??
+        'youtube';
     if (rows.isEmpty && error != null) return _streamingError(error);
     if (rows.isEmpty) {
       return _resultCard('🎬', 'Streaming vidéo', YeleColors.g5,
@@ -456,7 +461,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
             ],
           ),
         ),
-        StreamingTable(qualities: rows),
+        StreamingTable(qualities: rows, videoEngine: engine),
         if (error != null) _streamingError(error),
       ],
     );

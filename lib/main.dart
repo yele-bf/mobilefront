@@ -10,6 +10,7 @@ import 'screens/settings_screen.dart';
 import 'screens/usage_screen.dart';
 import 'services/local_storage_service.dart';
 import 'services/settings_service.dart';
+import 'services/streaming_backend_setting.dart';
 import 'services/throughput_service.dart';
 import 'services/usage_tracker_service.dart';
 import 'theme/yele_theme.dart';
@@ -21,6 +22,12 @@ Future<void> main() async {
     await LocalStorageService().initialize();
   } catch (_) {
     // Le stockage local n'est pas bloquant pour lancer un test.
+  }
+  try {
+    await StreamingBackendSetting().initialize();
+  } catch (_) {
+    // Une surcharge de moteur absente ne bloque pas le lancement : le moteur
+    // compilé (streamingBackend) reste utilisé.
   }
   try {
     await SettingsService.initialize();

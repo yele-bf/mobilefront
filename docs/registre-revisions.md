@@ -9,6 +9,7 @@
 | 2026-10-14 | IMP-11 | feat | _(exemple — à remplacer)_ | COMPAORE Bobodo Kévin Aymar | `imp/IMP-11-export-csv` | _après merge_ | local Chrome | En cours |
 | 2026-10-14 | ISS-12 | fix | _(exemple — à remplacer)_ | COMPAORE Bobodo Kévin Aymar | `iss/ISS-12-reglages` | _après merge_ | APK réel | Transmis |
 | 2026-10-20 | ISS-02 | fix | BAMBA Seydou | BAMBA Seydou / NANEMA Wendinkonté Dimitri Judicaël | `iss/ISS-02-identification-reseau` | _après merge_ | Analyse locale ; APK double SIM terrain à réaliser | En cours |
+| 2026-10-23 | ISS-04 | fix | TAMINI Heremave | KOHOUN Damou Daniel / TAMINI Heremave | `iss/ISS-04-serveur-reel` | _après merge_ | Local Chrome | En cours |
 
 ## Nomenclature V14 vs V11 vs V4 (à lire avant de citer un Sous-ID)
 

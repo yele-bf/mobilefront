@@ -21,10 +21,18 @@ class NetworkStatus {
   /// Nom de l'opérateur SIM (Android). null/n.d. sur iOS 16+ ou sans SIM.
   final String? simOperator;
 
+  /// Emplacement 0-indexé de l'abonnement data actif sur Android.
+  final int? dataSimSlot;
+
+  /// Nombre d'abonnements SIM actifs sur Android.
+  final int simCount;
+
   const NetworkStatus({
     required this.connectionType,
     this.cellularTech,
     this.simOperator,
+    this.dataSimSlot,
+    this.simCount = 0,
   });
 
   bool get isWifi => connectionType == 'WiFi';
@@ -35,7 +43,8 @@ class NetworkStatus {
 
   @override
   String toString() =>
-      'NetworkStatus($connectionType, tech=$cellularTech, sim=$simOperator)';
+      'NetworkStatus($connectionType, tech=$cellularTech, sim=$simOperator, '
+      'slot=$dataSimSlot/$simCount)';
 }
 
 /// Service d'information réseau : type de connexion (connectivity_plus) +
@@ -65,6 +74,8 @@ class NetworkInfoService {
 
     String? cellularTech;
     String? simOperator;
+    int? dataSimSlot;
+    var simCount = 0;
 
     // Sur Android, on s'assure d'avoir la permission avant de lire.
     if (Platform.isAndroid) {
@@ -86,6 +97,8 @@ class NetworkInfoService {
           final mccMnc = (info['mccMnc'] as String?)?.trim();
           simOperator = _operatorFromMccMnc(mccMnc);
         }
+        dataSimSlot = (info['dataSimSlot'] as num?)?.toInt();
+        simCount = (info['simCount'] as num?)?.toInt() ?? 0;
       }
     } on MissingPluginException {
       // Canal natif absent (ex. tests) : on reste sur le type de connexion.
@@ -97,6 +110,8 @@ class NetworkInfoService {
       connectionType: connectionType,
       cellularTech: cellularTech,
       simOperator: simOperator,
+      dataSimSlot: dataSimSlot,
+      simCount: simCount,
     );
     logger.i('📶 $status');
     return status;

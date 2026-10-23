@@ -136,9 +136,13 @@ class _FullTestScreenState extends State<FullTestScreen>
   String _formatMobile(NetworkStatus s) {
     final tech = s.cellularTech;
     final sim = s.simOperator;
-    if (tech == null && (sim == null || sim.isEmpty)) return '—';
-    if (sim != null && sim.isNotEmpty && tech != null) return '$tech · $sim';
-    return tech ?? sim ?? '—';
+    final details = [
+      if (tech != null && tech.isNotEmpty) tech,
+      if (sim != null && sim.isNotEmpty) sim,
+      if (s.simCount > 1 && s.dataSimSlot != null)
+        'SIM ${s.dataSimSlot! + 1}',
+    ];
+    return details.isEmpty ? '—' : details.join(' · ');
   }
 
   /// Fixe la cible ; le Ticker se charge d'y amener l'aiguille.
@@ -236,6 +240,7 @@ class _FullTestScreenState extends State<FullTestScreen>
         operator: ipLoc?.operator,
         simOperator: status.simOperator,
         cellularTech: status.cellularTech,
+        simSlot: status.simCount > 1 ? status.dataSimSlot : null,
         deviceModel: deviceModel,
         osVersion: osVersion,
         selection: widget.selection,

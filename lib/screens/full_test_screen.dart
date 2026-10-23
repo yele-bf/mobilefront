@@ -223,6 +223,15 @@ class _FullTestScreenState extends State<FullTestScreen>
       final gps = await _location.requestGpsPosition();
       final ipLoc = await _location.getCurrentLocation();
       final status = await _net.getStatus();
+      // Métriques de signal : typées selon la connexion utilisée. En Wi-Fi on
+      // ne remonte pas de métriques cellulaires, en données mobiles pas de
+      // RSSI Wi-Fi — chaque famille de champs reste cohérente.
+      final signalDbm = status.isWifi ? null : status.signalDbm;
+      final signalRsrp = status.isWifi ? null : status.signalRsrp;
+      final signalRsrq = status.isWifi ? null : status.signalRsrq;
+      final signalNrRsrp = status.isWifi ? null : status.signalNrRsrp;
+      final signalNrRsrq = status.isWifi ? null : status.signalNrRsrq;
+      final wifiRssi = status.isWifi ? status.wifiRssi : null;
       final deviceModel = await _device.getDeviceDisplayName();
       final osVersion = await _device.getOSVersion();
 
@@ -241,6 +250,12 @@ class _FullTestScreenState extends State<FullTestScreen>
       final cellularTech = status.isWifi ? null : status.cellularTech;
 
       final result = await _api.runSpeedTest(
+        signalDbm: signalDbm,
+        signalRsrp: signalRsrp,
+        signalRsrq: signalRsrq,
+        signalNrRsrp: signalNrRsrp,
+        signalNrRsrq: signalNrRsrq,
+        wifiRssi: wifiRssi,
         latitude: gps?.latitude ?? ipLoc?.latitude,
         longitude: gps?.longitude ?? ipLoc?.longitude,
         location: ipLoc != null ? '${ipLoc.city}, ${ipLoc.countryName}' : null,

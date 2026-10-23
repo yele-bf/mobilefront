@@ -382,6 +382,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           line('Gigue', '${r.jitter.toStringAsFixed(0)} ms'),
           // IMP-01 : données consommées par le test (masqué si non mesuré).
           if ((r.dataUsedKiB ?? -1) >= 0) line('Données', _formatData(r.dataUsedKiB!)),
+          ..._signalLines(r, line),
           if (r.hasStreamingTest)
             line('Streaming',
                 '${r.streamingMaxResolution ?? '—'} · ${r.streamingScore!.toStringAsFixed(0)}/100'),
@@ -413,4 +414,53 @@ class _HistoryScreenState extends State<HistoryScreen> {
       ),
     );
   }
+
+  /// Ligne(s) « Signal » : métriques radio typées selon la connexion utilisée
+  /// pour le test. Rien ne s'affiche si rien n'a été mesuré (iOS, Android < 9,
+  /// appareils qui n'exposent pas les compteurs).
+  List<Widget> _signalLines(
+      SpeedTestResult r, Widget Function(String k, String v) line) {
+    // Seuils et libellés alignés sur le tableau de référence qualité signal
+    // (IUT) : RSRP −80/−95/−105, RSSI −65/−75/−85 → Excellent / Bon-Moyen /
+    // Acceptable / Mauvais-Faible.
+    String qualityLabel(int dbm, {required bool isRsrp}) {
+      final t = isRsrp ? [-80, -95, -105] : [-65, -75, -85];
+      if (dbm >= t[0]) return 'Excellent';
+      if (dbm >= t[1]) return 'Bon/Moyen';
+      if (dbm >= t[2]) return 'Acceptable';
+      return 'Mauvais/Faible';
+    }
+
+    final lines = <Widget>[];
+
+    // Puissance (dBm), avec libellé de qualité.
+    if ((r.signalRsrp ?? 0) != 0) {
+      lines.add(line('Signal',
+          'RSRP ${r.signalRsrp} dBm (${qualityLabel(r.signalRsrp!, isRsrp: true)})'));
+    }
+    if ((r.signalNrRsrp ?? 0) != 0) {
+      lines.add(line('Signal', 'NR RSRP ${r.signalNrRsrp} dBm'));
+    }
+    if ((r.wifiRssi ?? 0) != 0) {
+      lines.add(line('Signal',
+          'RSSI ${r.wifiRssi} dBm (${qualityLabel(r.wifiRssi!, isRsrp: false)})'));
+    }
+
+    // Qualité (dB), ligne dédiée « Qualité du signal ».
+    if ((r.signalRsrq ?? 0) != 0) {
+      lines.add(line('Qualité du signal', 'RSRQ ${r.signalRsrq} dB'));
+    }
+    if ((r.signalNrRsrq ?? 0) != 0) {
+      lines.add(line('Qualité du signal', 'NR RSRQ ${r.signalNrRsrq} dB'));
+    }
+
+    // Repli : mesure générique seule, si aucune métrique typée n'est
+    // disponible — affichée sur « Signal » sans libellé de qualité.
+    if (lines.isEmpty && (r.signalDbm ?? 0) != 0) {
+      lines.add(line('Signal', '${r.signalDbm} dBm'));
+    }
+    return lines;
+  }
+
+
 }

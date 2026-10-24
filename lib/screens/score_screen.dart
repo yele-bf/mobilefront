@@ -564,6 +564,9 @@ class _ScoreScreenState extends State<ScoreScreen> {
 
   /// « 4G · Orange · SIM 2 » ou « 4G · Orange » selon les mesures disponibles.
   String get _mobileLabel {
+    // Règle métier : rien n'est affiché pour un test fait en Wi-Fi, même si
+    // l'enregistrement contient encore des données SIM (anciennes versions).
+    if ((r.networkType ?? '').toUpperCase().contains('WIFI')) return '—';
     final tech = r.cellularTech;
     final sim = r.simOperator;
     final details = [

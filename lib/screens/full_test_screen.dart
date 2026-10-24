@@ -135,6 +135,7 @@ class _FullTestScreenState extends State<FullTestScreen>
 
   /// « 4G · Orange », « 4G », ou « — » selon ce qui est disponible.
   String _formatMobile(NetworkStatus s) {
+    if (s.isWifi) return '—';
     final tech = s.cellularTech;
     final sim = s.simOperator;
     final details = [
@@ -233,14 +234,20 @@ class _FullTestScreenState extends State<FullTestScreen>
         });
       }
 
+      // Règle métier : l'opérateur SIM et la techno radio ne sont remontés
+      // que pour les tests faits avec la carte SIM. En Wi-Fi, ces champs
+      // restent vides, même si une SIM est insérée dans l'appareil.
+      final simOperator = status.isWifi ? null : status.simOperator;
+      final cellularTech = status.isWifi ? null : status.cellularTech;
+
       final result = await _api.runSpeedTest(
         latitude: gps?.latitude ?? ipLoc?.latitude,
         longitude: gps?.longitude ?? ipLoc?.longitude,
         location: ipLoc != null ? '${ipLoc.city}, ${ipLoc.countryName}' : null,
         networkType: status.networkBadge,
         operator: ipLoc?.operator,
-        simOperator: status.simOperator,
-        cellularTech: status.cellularTech,
+        simOperator: simOperator,
+        cellularTech: cellularTech,
         simSlot: status.simCount > 1 ? status.dataSimSlot : null,
         deviceModel: deviceModel,
         osVersion: osVersion,

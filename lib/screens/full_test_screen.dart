@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../constants/config.dart';
 import '../models/test_selection.dart';
 import '../services/browsing_test_service.dart';
 import '../services/device_info_service.dart';
@@ -602,13 +603,13 @@ class _FullTestScreenState extends State<FullTestScreen>
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       child: Row(
         children: [
-          Container(width: 26, height: 20, color: const Color(0xFF5A6B3A)),
+          const Icon(Icons.dns_outlined,
+              size: 20, color: Color(0xFF5A6B3A)),
           const SizedBox(width: 10),
-          const Expanded(
-            child: Text('[BF] yele_serveur — Ouagadougou',
-                style: TextStyle(color: Color(0xFF33402A), fontSize: 13)),
+          Expanded(
+            child: Text('Serveur de test : $serverDisplayName',
+                style: const TextStyle(color: Color(0xFF33402A), fontSize: 13)),
           ),
-          const Text('🇧🇫', style: TextStyle(fontSize: 18)),
         ],
       ),
     );

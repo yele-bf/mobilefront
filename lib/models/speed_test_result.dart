@@ -1,6 +1,7 @@
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 
+import '../constants/config.dart';
 import '../services/streaming_test_service.dart';
 
 part 'speed_test_result.g.dart';
@@ -251,7 +252,7 @@ class SpeedTestResult extends HiveObject {
       uploadSpeed: readDouble(['uploadSpeed', 'upload', 'ul']),
       ping: readDouble(['ping']),
       jitter: readDouble(['jitter']),
-      server: (json['server'] ?? 'Render.com').toString(),
+      server: (json['server'] ?? serverDisplayName).toString(),
       clientIp: (json['clientIp'] ?? json['ip'])?.toString(),
       networkType: json['networkType']?.toString(),
       operator: (json['operator'] ?? json['ispinfo'])?.toString(),

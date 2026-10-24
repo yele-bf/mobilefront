@@ -427,7 +427,7 @@ class SpeedTestApiService {
         uploadSpeed: ulMbps,
         ping: pingMs,
         jitter: jitterMs,
-        server: 'Render.com',
+        server: serverDisplayName,
         clientIp: _extractIp(ipInfo),
         networkType: networkType,
         operator: operator ?? _extractOperator(ipInfo),
@@ -713,10 +713,10 @@ class SpeedTestApiService {
 
   // Obtenir la liste des serveurs disponibles.
   Future<List<Map<String, dynamic>>?> getServers() async {
-    logger.i('Serveur unique: Render.com');
+    logger.i('Serveur unique: $serverDisplayName');
     return [
       {
-        'name': 'Render.com Default',
+        'name': serverDisplayName,
         'url': baseUrl,
         'location': 'Render',
         'sponsor': 'Render Platform',
@@ -860,7 +860,7 @@ class SpeedTestApiService {
             return SpeedTestResult.fromJson({
               ...results,
               'id': testId,
-              'server': results['server'] ?? 'Render.com',
+              'server': results['server'] ?? serverDisplayName,
             });
           }
         }

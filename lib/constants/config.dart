@@ -8,6 +8,8 @@ const String API_BASE_URL = 'https://mobiletest-j0c6.onrender.com';
 // API MongoDB intégrée au même backend speedtest-go (/api/*)
 const String MONGO_API_BASE_URL = '$API_BASE_URL/api';
 
+final String serverDisplayName = Uri.parse(API_BASE_URL).host;
+
 // ========== APPLICATION CONFIGURATION ==========
 const String APP_NAME = 'Yélé - Test de Vitesse';
 const String APP_VERSION = '1.0.0';

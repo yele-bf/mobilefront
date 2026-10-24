@@ -8,6 +8,7 @@ import '../constants/config.dart';
 import '../services/background_collection_service.dart';
 import '../services/permission_service.dart';
 import '../services/settings_service.dart';
+import '../services/streaming_backend_setting.dart';
 import '../services/throughput_service.dart';
 import '../theme/yele_theme.dart';
 import '../widgets/app_localizations.dart';
@@ -46,6 +47,10 @@ class _SettingsScreenState extends State<SettingsScreen>
   /// [_toggleBigDisplay].
   bool _bigDisplay = false;
 
+  /// ISS-07 — Surcharge à chaud du moteur du test de streaming.
+  final _backendSetting = StreamingBackendSetting();
+  String _streamBackend = streamingBackend;
+
   @override
   void initState() {
     super.initState();
@@ -53,6 +58,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     _loadSettings();
     _refreshStatus();
     _refreshPermissions();
+    _loadBackend();
     // ISS-12 : la langue peut être changée depuis cet écran même — on
     // rafraîchit les libellés dès que le notificateur la change.
     SettingsService.languageNotifier.addListener(_onLanguageChanged);
@@ -60,6 +66,12 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   void _onLanguageChanged() {
     if (mounted) setState(() {});
+  }
+
+  Future<void> _loadBackend() async {
+    await _backendSetting.initialize();
+    if (!mounted) return;
+    setState(() => _streamBackend = _backendSetting.effectiveBackend);
   }
 
   Future<void> _readOverlayState() async {
@@ -158,6 +170,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             ..._permissionsSection(),
             if (_usageSupported) ..._usageSection(),
             if (_collect.isSupported) ..._collectSection(),
+            ..._debugSection(),
             const SizedBox(height: 24),
           ],
         ),
@@ -995,6 +1008,109 @@ class _SettingsScreenState extends State<SettingsScreen>
     return AppLocale.t(
         '${t.day}/${t.month} à ${t.hour}h${t.minute.toString().padLeft(2, '0')}',
         '${t.day}/${t.month} at ${t.hour}:${t.minute.toString().padLeft(2, '0')}');
+  }
+
+  // ── Débogage ─────────────────────────────────────────────────────────────
+
+  /// Sélection à chaud du moteur du test de streaming : la surcharge est
+  /// persistée et s'applique dès le prochain test, sans recompiler l'APK.
+  /// Outil de test A/B terrain — les deux moteurs produisent le même résultat.
+  List<Widget> _debugSection() {
+    return [
+      _section(AppLocale.t('Débogage', 'Debug')),
+      _streamingBackendTile(),
+    ];
+  }
+
+  Widget _streamingBackendTile() {
+    final override = _backendSetting.hasOverride;
+    return InkWell(
+      onTap: _pickStreamingBackend,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: YeleColors.surface.line)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.science_outlined,
+                size: 20, color: YeleColors.surface.muted),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    AppLocale.t('Moteur du test de streaming',
+                        'Streaming test engine'),
+                    style: TextStyle(fontSize: 16, color: YeleColors.surface.ink),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    override
+                        ? '$_streamBackend (surcharge runtime)'
+                        : '$_streamBackend (défaut compilé)',
+                    style: TextStyle(
+                        fontSize: 13, color: YeleColors.surface.muted),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right,
+                size: 20, color: YeleColors.surface.muted),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickStreamingBackend() async {
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Moteur du test de streaming'),
+        content: RadioGroup<String>(
+          groupValue: _streamBackend,
+          onChanged: (v) => Navigator.pop(ctx, v),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final c in StreamingBackendSetting.choices)
+                RadioListTile<String>(
+                  value: c,
+                  title: Text(c == 'youtube'
+                      ? 'YouTube (ABR dynamique)'
+                      : 'HLS/DASH (qualité verrouillée)'),
+                  subtitle: Text(
+                    c == 'youtube'
+                        ? 'Ce que sert l\'algorithme de YouTube — proche de l\'usage réel'
+                        : 'Paliers servis tels que demandés — mesure reproductible',
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, ''),
+            child: const Text('Retour au défaut'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
+        ],
+      ),
+    );
+    if (choice == null) return; // annulé
+    if (choice.isEmpty) {
+      await _backendSetting.resetToDefault();
+    } else {
+      await _backendSetting.setBackend(choice);
+    }
+    if (!mounted) return;
+    setState(() => _streamBackend = _backendSetting.effectiveBackend);
+    _snack('Moteur effectif dès le prochain test : $_streamBackend');
   }
 
   void _snack(String message) {

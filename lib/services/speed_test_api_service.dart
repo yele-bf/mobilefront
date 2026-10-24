@@ -12,7 +12,12 @@ import '../models/speed_test_result.dart';
 import '../models/test_selection.dart';
 import 'browsing_test_service.dart';
 import 'device_identity_service.dart';
+import 'streaming_backend_setting.dart';
 import 'streaming_test_service.dart';
+// Le moteur HLS est natif (WebView + serveur local) : sur le web, un stub
+// évite d'importer dart:io et webview_flutter dans le build.
+import 'streaming_test_service_hls_stub.dart'
+    if (dart.library.io) 'streaming_test_service_hls.dart' as hls_impl;
 import 'traffic_stats_service.dart';
 
 enum SpeedTestPhase {
@@ -378,20 +383,39 @@ class SpeedTestApiService {
           ),
         );
         try {
-          streaming = await StreamingTestService().runTest(
-            onController: onStreamingController,
-            onRows: onStreamingRows,
-            onProgress: (progress, message) => onProgress?.call(
-              SpeedTestProgress(
-                phase: SpeedTestPhase.streaming,
-                message: message,
-                downloadSpeed: dlMbps,
-                uploadSpeed: ulMbps,
-                ping: pingMs,
-                jitter: jitterMs,
-              ),
-            ),
-          );
+          // Backend choisi à chaud : surcharge persistée (Réglages →
+          // Débogage) si elle existe, sinon drapeau de configuration.
+          // 'hls' = qualité verrouillée via hls.js ; 'youtube' = IFrame
+          // Player, qualité servie décidée par l'ABR de YouTube.
+          streaming = StreamingBackendSetting().effectiveBackend == 'hls'
+              ? await hls_impl.StreamingTestServiceHls().runTest(
+                  onController: onStreamingController,
+                  onRows: onStreamingRows,
+                  onProgress: (progress, message) => onProgress?.call(
+                    SpeedTestProgress(
+                      phase: SpeedTestPhase.streaming,
+                      message: message,
+                      downloadSpeed: dlMbps,
+                      uploadSpeed: ulMbps,
+                      ping: pingMs,
+                      jitter: jitterMs,
+                    ),
+                  ),
+                )
+              : await StreamingTestService().runTest(
+                  onController: onStreamingController,
+                  onRows: onStreamingRows,
+                  onProgress: (progress, message) => onProgress?.call(
+                    SpeedTestProgress(
+                      phase: SpeedTestPhase.streaming,
+                      message: message,
+                      downloadSpeed: dlMbps,
+                      uploadSpeed: ulMbps,
+                      ping: pingMs,
+                      jitter: jitterMs,
+                    ),
+                  ),
+                );
         } catch (e) {
           logger.e('Test streaming échoué: $e');
         }

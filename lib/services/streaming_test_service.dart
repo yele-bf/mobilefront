@@ -38,6 +38,12 @@ class StreamingQualityResult {
   /// mélangent plusieurs qualités et sont signalés comme approximatifs.
   final bool stable;
 
+  /// Qualité réellement servie pendant le palier, quand elle diffère de
+  /// [label] (demandée). Vide si YouTube a servi la qualité demandée — cas
+  /// nominal. Exemple : palier 2160p, [label] = '2160p', [servedLabel] =
+  /// '1440p'.
+  final String servedLabel;
+
   const StreamingQualityResult({
     required this.label,
     required this.reached,
@@ -47,6 +53,7 @@ class StreamingQualityResult {
     this.rebufferCount = 0,
     this.dataUsedKiB = -1,
     this.stable = true,
+    this.servedLabel = '',
   });
 
   /// Qualité non testée ou non servie par YouTube.
@@ -57,10 +64,22 @@ class StreamingQualityResult {
         bufferingSec = 0,
         rebufferCount = 0,
         dataUsedKiB = -1,
-        stable = true;
+        stable = true,
+        servedLabel = '';
 
   /// Hauteur en pixels déduite du libellé ('1080p' → 1080).
   int get height => int.tryParse(label.replaceAll('p', '')) ?? 0;
+
+  /// Libellé affiché en en-tête de colonne : la qualité réellement servie
+  /// quand la colonne porte une mesure, sinon la qualité demandée.
+  String get displayLabel =>
+      (reached && servedLabel.isNotEmpty) ? servedLabel : label;
+
+  /// Hauteur réellement servie : celle de [servedLabel] quand le lecteur a
+  /// livré autre chose que la qualité demandée, sinon [height]. C'est elle
+  /// qui alimente la résolution maximale et le score.
+  int get servedHeight =>
+      int.tryParse(servedLabel.replaceAll(RegExp('[^0-9]'), '')) ?? height;
 
   Map<String, dynamic> toJson() => {
         'label': label,
@@ -71,6 +90,7 @@ class StreamingQualityResult {
         'rebufferCount': rebufferCount,
         'dataUsedKiB': dataUsedKiB,
         'stable': stable,
+        if (servedLabel.isNotEmpty) 'servedLabel': servedLabel,
       };
 
   factory StreamingQualityResult.fromJson(Map<String, dynamic> j) =>
@@ -83,6 +103,7 @@ class StreamingQualityResult {
         rebufferCount: (j['rebufferCount'] as num?)?.toInt() ?? 0,
         dataUsedKiB: (j['dataUsedKiB'] as num?)?.toInt() ?? -1,
         stable: j['stable'] != false,
+        servedLabel: (j['servedLabel'] ?? '').toString(),
       );
 }
 
@@ -102,6 +123,10 @@ class StreamingTestResult {
   /// dans les deux cas le tableau n'affiche que des tirets.
   final String? error;
 
+  /// Moteur ayant produit la mesure ('youtube' ou 'hls'), null pour les
+  /// résultats antérieurs au champ (toujours YouTube).
+  final String? engine;
+
   const StreamingTestResult({
     required this.qualities,
     required this.startupMs,
@@ -110,6 +135,7 @@ class StreamingTestResult {
     required this.maxResolution,
     required this.score,
     this.error,
+    this.engine,
   });
 
   /// Total des données consommées par le test. -1 si non mesurable.
@@ -122,6 +148,7 @@ class StreamingTestResult {
   String encodeQualities() => jsonEncode({
         'rows': qualities.map((q) => q.toJson()).toList(),
         if (error != null) 'error': error,
+        if (engine != null) 'engine': engine,
       });
 
   /// Relit le tableau des qualités depuis sa forme stockée. Liste vide si
@@ -145,6 +172,15 @@ class StreamingTestResult {
     if (data is! Map) return null;
     final error = data['error']?.toString();
     return (error == null || error.isEmpty) ? null : error;
+  }
+
+  /// Moteur conservé avec le résultat ('youtube'/'hls'), ou null si absent
+  /// (résultats antérieurs : moteur YouTube).
+  static String? decodeEngine(String? json) {
+    final data = _decode(json);
+    if (data is! Map) return null;
+    final engine = data['engine']?.toString();
+    return (engine == null || engine.isEmpty) ? null : engine;
   }
 
   static dynamic _decode(String? json) {

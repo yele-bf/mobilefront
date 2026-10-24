@@ -11,6 +11,7 @@ import '../services/location_service.dart';
 import '../services/network_info_service.dart';
 import '../services/settings_service.dart';
 import '../services/speed_test_api_service.dart';
+import '../services/streaming_backend_setting.dart';
 import '../services/streaming_test_service.dart';
 import '../theme/yele_theme.dart';
 import '../widgets/streaming_table.dart';
@@ -92,6 +93,11 @@ class _FullTestScreenState extends State<FullTestScreen>
   // Tableau des mesures de streaming, rempli qualité par qualité pendant le test.
   List<StreamingQualityResult> _streamRows = const [];
   String? _activeQuality;
+
+  /// Moteur effectif du test (surcharge Réglages → Débogage sinon drapeau
+  /// compilé) : le tableau adapte son en-tête et sa ligne « Débit mini requis ».
+  late final bool _hlsEngine =
+      StreamingBackendSetting().effectiveBackend == 'hls';
 
   @override
   void initState() {
@@ -374,6 +380,7 @@ class _FullTestScreenState extends State<FullTestScreen>
                   StreamingTable(
                     qualities: _streamRows,
                     activeLabel: _activeQuality,
+                    videoEngine: _hlsEngine ? 'hls' : 'youtube',
                   ),
                 _serverBar(),
                 _metrics(),

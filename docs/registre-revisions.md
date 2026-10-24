@@ -12,7 +12,8 @@
 | 2026-10-23 | ISS-04 | fix | TAMINI Heremave | KOHOUN Damou Daniel / TAMINI Heremave | `iss/ISS-04-serveur-reel` (#35) | `a84aa4f` | Local Chrome : serveur affiché = hôte de `API_BASE_URL` ; test de débit non lancé | Validé |
 | 2026-10-24 | ISS-03 | fix | SAWADOGO Hassan Achraf Ammar | SAWADOGO Hassan Achraf Ammar | `iss/ISS-03-reseau-wifi` (#32) | `5b98edf` | Analyse + tests + APK debug compilé en CI ; APK réel Wi-Fi vs données à refaire après merge | Transmis |
 | 2026-10-24 | ISS-01 | feat | SAWADOGO Hassan Achraf Ammar | SAWADOGO Hassan Achraf Ammar | `feature/signal-rsrp-rsrq` (#31) | `96b75e8` | Analyse + tests + APK debug (Kotlin compilé) en CI ; relevé APK 4G/5G à joindre | Transmis |
-| 2026-10-24 | ISS-10 | feat | SAWADOGO Hassan Achraf Ammar | SAWADOGO Hassan Achraf Ammar | `iss/ISS-10-historique-adresse` (#34) | _après merge_ | Analyse + tests CI ; adresse Ouagadougou annoncée sans capture, à joindre | Transmis |
+| 2026-10-24 | ISS-10 | feat | SAWADOGO Hassan Achraf Ammar | SAWADOGO Hassan Achraf Ammar | `iss/ISS-10-historique-adresse` (#34) | `8f610f5` | Analyse + tests CI ; adresse Ouagadougou annoncée sans capture, à joindre | Transmis |
+| 2026-10-24 | ISS-07 | feat | SAWADOGO Hassan Achraf Ammar | SAWADOGO Hassan Achraf Ammar | `iss/ISS-07-streaming-trois-resolutions` (#33) | _après merge_ | 5 fichiers de tests verts en CI ; relevés Chrome + APK à joindre | Transmis |
 
 ## Nomenclature V14 vs V11 vs V4 (à lire avant de citer un Sous-ID)
 

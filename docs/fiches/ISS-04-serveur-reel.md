@@ -1,5 +1,14 @@
 # ISS-04 — Afficher le serveur réellement utilisé
 
+| Champ | Valeur |
+|---|---|
+| Dépôt | `mobilefront` (le classeur cite aussi `mobiletest` : aucun changement côté backend) |
+| Issue | [#21](https://github.com/yele-bf/mobilefront/issues/21) |
+| Priorité / vague | P1 / V1 Quick wins |
+| Owner au classeur | KOHOUN Damou Daniel / TAMINI Heremave |
+| Branche | `iss/ISS-04-serveur-reel` |
+| Validation imposée | Local (Chrome), d'après le classeur |
+
 ## Constat
 
 Les écrans de test et de résultat affichaient « yele_serveur — Ouagadougou »,

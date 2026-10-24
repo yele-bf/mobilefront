@@ -29,6 +29,14 @@ la SIM sélectionnée pour les données mobiles pendant la mesure.
 
 ## Validation
 
-- Vérifications automatisées et compilation : à exécuter avant la PR.
-- Validation imposée : APK réel sur un téléphone double SIM, en alternant les
-  SIM de données et en vérifiant l'opérateur affiché ; à réaliser sur le terrain.
+- **Automatisée** : `flutter analyze` et `flutter test` verts en CI sur la
+  PR #30, dont `test/sim_identification_test.dart`.
+- **Terrain (support imposé par le classeur : APK réel double SIM)** — faite le
+  24/10/2026, captures publiées dans la PR #30 :
+  - données mobiles sur **Orange → SIM 2** : la SIM 2 est annoncée ;
+  - données mobiles sur **Télécel → SIM 1** : la SIM 1 est annoncée ;
+  - **Wi-Fi, données mobiles coupées** : la capture montre encore l'opérateur
+    de la SIM présenté comme réseau du test. Ce point relève d'ISS-03 (PR #32)
+    et non d'ISS-02.
+
+Statut : **Validé** — merge `5ca52d9` (24/10/2026).

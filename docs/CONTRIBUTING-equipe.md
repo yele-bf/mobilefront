@@ -1,7 +1,8 @@
 # CONTRIBUTING — Équipe YELE (22 agents · organisation GitHub `yele-bf`)
 
 > Convention de collaboration validée le 09/10/2026 par le porteur du projet,
-> mise à jour le 20/10/2026 sur la base du cahier des charges **V14
+> mise à jour le 24/10/2026 (check `android`, contrôle du registre durci,
+> gabarit de fiche d'impact disponible) puis le 20/10/2026 sur la base du cahier des charges **V14
 > (19.10.2026)** — onglets « Completion Correct. & Amelior. », « Cahier des
 > charges » et « Analyse & Planning » : **27 Sous-ID** (15 IMP, 12 ISS).
 > La référence des items est `docs/items-v14.json`. L'archive V11 (25 items)
@@ -43,8 +44,9 @@
 2. La PR **ferme l'issue** correspondante (`Closes #n`) — issues à créer, §1.3.
 3. Review d'**au moins 1 membre** avant merge (aucun reviewer imposé : le
    `CODEOWNERS` est indicatif, voir §1.3).
-4. CI verte obligatoire : les checks **`guard`** (commits ↔ classeur V14) et
-   **`build`** (compilation/tests du dépôt) sont requis sur `main`.
+4. CI verte obligatoire : les checks **`guard`** (commits ↔ classeur V14),
+   **`build`** (compilation/tests du dépôt) et, sur `mobilefront`, **`android`**
+   (compilation Kotlin + APK de debug) sont requis sur `main`.
 5. La fiche d'impact (§4) est jointe ou déjà commitée dans la même PR.
 
 ### 1.3 Mise en place GitHub (état au 20/10/2026)
@@ -62,6 +64,11 @@
       (mobilefront), `go build/vet/test` (mobiletest), syntaxe JS et ressources
       de `index.html` (New_web), syntaxe Python et point d'entrée du service
       (AI_yele).
+- [x] `mobilefront` : check **`android`** (`flutter build apk --debug`), qui
+      compile réellement le Kotlin de `android/app/src/main/kotlin` — ni
+      `flutter analyze` ni `flutter test` ne le font.
+- [x] `yele-build` tourne aussi sur **push vers `main`** : le commit fusionné
+      est recontrôlé, une régression arrivée par un merge reste donc visible.
 - [x] Équipe `nperf-agents` : permission **write** (push / triage / pull) sur
       les 4 dépôts, **sans** `admin` ni `maintain`.
 - [x] **9 chefs de groupe** membres actifs de l'organisation, tous rattachés à
@@ -152,11 +159,24 @@ docs(IMP-09): fiche de correction du baromètre de comparaison
 Gabarit : `docs/modeles/fiche-impact-modele.md` → une fiche par Sous-ID dans
 `docs/fiches/<SOUS-ID>-<slug>.md`. Obligatoire dans la PR.
 
+La fiche n'est pas contrôlée par la CI (ce serait un faux positif facile à
+contourner) : c'est un point de revue. La revue vérifie aussi que la fiche
+s'écrit au passé et que la section « Limites » dit ce qui n'a pas été vérifié.
+
 ## 5. Registre des révisions
 
 `docs/registre-revisions.md` : une ligne par contribution **mergée**
 (Sous-ID · type · owner · dépôt · hash · branche/PR · validation · statut).
 Mise à jour dans la même PR que le merge.
+
+Le hash de la colonne « Commit » est complété **après** le merge par le
+reviewer (`_après merge_` en attendant), et le statut passe à `Validé`
+seulement si les 4 conditions du §6 sont réunies.
+
+**Contrôle CI** : `guard` exige, pour chaque Sous-ID cité par un commit, une
+ligne **datée** du tableau d'historique (`| AAAA-MM-JJ | ISS-xx | …`). Le
+tableau de suivi des 27 items en fin de fichier ne compte pas : il contenait
+déjà une ligne par Sous-ID et validait n'importe quel commit sans preuve.
 
 ## 6. Statuts & règle de sortie de vague
 

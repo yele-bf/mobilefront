@@ -1,8 +1,13 @@
 name: yele-build
 
 # Contrôle de compilation : voir docs/CONTRIBUTING-equipe.md §1.3 (CI obligatoire).
-# Ne tourne que sur les pull requests, comme le garde-fou.
+# - sur pull_request : `build` (Dart) et `android` (Kotlin + APK debug) doivent
+#   être verts avant le merge ;
+# - sur push vers main : le même contrôle rejoue sur le commit fusionné, pour
+#   qu'une régression arrivée par un merge reste visible.
 on:
+  push:
+    branches: [main]
   pull_request:
     types: [opened, synchronize, reopened]
 
@@ -29,3 +34,37 @@ jobs:
 
       - name: Tests unitaires
         run: flutter test
+
+  # `flutter analyze` et `flutter test` ne compilent pas le code Kotlin de
+  # android/app/src/main/kotlin : une erreur de compilation native passait donc
+  # inaperçue (cas d'ISS-01). Seule une construction Gradle la voit.
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Installer Java 17 (requis par Gradle)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Installer Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Dépendances
+        run: flutter pub get
+
+      - name: Compiler le Kotlin et l'APK de debug
+        run: flutter build apk --debug
+
+      - name: Conserver l'APK de debug (7 jours)
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-debug
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7

@@ -13,7 +13,7 @@
 | 2026-10-24 | ISS-03 | fix | SAWADOGO Hassan Achraf Ammar | SAWADOGO Hassan Achraf Ammar | `iss/ISS-03-reseau-wifi` (#32) | `5b98edf` | Analyse + tests + APK debug compilé en CI ; APK réel Wi-Fi vs données à refaire après merge | Transmis |
 | 2026-10-24 | ISS-01 | feat | SAWADOGO Hassan Achraf Ammar | SAWADOGO Hassan Achraf Ammar | `feature/signal-rsrp-rsrq` (#31) | `96b75e8` | Analyse + tests + APK debug (Kotlin compilé) en CI ; relevé APK 4G/5G à joindre | Transmis |
 | 2026-10-24 | ISS-10 | feat | SAWADOGO Hassan Achraf Ammar | SAWADOGO Hassan Achraf Ammar | `iss/ISS-10-historique-adresse` (#34) | `8f610f5` | Analyse + tests CI ; adresse Ouagadougou annoncée sans capture, à joindre | Transmis |
-| 2026-10-24 | ISS-07 | feat | SAWADOGO Hassan Achraf Ammar | SAWADOGO Hassan Achraf Ammar | `iss/ISS-07-streaming-trois-resolutions` (#33) | _après merge_ | 5 fichiers de tests verts en CI ; relevés Chrome + APK à joindre | Transmis |
+| 2026-10-24 | ISS-07 | feat | SAWADOGO Hassan Achraf Ammar | SAWADOGO Hassan Achraf Ammar | `iss/ISS-07-streaming-trois-resolutions` (#33) | `93d6a33` | 5 fichiers de tests verts en CI ; relevés Chrome + APK à joindre | Transmis |
 
 ## Nomenclature V14 vs V11 vs V4 (à lire avant de citer un Sous-ID)
 

@@ -122,6 +122,27 @@ class SpeedTestResult extends HiveObject {
   @HiveField(35)
   int? simSlot; // Emplacement 0-indexé de la SIM data active (ISS-02)
 
+  // ── Métriques de signal au moment du test (Android ; null = non mesuré) ──
+  // Le champ 35 est réservé à simSlot (ISS-02) : les nouveaux champs
+  // commencent à 36 et ne renumérotent jamais un champ existant.
+  @HiveField(36)
+  int? signalDbm; // Puissance générique toutes technos (dBm)
+
+  @HiveField(37)
+  int? signalRsrp; // RSRP LTE/4G (dBm)
+
+  @HiveField(38)
+  int? signalRsrq; // RSRQ LTE/4G (dB)
+
+  @HiveField(39)
+  int? signalNrRsrp; // SS-RSRP 5G SA (dBm) ; null en 5G NSA (ancre LTE)
+
+  @HiveField(40)
+  int? signalNrRsrq; // SS-RSRQ 5G SA (dB)
+
+  @HiveField(41)
+  int? wifiRssi; // RSSI du Wi-Fi associé (dBm), null en données mobiles
+
   SpeedTestResult({
     String? id,
     DateTime? timestamp,
@@ -158,6 +179,12 @@ class SpeedTestResult extends HiveObject {
     this.streamingQualitiesJson,
     this.dataUsedKiB,
     this.simSlot,
+    this.signalDbm,
+    this.signalRsrp,
+    this.signalRsrq,
+    this.signalNrRsrp,
+    this.signalNrRsrq,
+    this.wifiRssi,
   }) {
     this.id = id ?? const Uuid().v4();
     this.timestamp = timestamp ?? DateTime.now();
@@ -199,6 +226,12 @@ class SpeedTestResult extends HiveObject {
       'browsingSuccessRate': browsingSuccessRate,
       'browsingPagesTested': browsingPagesTested,
       'browsingScore': browsingScore,
+      'signalDbm': signalDbm,
+      'signalRsrp': signalRsrp,
+      'signalRsrq': signalRsrq,
+      'signalNrRsrp': signalNrRsrp,
+      'signalNrRsrq': signalNrRsrq,
+      'wifiRssi': wifiRssi,
     };
   }
 
@@ -270,6 +303,12 @@ class SpeedTestResult extends HiveObject {
       simSlot: readInt(['simSlot', 'dataSimSlot']),
       streamingQualitiesJson: json['streamingQualities'] as String?,
       dataUsedKiB: readInt(['dataUsedKiB']),
+      signalDbm: readInt(['signalDbm']),
+      signalRsrp: readInt(['signalRsrp']),
+      signalRsrq: readInt(['signalRsrq']),
+      signalNrRsrp: readInt(['signalNrRsrp']),
+      signalNrRsrq: readInt(['signalNrRsrq']),
+      wifiRssi: readInt(['wifiRssi']),
       imagePath: json['imagePath'] as String?,
       testLog: json['testLog'] as String?,
       isUploaded: json['isUploaded'] as bool? ?? false,

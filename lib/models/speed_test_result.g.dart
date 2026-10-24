@@ -52,13 +52,20 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
       streamingQualitiesJson: fields[33] as String?,
       dataUsedKiB: fields[34] as int?,
       simSlot: fields[35] as int?,
+      // 35 est réservé à simSlot (ISS-02) : champs suivants à partir de 36.
+      signalDbm: fields[36] as int?,
+      signalRsrp: fields[37] as int?,
+      signalRsrq: fields[38] as int?,
+      signalNrRsrp: fields[39] as int?,
+      signalNrRsrq: fields[40] as int?,
+      wifiRssi: fields[41] as int?,
     );
   }
 
   @override
   void write(BinaryWriter writer, SpeedTestResult obj) {
     writer
-      ..writeByte(35)
+      ..writeByte(41)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -127,8 +134,21 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
       ..write(obj.streamingQualitiesJson)
       ..writeByte(34)
       ..write(obj.dataUsedKiB)
+      // 35 réservé à simSlot (ISS-02).
       ..writeByte(35)
-      ..write(obj.simSlot);
+      ..write(obj.simSlot)
+      ..writeByte(36)
+      ..write(obj.signalDbm)
+      ..writeByte(37)
+      ..write(obj.signalRsrp)
+      ..writeByte(38)
+      ..write(obj.signalRsrq)
+      ..writeByte(39)
+      ..write(obj.signalNrRsrp)
+      ..writeByte(40)
+      ..write(obj.signalNrRsrq)
+      ..writeByte(41)
+      ..write(obj.wifiRssi);
   }
 
   @override

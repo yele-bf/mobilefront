@@ -501,6 +501,23 @@ class MainActivity : FlutterActivity() {
             // Ignorer.
         }
 
+        // Métriques de signal typées (RSRP/RSRQ en 4G, SS-RSRP/RSRQ en 5G SA).
+        // Une métrique indisponible reste ABSENTE de la map : Dart la
+        // distingue ainsi d'une vraie mesure.
+        try {
+            val cell = SignalMetrics.cellSignal(tm)
+            for (key in SignalMetrics.CELL_KEYS) {
+                if (cell.has(key)) info[key] = cell.getInt(key)
+            }
+        } catch (_: Exception) {
+        }
+
+        // RSSI du Wi-Fi associé, seulement si Internet passe par le Wi-Fi —
+        // en données mobiles il n'a pas de sens pour qualifier le test.
+        if (SignalMetrics.isOnWifi(this)) {
+            SignalMetrics.wifiRssi(this)?.let { info["wifiRssi"] = it }
+        }
+
         return info
     }
 

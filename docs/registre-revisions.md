@@ -3,11 +3,14 @@
 > Une ligne par contribution **mergée** (CONTRIBUTING §5). Le hash de commit est
 > complété **après** le merge. Vocabulaire de statut : `À faire | En cours |
 > Transmis | Validé | Rejeté | À re-vérifier`.
+>
+> **Aucune ligne d'exemple** : `guard` exige une ligne datée par Sous-ID cité, donc
+> une ligne factice rendrait le garde-fou menteur. Une contribution qui n'a pas de
+> hash de merge n'a pas sa place ici.
 
 | Date | Sous-ID (V14) | Type | Agent | Owner (classeur) | Branche / PR | Commit | Validation | Statut |
 |---|---|---|---|---|---|---|---|---|
-| 2026-10-14 | IMP-11 | feat | _(exemple — à remplacer)_ | COMPAORE Bobodo Kévin Aymar | `imp/IMP-11-export-csv` | _après merge_ | local Chrome | En cours |
-| 2026-10-14 | ISS-12 | fix | _(exemple — à remplacer)_ | COMPAORE Bobodo Kévin Aymar | `iss/ISS-12-reglages` | _après merge_ | APK réel | Transmis |
+| 2026-10-14 | ISS-12 | fix | COMPAORE Bobodo Kévin Aymar | COMPAORE Bobodo Kévin Aymar | `iss/ISS-12-reglages` (antérieur au garde-fou) | `709dd26` | Chrome + APK réel | Validé |
 | 2026-10-20 | ISS-02 | fix | BAMBA Seydou | BAMBA Seydou / NANEMA Wendinkonté Dimitri Judicaël | `iss/ISS-02-identification-reseau` (#30) | `5ca52d9` | APK réel double SIM le 24/10/2026 : données Orange → SIM 2, données Télécel → SIM 1 | Validé |
 | 2026-10-23 | ISS-04 | fix | TAMINI Heremave | KOHOUN Damou Daniel / TAMINI Heremave | `iss/ISS-04-serveur-reel` (#35) | `a84aa4f` | Local Chrome : serveur affiché = hôte de `API_BASE_URL` ; test de débit non lancé | Validé |
 | 2026-10-24 | ISS-03 | fix | SAWADOGO Hassan Achraf Ammar | SAWADOGO Hassan Achraf Ammar | `iss/ISS-03-reseau-wifi` (#32) | `5b98edf` | Analyse + tests + APK debug compilé en CI ; APK réel Wi-Fi vs données à refaire après merge | Transmis |

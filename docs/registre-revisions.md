@@ -17,7 +17,7 @@
 | 2026-10-24 | ISS-01 | feat | SAWADOGO Hassan Achraf Ammar | SAWADOGO Hassan Achraf Ammar | `feature/signal-rsrp-rsrq` (#31) | `96b75e8` | Analyse + tests + APK debug (Kotlin compilé) en CI ; relevé APK 4G/5G à joindre | Transmis |
 | 2026-10-24 | ISS-10 | feat | SAWADOGO Hassan Achraf Ammar | SAWADOGO Hassan Achraf Ammar | `iss/ISS-10-historique-adresse` (#34) | `8f610f5` | Analyse + tests CI ; adresse Ouagadougou annoncée sans capture, à joindre | Transmis |
 | 2026-10-24 | ISS-07 | feat | SAWADOGO Hassan Achraf Ammar | SAWADOGO Hassan Achraf Ammar | `iss/ISS-07-streaming-trois-resolutions` (#33) | `93d6a33` | 5 fichiers de tests verts en CI ; relevés Chrome + APK à joindre | Transmis |
-| 2026-10-26 | IMP-06 | feat | NIKIEMA Abdoul Fatahou | NIKIEMA Abdoul Fatahou / NONGUIERMA WENDINSOO LEONEL | `feat/IMP-06-seuils-arcep` | _après merge_ | Analyse sans avertissement + 67 tests verts (`test/arcep_seuils_test.dart`) ; jeux de valeurs autour des seuils à faire sur le score | En cours |
+| 2026-10-26 | IMP-06 | feat | NIKIEMA Abdoul Fatahou | NIKIEMA Abdoul Fatahou / NONGUIERMA WENDINSOO LEONEL | `feat/IMP-06-seuils-arcep` | _après merge_ | Analyse sans avertissement + 88 tests verts, dont 21 cas limites autour des seuils (29,9/30,1 s ; 4,999/5,001 s ; 9,9/10,1 % ; 479/480p ; 0/1 interruption) | En cours |
 
 ## Nomenclature V14 vs V11 vs V4 (à lire avant de citer un Sous-ID)
 

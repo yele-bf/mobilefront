@@ -70,7 +70,9 @@ void main() {
         const StreamingQualityResult.unavailable('1080p'),
       ];
       final r = aggregateStreamingResults(rows);
-      expect(r.score, 98.0); // nouvelle règle
+      // 98 × 0,85 : la définition Yélé exige 0 interruption, chacune coûte
+      // 15 % de la note (IMP-06).
+      expect(r.score, 83.3);
       expect(r.startupMs, 800); // inchangé
       expect(r.rebufferCount, 1); // inchangé
       expect(r.maxResolution, '720p'); // inchangé

@@ -1,18 +1,20 @@
-// ─── Squelette du scoring ARCEP — IMP-06 ──────────────────────────────────
+// ─── Scoring ancré sur les seuils ARCEP — IMP-06 ──────────────────────────
 //
-// Les seuils validés existent (voir `lib/constants/arcep_seuils.dart`) mais
-// aucun calcul de score ne les utilise aujourd'hui :
+// Deux scores sont affichés sur 100 ; ils sont désormais calculés à partir du
+// référentiel validé (`lib/constants/arcep_seuils.dart`, seuils.json v3) et non
+// plus de constantes choisies au hasard :
 //
-//  • navigation — `browsing_test_service_native.dart` compte une page
-//    « réussie » sous 10 s et retire 1 point par 100 ms au-delà de 2 s ;
-//  • streaming — `aggregateStreamingResults` moyenne les taux de performance
-//    par palier, sans confronter le démarrage, le rebuffering, les
-//    interruptions ni la résolution minimale aux seuils ARCEP.
+//  • navigation — une page est « réussie » sous le seuil ARCEP de chargement
+//    (30 s). Le score est la part de pages réussies, moins une pénalité de
+//    confort qui atteint 20 points quand le temps moyen atteint le seuil.
+//  • streaming — la base reste la moyenne des taux de performance des paliers
+//    réellement servis (règle nPerf : un palier non servi ne tire pas la
+//    moyenne vers 0). Cette base est ensuite réduite par les quatre critères
+//    ARCEP/Yélé : démarrage ≤ 5 s, rebuffering ≤ 10 %, résolution ≥ 480p,
+//    aucune interruption.
 //
-// Ce fichier pose les deux points d'entrée et les prédicats de seuil. Le
-// branchement sur les services et les écrans reste à faire : les scores
-// ci-dessous lèvent tant qu'ils ne sont pas implémentés, pour qu'aucun écran
-// n'affiche un score faussement conforme.
+// Règle d'honnêteté (cf. `seuil.md`) : la comparaison reste simplifiée. Aucun
+// écran ne doit conclure « conforme » à partir de ces scores.
 
 import '../constants/arcep_seuils.dart';
 
@@ -22,7 +24,7 @@ abstract final class ArcepScoring {
   /// (`ArcepSeuils.fromApiJson`) ; les valeurs validées servent de repli.
   static ArcepSeuils seuils = ArcepSeuils.valides;
 
-  // ── Prédicats de seuil (le référentiel, pas encore le score) ─────────────
+  // ── Prédicats de seuil ───────────────────────────────────────────────────
 
   /// Vrai si la page respecte le seuil ARCEP de chargement (< 30 s).
   static bool pageDansSeuil(double pageLoadMs) =>
@@ -47,36 +49,77 @@ abstract final class ArcepScoring {
       hauteurServie >= seuils.streaming.resolutionMinHeight &&
       interruptions <= seuils.streaming.interruptionsMax;
 
-  // ── Scores composites 0-100 (à implémenter) ──────────────────────────────
+  // ── Scores composites 0-100 ──────────────────────────────────────────────
 
   /// Score de navigation web, 0-100.
   ///
-  /// Attendu : part des pages sous le seuil ARCEP ([pageDansSeuil]) pondérée
-  /// par le temps moyen, pour que chaque palier de performance corresponde à
-  /// un seuil validé.
-  ///
-  /// TODO(IMP-06) : implémenter, puis remplacer `_computeScore` de
-  /// `browsing_test_service_native.dart` (et son équivalent web).
+  /// [pagesDansSeuil] compte les pages chargées sous le seuil ARCEP (30 s) :
+  /// une page au-delà est un échec, quelle que soit sa vitesse relative. La
+  /// part de pages réussies donne le score, d'où l'on retire au plus 20 points
+  /// de confort quand le temps moyen atteint le seuil — sans quoi une page à
+  /// 29 s vaudrait autant qu'une page à 1 s.
   static double scoreNavigation({
     required int pagesTestees,
     required int pagesDansSeuil,
     required double pageLoadMoyenMs,
-  }) =>
-      throw UnimplementedError('IMP-06 : score de navigation ARCEP à définir');
+  }) {
+    if (pagesTestees <= 0) return 0;
+    final seuilMs = seuils.navigation.pageLoadS * 1000;
+    final taux = (pagesDansSeuil / pagesTestees).clamp(0.0, 1.0);
+    final lenteur =
+        seuilMs <= 0 ? 1.0 : (pageLoadMoyenMs / seuilMs).clamp(0.0, 1.0);
+    return (100 * taux - 20 * lenteur).clamp(0, 100);
+  }
 
   /// Score de streaming vidéo, 0-100.
   ///
-  /// Attendu : démarrage sous 5 s ([preloadDansSeuil]), rebuffering ≤ 10 %,
-  /// aucune interruption et résolution ≥ 480p, en conservant la règle
-  /// « les paliers non servis ne tirent pas la moyenne vers 0 ».
+  /// [fluidite] est la moyenne des taux de performance des paliers réellement
+  /// servis (0-100) : les paliers non servis n'entrent pas dans la moyenne, un
+  /// réseau qui ne tient pas le 4K ne doit pas écraser la mesure des paliers
+  /// servis. Les quatre critères ARCEP/Yélé réduisent ensuite cette base :
   ///
-  /// TODO(IMP-06) : implémenter, puis brancher dans
-  /// `aggregateStreamingResults` (`streaming_shared.dart`).
+  ///  - démarrage au-delà de 5 s : jusqu'à la moitié du score en moins quand il
+  ///    atteint le double du seuil ;
+  ///  - rebuffering au-delà de 10 % : même décroissance ;
+  ///  - une interruption ou plus : 15 % de la note en moins (définition Yélé :
+  ///    aucune interruption) ;
+  ///  - résolution sous 480p : moitié de la note.
   static double scoreStreaming({
+    required double fluidite,
     required double startupMs,
     required double rebufferRatio,
     required int interruptions,
     required int hauteurServie,
-  }) =>
-      throw UnimplementedError('IMP-06 : score de streaming ARCEP à définir');
+  }) {
+    if (fluidite <= 0) return 0;
+
+    final facteurDemarrage = _facteurAuDela(
+      startupMs,
+      seuils.streaming.preloadS * 1000,
+    );
+    final facteurRebuffer = _facteurAuDela(
+      rebufferRatio,
+      seuils.streaming.rebufferRatioMax,
+    );
+    final facteurInterruptions =
+        interruptions <= seuils.streaming.interruptionsMax ? 1.0 : 0.85;
+    final facteurResolution =
+        hauteurServie >= seuils.streaming.resolutionMinHeight ? 1.0 : 0.5;
+
+    return (fluidite *
+            facteurDemarrage *
+            facteurRebuffer *
+            facteurInterruptions *
+            facteurResolution)
+        .clamp(0, 100);
+  }
+
+  /// Vaut 1 tant que [mesure] reste sous [seuil], puis décroît linéairement
+  /// jusqu'à 0,5 quand elle atteint le double du seuil. Le seuil est la seule
+  /// constante : aucune durée « magique » n'est codée en dur.
+  static double _facteurAuDela(double mesure, double seuil) {
+    if (seuil <= 0 || mesure <= seuil) return 1;
+    final depassement = ((mesure - seuil) / seuil).clamp(0.0, 1.0);
+    return 1 - 0.5 * depassement;
+  }
 }

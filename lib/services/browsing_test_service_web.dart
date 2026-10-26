@@ -4,6 +4,7 @@ import 'dart:js_interop';
 import 'package:logger/logger.dart';
 import 'package:web/web.dart' as web;
 
+import 'arcep_scoring.dart';
 import 'browsing_test_service.dart';
 
 /// Implémentation **web** (Chrome) du test de navigation.
@@ -14,14 +15,16 @@ import 'browsing_test_service.dart';
 /// depuis une page web. On sonde donc chaque site par une requête réseau
 /// (`fetch` en mode `no-cors`, opaque mais mesurable), qui reflète le temps de
 /// réponse du site — la composante dominante de la navigation sur un réseau
-/// mobile. Critère ARCEP conservé : réussi si réponse en moins de 10 s.
+/// mobile. Critère ARCEP conservé : réussi si la réponse arrive sous le seuil
+/// de chargement du référentiel (30 s, cf. `config/seuils.json`).
 class WebBrowsingRunner implements BrowsingRunner {
   final Logger logger = Logger();
 
-  // Au-delà : la page compte comme un échec (critère ARCEP)
-  static const int _successThresholdMs = 10000;
-  // Sécurité absolue par page (réseaux très lents) avant de passer à la suivante
-  static const int _hardTimeoutMs = 20000;
+  /// Seuil ARCEP de chargement d'une page (30 s, cf. `config/seuils.json`).
+  /// Au-delà, la page compte comme un échec ; c'est aussi le délai de sécurité
+  /// par page, puisqu'une page plus lente échoue de toute façon.
+  int get _seuilChargementMs =>
+      (ArcepScoring.seuils.navigation.pageLoadS * 1000).round();
 
   @override
   Future<BrowsingTestResult> runTest({
@@ -47,7 +50,7 @@ class WebBrowsingRunner implements BrowsingRunner {
         final ms = stopwatch.elapsedMilliseconds.toDouble();
         if (ok) {
           loadTimes.add(ms);
-          if (ms < _successThresholdMs) successes++;
+          if (ArcepScoring.pageDansSeuil(ms)) successes++;
           logger.i('Browsing ${_hostOf(url)}: ${ms.toStringAsFixed(0)} ms');
         } else {
           logger.w('Browsing ${_hostOf(url)}: échec/timeout');
@@ -71,8 +74,11 @@ class WebBrowsingRunner implements BrowsingRunner {
       avgLoadMs: double.parse(avgLoadMs.toStringAsFixed(0)),
       successRate: double.parse(successRate.toStringAsFixed(2)),
       pagesTested: pages.length,
-      score:
-          double.parse(_computeScore(successRate, avgLoadMs).toStringAsFixed(1)),
+      score: double.parse(ArcepScoring.scoreNavigation(
+        pagesTestees: pages.length,
+        pagesDansSeuil: successes,
+        pageLoadMoyenMs: avgLoadMs,
+      ).toStringAsFixed(1)),
     );
     logger.i(result.toString());
     return result;
@@ -85,18 +91,11 @@ class WebBrowsingRunner implements BrowsingRunner {
       await web.window
           .fetch(url.toJS, web.RequestInit(mode: 'no-cors'))
           .toDart
-          .timeout(const Duration(milliseconds: _hardTimeoutMs));
+          .timeout(Duration(milliseconds: _seuilChargementMs));
       return true;
     } catch (_) {
       return false;
     }
-  }
-
-  double _computeScore(double successRate, double avgLoadMs) {
-    double score = 100 * successRate;
-    // Pénalité de lenteur : -1 point par 100 ms au-delà de 2 s
-    if (avgLoadMs > 2000) score -= (avgLoadMs - 2000) / 100;
-    return score.clamp(0, 100);
   }
 
   String _hostOf(String url) => Uri.tryParse(url)?.host ?? url;

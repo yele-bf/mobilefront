@@ -9,7 +9,8 @@ import 'browsing_test_service_web.dart'
 /// Résultat du test de navigation web.
 class BrowsingTestResult {
   final double avgLoadMs; // temps de chargement moyen des pages réussies
-  final double successRate; // part des pages chargées en < 10 s (0-1)
+  // Part des pages chargées sous le seuil ARCEP (30 s, cf. `config/seuils.json`).
+  final double successRate;
   final int pagesTested;
   final double score; // score synthétique 0-100
 
@@ -68,7 +69,9 @@ abstract class BrowsingRunner {
 /// iframe) : on mesure le temps de réponse, proxy de l'expérience de
 /// navigation sur réseau mobile.
 ///
-/// Critère ARCEP : une page est "réussie" si elle se charge en moins de 10 s.
+/// Critère ARCEP : une page est "réussie" si elle se charge sous le seuil du
+/// référentiel (30 s, cf. `config/seuils.json`), et le score est calculé à
+/// partir de ce seuil (`ArcepScoring.scoreNavigation`).
 class BrowsingTestService {
   Future<BrowsingTestResult> runTest({
     List<String> pages = BROWSING_REFERENCE_PAGES,

@@ -4,6 +4,7 @@
 
 ### Ajouté
 
+- Preuves : six captures de validation terrain (ISS-01, ISS-03, ISS-07, ISS-10) versionnées dans `docs/preuves/`, et règle de preuve au CONTRIBUTING §6.1 (une image, pas un récit ; `A/B` = l'un ou l'autre suffit, `A + B` = les deux ; 5G non déployée au Burkina Faso, ISS-01 validée sur capture 4G).
 - ISS-01 : collecte et affichage du signal radio (RSRP/RSRQ LTE, SS-RSRP/SS-RSRQ 5G SA, RSSI Wi-Fi), stocké avec chaque mesure (Hive 36 à 41) et transmis au backend.
 - ISS-07 : test de streaming sur les trois paliers 720p/1080p/2160p (lecteur neuf par palier, qualité réellement servie mesurée), moteur HLS à qualité verrouillée sélectionnable à chaud et tableau de résultats à trois colonnes.
 - ISS-10 : adresse lisible (géocodage inversé Nominatim, cache mémoire + disque, 1 requête/s) dans le détail de l'historique, avec repli sur les coordonnées.

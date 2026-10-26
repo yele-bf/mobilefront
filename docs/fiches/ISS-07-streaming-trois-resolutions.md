@@ -65,9 +65,14 @@ Un test de streaming est exécuté et son résultat est enregistré.
   `streaming_hls_service_test.dart`, `streaming_result_test.dart`,
   `streaming_score_test.dart`), verts en CI, plus `guard` et le check
   `android`.
-- **Support imposé (Chrome + APK)** : l'auteur déclare trois passages (réseau
-  limité, moyen, excellent) avec 2160p qui n'aboutit que sur le troisième ; ces
-  relevés ne sont pas joints en capture. Statut `Transmis` au registre.
+- **Support imposé (Chrome + APK)** : fait sur APK le 25/10/2026 sur Hicel
+  STAR 1 (Android 12) — tableau à trois colonnes, qualité servie 89,31 % / 91,98 %
+  / 48,06 %, débits mesurés 5 962 / 9 912 / 16 915 kiB, débit mini requis
+  0,65 / 0,99 / 2,83 Mb/s, score 77/100. Le passage en Chrome n'a pas été fourni :
+  décision du 26/10, un seul support suffit dès qu'il prouve le critère
+  (CONTRIBUTING §6.1).
+- **Preuve** : [`docs/preuves/ISS-07_HLS_trois-paliers.png`](../preuves/ISS-07_HLS_trois-paliers.png),
+  jointe au commentaire du 26/10/2026 sur [#23](https://github.com/yele-bf/mobilefront/issues/23).
 
 ## Limites
 
@@ -77,4 +82,7 @@ Un test de streaming est exécuté et son résultat est enregistré.
 - Le moteur HLS nécessite `hls.js` (Web) et un flux de test accessible : sans
   réseau vers `streamTestStreamUrl`, les paliers échouent.
 - Le 2160p dépend du débit disponible (~12,3 Mb/s) : un échec à ce palier sur
-  réseau moyen est un résultat, pas une régression.
+  réseau moyen est un résultat, pas une régression. La capture du 25/10 le
+  montre (48,06 % de qualité servie), ce n'est pas un défaut du lecteur.
+- Aucun test en navigateur n'accompagne la preuve : le comportement de
+  `hls.js` sur Chrome reste vérifié uniquement par les tests unitaires.

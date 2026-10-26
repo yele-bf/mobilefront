@@ -8,8 +8,6 @@
 # owner dans l'onglet « Completion Correct. & Amelior. ».
 # On n'inscrit que des comptes réellement membres de l'organisation : un pseudo
 # absent est ignoré (et signalé) par GitHub.
-# `@Fatahou980` (Groupe 4, IMP-06) sera ajouté dès qu'il aura accepté son
-# invitation.
 
 # Propriétaire par défaut : le porteur du projet.
 *                       @KikaiNoKami
@@ -17,6 +15,8 @@
 # ── App Flutter ────────────────────────────────────────────────────────────
 /lib/                   @KikaiNoKami @aspinfo10
 /lib/services/          @aspinfo10 @SeydouBamba @angedemon
+/lib/constants/         @Fatahou980 @KikaiNoKami
+/lib/services/arcep_scoring.dart @Fatahou980 @KikaiNoKami
 /lib/screens/           @KikaiNoKami @Aicha710 @angedemon
 /lib/models/            @agnesnana-hash @Aicha710
 /lib/widgets/           @agnesnana-hash @Aicha710

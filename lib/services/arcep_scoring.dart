@@ -13,8 +13,9 @@
 //    ARCEP/Yélé : démarrage ≤ 5 s, rebuffering ≤ 10 %, résolution ≥ 480p,
 //    aucune interruption.
 //
-// Règle d'honnêteté (cf. `seuil.md`) : la comparaison reste simplifiée. Aucun
-// écran ne doit conclure « conforme » à partir de ces scores.
+// Règle d'honnêteté (cf. `method_note` du référentiel) : la comparaison reste
+// simplifiée. Aucun écran ne doit conclure « conforme » à partir de ces scores.
+// Fiche : `docs/fiches/IMP-06-seuils-arcep-scoring.md`.
 
 import '../constants/arcep_seuils.dart';
 

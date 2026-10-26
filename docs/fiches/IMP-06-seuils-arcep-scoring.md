@@ -90,10 +90,10 @@ validés — vérifié par des jeux de valeurs de part et d'autre de chaque seui
 ## Validation
 
 - **Automatisée** : `flutter analyze` sans aucun avertissement ; `flutter test`
-  vert, **88 tests** dont `test/arcep_seuils_test.dart` (4 cas),
-  `test/navigation_score_test.dart` (8 cas) et
-  `test/streaming_arcep_score_test.dart` (13 cas) — tous les cas limites du
-  tableau ci-dessus.
+  vert, **88 tests** (63 sur `main` avant la branche, donc +25) dont
+  `test/arcep_seuils_test.dart` (4 cas), `test/navigation_score_test.dart`
+  (8 cas) et `test/streaming_arcep_score_test.dart` (13 cas) — tous les cas
+  limites du tableau ci-dessus.
 - **Support imposé par le classeur** : local (jeux de valeurs autour des
   seuils) — **fait par les tests unitaires**, sans exécution de l'application
   sur appareil ni dans Chrome.
@@ -106,10 +106,11 @@ validés — vérifié par des jeux de valeurs de part et d'autre de chaque seui
 - Le seuil de connexion (20 s) est exposé (`connexionDansSeuil`) mais **n'entre
   pas encore dans le score** : le test de navigation mesure le chargement
   complet de la page, pas le temps d'établissement de connexion. L'ajouter
-  suppose une mesure supplémentaire.
-- `ArcepSeuils.fromApiJson` n'est branché sur aucun appel réseau : tant que le
-  module ARCEP n'est pas revenu sur `main` de `mobiletest`, les valeurs de
-  `seuils.json` v3 recopiées dans l'application font foi.
+  suppose une mesure supplémentaire.- `ArcepSeuils.fromApiJson` n'est branché sur aucun appel réseau : les valeurs
+  de `seuils.json` v3 recopiées dans l'application font foi. Le module ARCEP
+  revient sur `main` de `mobiletest` avec la PR #9 (mêmes seuils, désormais
+  servis par `/api/arcep/*`) ; brancher `fromApiJson` sur ces routes reste à
+  faire, et les deux copies doivent alors être maintenues ensemble.
 - Les pénalités streaming (15 % par interruption, moitié sous 480p, décroissance
   jusqu'au double du seuil) sont des règles **Yélé documentées**, pas des
   valeurs ARCEP : les commentaires du code le disent.
@@ -125,4 +126,4 @@ validés — vérifié par des jeux de valeurs de part et d'autre de chaque seui
 - [x] Une ligne **datée** a été ajoutée au tableau d'historique de
       `docs/registre-revisions.md` (sans elle, `guard` est rouge).
 - [x] Le `CHANGELOG.md` du dépôt a une entrée sous `## [Non publiée]`.
-- [ ] Le corps de la PR porte `Closes #12` et la même liste de validation.
+- [x] Le corps de la PR porte `Closes #12` et la même liste de validation.

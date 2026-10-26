@@ -10,8 +10,9 @@
 // évolution doit être répercutée dans `config/seuils.json` et datée dans
 // `docs/registre-revisions.md`.
 //
-// Règle d'honnêteté (cf. `seuil.md`) : la comparaison ARCEP reste simplifiée.
-// Aucun écran ne doit afficher « conforme » à partir de ces seuils.
+// Règle d'honnêteté (cf. champ `method_note` du référentiel) : la comparaison
+// ARCEP reste simplifiée. Aucun écran ne doit afficher « conforme » à partir de
+// ces seuils. Fiche : `docs/fiches/IMP-06-seuils-arcep-scoring.md`.
 
 /// Seuils ARCEP de la navigation web.
 class ArcepSeuilsNavigation {
@@ -83,7 +84,8 @@ class ArcepSeuils {
   /// Valeurs validées (seuils.json v3) — repli quand l'API n'est pas joignable.
   static const ArcepSeuils valides = ArcepSeuils(
     version: '3',
-    source: 'ARCEP Burkina Faso — Rapport de synthèse QoS T1 2026',
+    source: 'ARCEP Burkina Faso — Rapport de synthèse QoS des réseaux mobiles, '
+        'T1 2026 (campagne 23/02/2026 – 08/04/2026)',
     navigation: ArcepSeuilsNavigation(
       pageLoadS: 30,
       pageLoadPct: 95,

@@ -43,9 +43,17 @@ réseau utilisé pour le test.
   `guard` et `android` (compilation APK de debug) sur la tête de PR.
 - **Défaut reproduit** le 24/10/2026 sur `main` par une capture prise en Wi-Fi,
   données mobiles coupées : l'opérateur de la SIM apparaissait encore.
-- **Support imposé (APK réel, Wi-Fi vs données mobiles)** : la capture qui
-  prouve le défaut est antérieure au correctif ; le re-test APK après merge
-  reste à faire d'où le statut `Transmis` au registre.
+- **Support imposé (APK réel, Wi-Fi vs données mobiles)** : fait le 25/10/2026
+  sur Hicel STAR 1 (Android 12), Orange Burkina Faso, Tampouy / Ouagadougou —
+  en Wi-Fi, historique **et** écran de bilan sans ligne « Réseau mobile »
+  (bilan :`Réseau mobile : —`) alors que la SIM 4G est enregistrée ;
+  contre-épreuve en données mobiles affichant
+  `Réseau mobile : 4G · Orange BF · SIM 1`.
+- **Preuve** : trois captures —
+  [`ISS-03_Wi-Fi_sans-reseau-mobile.png`](../preuves/ISS-03_Wi-Fi_sans-reseau-mobile.png),
+  [`ISS-03_4G_reseau-mobile.png`](../preuves/ISS-03_4G_reseau-mobile.png),
+  [`ISS-03_bilan-Wi-Fi_reseau-mobile-vide.png`](../preuves/ISS-03_bilan-Wi-Fi_reseau-mobile-vide.png)
+  — jointes au commentaire du 26/10/2026 sur [#20](https://github.com/yele-bf/mobilefront/issues/20).
 
 ## Limites
 

@@ -50,9 +50,12 @@ Chaque mesure géolocalisée affiche coordonnées + adresse lorsque disponible.
 - **Automatisée** : `flutter analyze` + `flutter test` verts (dont
   `test/reverse_geocoding_service_test.dart`), plus `guard` et le check
   `android` sur la tête de PR.
-- **Support imposé (Chrome/APK + GPS)** : l'auteur indique une résolution
-  réussie à Ouagadougou (12,3657 / −1,5339) sans capture jointe. Statut
-  `Transmis` au registre jusqu'à ce que la preuve soit ajoutée.
+- **Support imposé (Chrome/APK + GPS)** : fait sur APK le 25/10/2026, GPS
+  actif, sur Hicel STAR 1 (Android 12), Ouagadougou — historique affichant
+  `Coord. (adresse) : Piis Zuure, Tampouy, Ouagadougou, Centre` au-dessus de
+  `12.3855, -1.5700`.
+- **Preuve** : [`docs/preuves/ISS-10_adresse.png`](../preuves/ISS-10_adresse.png),
+  jointe au commentaire du 26/10/2026 sur [#25](https://github.com/yele-bf/mobilefront/issues/25).
 
 ## Limites
 
@@ -63,3 +66,6 @@ Chaque mesure géolocalisée affiche coordonnées + adresse lorsque disponible.
   et la même adresse ensuite depuis le cache.
 - Hors Burkina Faso, l'adresse n'est jamais résolue (choix assumé, cohérent
   avec le périmètre du projet).
+- La capture du 25/10 porte 12.3855 / −1.5700, et non 12,3657 / −1,5339 comme
+  le relevé annoncé le 24/10 : deux points de mesure différents dans
+  Ouagadougou, la précision du géocodage varie avec le point.

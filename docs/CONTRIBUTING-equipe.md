@@ -195,6 +195,38 @@ Un item passe **Validé** que si les 4 conditions sont réunies :
 > **Règle anti-divergence** : aucun statut « Valide » sans hash de commit.
 > (Précédent : V11-IMP-11 marqué « Valide » sans implémentation.)
 
+### 6.1 Ce qui vaut preuve
+
+La condition 4 (« validation sur le support imposé ») se prouve par une image,
+pas par un récit. Règles applicables à partir du 26/10/2026 :
+
+1. **Support de la preuve** : une capture d'écran versionnée dans
+   `docs/preuves/<SOUS-ID>_<slug>.png` (ou `docs/preuves/<SOUS-ID>/` quand il y
+   en a plusieurs), citée par son **chemin** dans la ligne de registre et dans
+   la section « Validation » de la fiche. Un relevé écrit — même précis, même
+   recoupable avec le code — laisse l'item en `Transmis` : il décrit, il ne
+   montre pas.
+2. **Joignabilité durable** : la preuve doit être lisible depuis `main`, ou
+   depuis une branche qui n'est pas supprimée après merge si ses liens ont été
+   publiés dans une issue. Supprimer une branche de preuves casse les liens des
+   commentaires : elle reste.
+3. **Légende** : le README de `docs/preuves/` dit, pour chaque image, ce qu'elle
+   prouve **et ce qu'elle ne prouve pas**. Une capture ne prouve jamais la
+   provenance du binaire : les empreintes SHA-256 d'APK se déclarent comme
+   déclarations de l'auteur, jamais comme vérifications.
+4. **Notation du classeur** : `A / B` signifie que l'un **ou** l'autre suffit
+   (ex. ISS-10 « Chrome/APK + GPS ») ; `A + B` signifie que les deux sont
+   attendus. Exception : si le second support n'existe pas sur le territoire à
+   la date du test, un seul suffit — la fiche écrit alors pourquoi dans
+   « Limites ».
+5. **Cas 5G** : il n'existe aucun réseau 5G commercial au Burkina Faso au
+   26/10/2026 (essais seulement). En 5G NSA l'ancre reste LTE, donc **ISS-01 se
+   valide sur une capture 4G** ; aucune contribution n'est bloquée faute de 5G.
+6. **Contrôle de revue** : le reviewer vérifie que la preuve correspond au code
+   de `main` (libellés, seuils, valeurs calculées), pas seulement qu'une image
+   existe. Une image dont les chiffres ne se recoupent pas avec le code est un
+   motif de `À re-vérifier`.
+
 ## 7. Secrets & environnements
 
 - Aucun secret dans le dépôt ni dans les URLs `remote` ; `.env` ignoré.

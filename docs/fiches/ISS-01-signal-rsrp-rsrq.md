@@ -59,9 +59,16 @@ Les valeurs RSRP/RSRQ sont affichées pour chaque mesure lorsque disponibles.
 - **Automatisée** : `flutter analyze` + `flutter test` verts, et le check
   `android` (`flutter build apk --debug`) qui compile réellement
   `SignalMetrics.kt` — `flutter analyze` ne voit pas le Kotlin.
-- **Support imposé (APK réel 4G/5G)** : les relevés annoncés par l'auteur
-  proviennent de logs de diagnostic ; aucune mesure avec valeurs RSRP/RSRQ
-  n'est jointe à la PR. Statut `Transmis` au registre jusqu'à ce relevé.
+- **Support imposé (APK réel 4G/5G)** : fait le 25/10/2026 sur Hicel STAR 1
+  (Android 12), Orange Burkina Faso, Tampouy / Ouagadougou — historique
+  affichant `Signal : RSRP -106 dBm (Mauvais/Faible)` et
+  `Qualité du signal : RSRQ -20 dB` sur deux lignes distinctes, avec
+  `Réseau mobile : 4G · Orange BF · SIM 1`.
+- **Preuve** : [`docs/preuves/ISS-01_4G_RSRP-RSRQ.png`](../preuves/ISS-01_4G_RSRP-RSRQ.png),
+  jointe au commentaire du 26/10/2026 sur [#18](https://github.com/yele-bf/mobilefront/issues/18).
+- **5G** : aucun réseau 5G commercial au Burkina Faso à cette date (essais
+  seulement) ; en 5G NSA l'ancre reste LTE, donc la capture 4G satisfait le
+  support imposé (CONTRIBUTING §6.1).
 
 ## Limites
 
@@ -71,3 +78,6 @@ Les valeurs RSRP/RSRQ sont affichées pour chaque mesure lorsque disponibles.
   champs LTE sont renseignés — c'est le comportement attendu, pas un défaut.
 - Aucun test unitaire Dart ne couvre l'extraction Kotlin : elle n'est vérifiée
   que par la compilation et par un relevé terrain.
+- Faute de cellule 5G au Burkina Faso, l'extraction `ssRsrp` / `ssRsrq` n'a été
+  vérifiée que par la compilation : la branche 5G SA n'a jamais produit de
+  valeur sur le terrain.

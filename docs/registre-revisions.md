@@ -7,16 +7,20 @@
 > **Aucune ligne d'exemple** : `guard` exige une ligne datée par Sous-ID cité, donc
 > une ligne factice rendrait le garde-fou menteur. Une contribution qui n'a pas de
 > hash de merge n'a pas sa place ici.
+>
+> **Preuves** : les captures de validation sont versionnées dans `docs/preuves/`
+> (voir son README) et citées ici par leur chemin. Un `Validé` dont la preuve
+> n'est pas joignable n'est pas recevable (CONTRIBUTING §6.1).
 
 | Date | Sous-ID (V14) | Type | Agent | Owner (classeur) | Branche / PR | Commit | Validation | Statut |
 |---|---|---|---|---|---|---|---|---|
 | 2026-10-14 | ISS-12 | fix | COMPAORE Bobodo Kévin Aymar | COMPAORE Bobodo Kévin Aymar | `iss/ISS-12-reglages` (antérieur au garde-fou) | `709dd26` | Chrome + APK réel | Validé |
 | 2026-10-20 | ISS-02 | fix | BAMBA Seydou | BAMBA Seydou / NANEMA Wendinkonté Dimitri Judicaël | `iss/ISS-02-identification-reseau` (#30) | `5ca52d9` | APK réel double SIM le 24/10/2026 : données Orange → SIM 2, données Télécel → SIM 1 | Validé |
 | 2026-10-23 | ISS-04 | fix | TAMINI Heremave | KOHOUN Damou Daniel / TAMINI Heremave | `iss/ISS-04-serveur-reel` (#35) | `a84aa4f` | Local Chrome : serveur affiché = hôte de `API_BASE_URL` ; test de débit non lancé | Validé |
-| 2026-10-24 | ISS-03 | fix | SAWADOGO Hassan Achraf Ammar | SAWADOGO Hassan Achraf Ammar | `iss/ISS-03-reseau-wifi` (#32) | `5b98edf` | Analyse + tests + APK debug compilé en CI ; APK réel Wi-Fi vs données à refaire après merge | Transmis |
-| 2026-10-24 | ISS-01 | feat | SAWADOGO Hassan Achraf Ammar | SAWADOGO Hassan Achraf Ammar | `feature/signal-rsrp-rsrq` (#31) | `96b75e8` | Analyse + tests + APK debug (Kotlin compilé) en CI ; relevé APK 4G/5G à joindre | Transmis |
-| 2026-10-24 | ISS-10 | feat | SAWADOGO Hassan Achraf Ammar | SAWADOGO Hassan Achraf Ammar | `iss/ISS-10-historique-adresse` (#34) | `8f610f5` | Analyse + tests CI ; adresse Ouagadougou annoncée sans capture, à joindre | Transmis |
-| 2026-10-24 | ISS-07 | feat | SAWADOGO Hassan Achraf Ammar | SAWADOGO Hassan Achraf Ammar | `iss/ISS-07-streaming-trois-resolutions` (#33) | `93d6a33` | 5 fichiers de tests verts en CI ; relevés Chrome + APK à joindre | Transmis |
+| 2026-10-24 | ISS-03 | fix | SAWADOGO Hassan Achraf Ammar | SAWADOGO Hassan Achraf Ammar | `iss/ISS-03-reseau-wifi` (#32) | `5b98edf` | APK réel Wi-Fi et 4G le 25/10/2026 (Hicel STAR 1) : historique et bilan sans ligne « Réseau mobile » en Wi-Fi, contre-épreuve 4G ; `docs/preuves/ISS-03_*.png` — validé le 26/10 | Validé |
+| 2026-10-24 | ISS-01 | feat | SAWADOGO Hassan Achraf Ammar | SAWADOGO Hassan Achraf Ammar | `feature/signal-rsrp-rsrq` (#31) | `96b75e8` | APK réel 4G le 25/10/2026 (Hicel STAR 1) : RSRP −106 dBm et RSRQ −20 dB sur deux lignes ; 5G non déployée au Burkina Faso (NSA = ancre LTE) ; `docs/preuves/ISS-01_4G_RSRP-RSRQ.png` — validé le 26/10 | Validé |
+| 2026-10-24 | ISS-10 | feat | SAWADOGO Hassan Achraf Ammar | SAWADOGO Hassan Achraf Ammar | `iss/ISS-10-historique-adresse` (#34) | `8f610f5` | APK réel + GPS le 25/10/2026 : « Piis Zuure, Tampouy, Ouagadougou, Centre » à côté de 12.3855 / −1.5700 ; `docs/preuves/ISS-10_adresse.png` — validé le 26/10 | Validé |
+| 2026-10-24 | ISS-07 | feat | SAWADOGO Hassan Achraf Ammar | SAWADOGO Hassan Achraf Ammar | `iss/ISS-07-streaming-trois-resolutions` (#33) | `93d6a33` | APK réel : tableau HLS 720p/1080p/2160p (89,31 / 91,98 / 48,06 %, mini 0,65 / 0,99 / 2,83 Mb/s) le 25/10/2026 ; Chrome non fourni, un support suffit (§6.1) ; `docs/preuves/ISS-07_HLS_trois-paliers.png` — validé le 26/10 | Validé |
 | 2026-10-26 | IMP-06 | feat | NIKIEMA Abdoul Fatahou | NIKIEMA Abdoul Fatahou / NONGUIERMA WENDINSOO LEONEL | `feat/IMP-06-seuils-arcep` | _après merge_ | Analyse sans avertissement + 88 tests verts, dont 21 cas limites autour des seuils (29,9/30,1 s ; 4,999/5,001 s ; 9,9/10,1 % ; 479/480p ; 0/1 interruption) | En cours |
 
 ## Nomenclature V14 vs V11 vs V4 (à lire avant de citer un Sous-ID)

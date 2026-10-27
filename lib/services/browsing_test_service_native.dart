@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:logger/logger.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import 'arcep_scoring.dart';
 import 'browsing_test_service.dart';
 
 /// Implémentation native (Android, iOS, macOS) du test de navigation web :
@@ -15,10 +16,11 @@ import 'browsing_test_service.dart';
 class NativeBrowsingRunner implements BrowsingRunner {
   final Logger logger = Logger();
 
-  // Au-delà : la page compte comme un échec (critère ARCEP)
-  static const int _successThresholdMs = 10000;
-  // Sécurité absolue par page (réseaux très lents) avant de passer à la suivante
-  static const int _hardTimeoutMs = 20000;
+  /// Seuil ARCEP de chargement d'une page (30 s, cf. `config/seuils.json`).
+  /// Au-delà, la page compte comme un échec ; c'est aussi le délai de sécurité
+  /// par page, puisqu'une page plus lente échoue de toute façon.
+  int get _seuilChargementMs =>
+      (ArcepScoring.seuils.navigation.pageLoadS * 1000).round();
 
   @override
   Future<BrowsingTestResult> runTest({
@@ -70,7 +72,7 @@ class NativeBrowsingRunner implements BrowsingRunner {
 
         try {
           await pageCompleter.future
-              .timeout(const Duration(milliseconds: _hardTimeoutMs));
+              .timeout(Duration(milliseconds: _seuilChargementMs));
         } on TimeoutException {
           currentPageFailed = true;
         }
@@ -79,7 +81,7 @@ class NativeBrowsingRunner implements BrowsingRunner {
         final ms = stopwatch.elapsedMilliseconds.toDouble();
         if (!currentPageFailed) {
           loadTimes.add(ms);
-          if (ms < _successThresholdMs) successes++;
+          if (ArcepScoring.pageDansSeuil(ms)) successes++;
           logger.i('Browsing ${_hostOf(url)}: ${ms.toStringAsFixed(0)} ms');
         } else {
           logger.w('Browsing ${_hostOf(url)}: échec/timeout');
@@ -109,17 +111,14 @@ class NativeBrowsingRunner implements BrowsingRunner {
       avgLoadMs: double.parse(avgLoadMs.toStringAsFixed(0)),
       successRate: double.parse(successRate.toStringAsFixed(2)),
       pagesTested: total,
-      score: double.parse(_computeScore(successRate, avgLoadMs).toStringAsFixed(1)),
+      score: double.parse(ArcepScoring.scoreNavigation(
+        pagesTestees: total,
+        pagesDansSeuil: successes,
+        pageLoadMoyenMs: avgLoadMs,
+      ).toStringAsFixed(1)),
     );
     logger.i(result.toString());
     return result;
-  }
-
-  double _computeScore(double successRate, double avgLoadMs) {
-    double score = 100 * successRate;
-    // Pénalité de lenteur : -1 point par 100 ms au-delà de 2 s
-    if (avgLoadMs > 2000) score -= (avgLoadMs - 2000) / 100;
-    return score.clamp(0, 100);
   }
 
   String _hostOf(String url) => Uri.tryParse(url)?.host ?? url;

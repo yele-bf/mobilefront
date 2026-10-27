@@ -7,6 +7,7 @@ import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
 import '../constants/config.dart';
+import 'arcep_scoring.dart';
 import 'streaming_test_service.dart';
 
 /// Parties communes aux deux moteurs du test de streaming (YouTube IFrame et
@@ -17,9 +18,11 @@ import 'streaming_test_service.dart';
 /// Agrège les mesures par qualité en indicateurs globaux (stockés dans
 /// l'historique et envoyés au serveur).
 ///
-/// Indicateur global affiché à la fin du test (règle nPerf) : la MOYENNE des
-/// taux de performance des qualités réellement servies — chaque palier servi
-/// pèse autant. 0 si aucune qualité n'a pu être lue.
+/// Indicateur global affiché à la fin du test : la MOYENNE des taux de
+/// performance des qualités réellement servies — chaque palier servi pèse
+/// autant — réduite ensuite par les seuils ARCEP/Yélé (démarrage ≤ 5 s,
+/// rebuffering ≤ 10 %, aucune interruption, résolution ≥ 480p). 0 si aucune
+/// qualité n'a pu être lue.
 StreamingTestResult aggregateStreamingResults(
     List<StreamingQualityResult> rows,
     {String? error,
@@ -42,13 +45,23 @@ StreamingTestResult aggregateStreamingResults(
   final measured = watched + buffering;
   final ratio = measured > 0 ? (buffering / measured).clamp(0.0, 1.0) : 0.0;
 
-  // Performance globale : moyenne des taux de performance des paliers servis
-  // (et non 0 pour les paliers manquants — un réseau qui ne tient pas le 4K
-  // ne doit pas écraser la performance mesurée sur les paliers servis).
-  final score = reached.isEmpty
+  // Base du score : moyenne des taux de performance des paliers réellement
+  // servis (et non 0 pour les paliers manquants — un réseau qui ne tient pas
+  // le 4K ne doit pas écraser la performance mesurée sur les paliers servis).
+  final fluidite = reached.isEmpty
       ? 0.0
       : reached.map((r) => r.performanceRate).reduce((a, b) => a + b) /
           reached.length;
+
+  // IMP-06 : cette base est réduite par les seuils ARCEP/Yélé — démarrage
+  // ≤ 5 s, rebuffering ≤ 10 %, aucune interruption, résolution ≥ 480p.
+  final score = ArcepScoring.scoreStreaming(
+    fluidite: fluidite,
+    startupMs: startupMs.toDouble(),
+    rebufferRatio: ratio,
+    interruptions: rebuffers,
+    hauteurServie: bestHeight,
+  );
 
   return StreamingTestResult(
     qualities: rows,

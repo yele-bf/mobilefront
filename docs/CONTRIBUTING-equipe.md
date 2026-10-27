@@ -177,10 +177,21 @@ Le hash de la colonne « Commit » est complété **après** le merge par le
 reviewer (`_après merge_` en attendant), et le statut passe à `Validé`
 seulement si les 4 conditions du §6 sont réunies.
 
-**Contrôle CI** : `guard` exige, pour chaque Sous-ID cité par un commit, une
-ligne **datée** du tableau d'historique (`| AAAA-MM-JJ | ISS-xx | …`). Le
-tableau de suivi des 27 items en fin de fichier ne compte pas : il contenait
-déjà une ligne par Sous-ID et validait n'importe quel commit sans preuve.
+**Contrôle CI** : `guard` exige, pour chaque Sous-ID cité **dans le sujet** du
+commit, une ligne **datée** du tableau d'historique (`| AAAA-MM-JJ | ISS-xx | …`).
+Le sujet déclare le périmètre du commit (§2) ; un Sous-ID seulement mentionné
+dans le corps est contrôlé contre le classeur V14, mais n'ouvre aucune exigence
+de registre — sans quoi une PR de documentation qui nomme l'item qu'elle décrit
+serait refusée à tort.
+
+Deux pièges à connaître :
+
+- le tableau de suivi des 27 items, en fin de registre, **ne compte pas** : il
+  contient déjà une ligne par Sous-ID et validerait n'importe quel commit ;
+- une **ligne d'exemple datée** (`2026-10-14 | IMP-11 | … _(exemple — à
+  remplacer)_`) vaut preuve aux yeux du garde-fou : aucune ne doit subsister
+  dans aucun dépôt, et le gabarit de registre part donc sans ligne d'exemple.
+
 
 ## 6. Statuts & règle de sortie de vague
 

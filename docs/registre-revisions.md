@@ -48,7 +48,7 @@ mise en place du garde-fou, dont les commits ne respectent pas encore le §2.
 | ISS-09 | `1a889e3` | APK (GPS off) | Validé |
 | ISS-12 | `709dd26` | Chrome + APK | Validé |
 
-## Suivi des 27 items V14 (une ligne par Sous-ID — référence du garde-fou §5)
+## Suivi des 27 items V14 (tableau d'avancement — **ne vaut pas preuve de contribution**, §5)
 
 | Sous-ID | Intitulé (V14) | Owner (classeur) | Statut classeur |
 |---|---|---|---|

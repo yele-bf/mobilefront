@@ -42,6 +42,7 @@ mise en place du garde-fou, dont les commits ne respectent pas encore le §2.
 | Sous-ID | Commits poussés | Validation | Statut |
 |---|---|---|---|
 | IMP-09 | `16d2a89` (mobilefront), `836b4cf` (mobiletest) — libellé « IMP-11 » au moment du commit | Local (écran résultat + base) | Validé |
+| IMP-01 | `—` | Lecture de code (APK réel non vérifié sur appareil/forfait) | Validé |
 | IMP-04 | `f9c2f0e` | APK réel | Validé |
 | IMP-08 | `1f6f62a` | APK réel | Validé |
 | IMP-13 | `fb7cccd`, `7f81eac` | APK réel | Validé |

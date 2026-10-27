@@ -45,6 +45,7 @@ mise en place du garde-fou, dont les commits ne respectent pas encore le §2.
 | IMP-01 | `—` | Lecture de code (APK réel non vérifié sur appareil/forfait) | Validé |
 | IMP-04 | `f9c2f0e` | APK réel | Validé |
 | IMP-08 | `1f6f62a` | APK réel | Validé |
+| IMP-11 | `cd8cd20`, `1717b44` | APK réel (formalisation) | Validé |
 | IMP-13 | `fb7cccd`, `7f81eac` | APK réel | Validé |
 | ISS-09 | `1a889e3` | APK (GPS off) | Validé |
 | ISS-12 | `709dd26` | Chrome + APK | Validé |

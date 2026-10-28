@@ -25,7 +25,13 @@ class YeleColors {
 
   // Statuts
   static const good = Color(0xFF2BB673);
-  static const warn = Color(0xFFF5A623);
+  // nPerf / UX compartiments (badges)
+  static const nperfReglage = Color(0xFF1CA6FF); // bleu
+  static const nperfInfo = Color(0xFFF5A623); // orange
+  static const nperfContact = Color(0xFF2BB673); // vert
+
+  // Alertes (utilisées par l'écran de score)
+  static const warn = Color(0xFFF59E0B); // amber / attention
   static const danger = Color(0xFFE0464B);
 
   // Écran de test (fond vert dégradé)

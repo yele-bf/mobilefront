@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:logger/logger.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -62,15 +63,27 @@ class LocationService {
       final response = await _dio.get('/getIP', queryParameters: {'isp': 'true'});
 
       if (response.statusCode == 200 && response.data != null) {
-        final data = response.data;
+        // Le backend peut renvoyer un content-type texte : Dio retourne alors
+        // une String non décodée, ce qui faisait planter l'accès par clé.
+        final dynamic data =
+            response.data is String
+                ? (jsonDecode(response.data as String) as Map<String, dynamic>)
+                : response.data;
 
         if (data['rawIspInfo'] != null) {
           final ispInfo = data['rawIspInfo'];
-          final loc = (ispInfo['loc'] as String).split(',');
+
+          // Le champ 'loc' peut être vide quand le serveur ne peut pas
+          // géolocaliser l'IP (ex. backend local en développement) : ne
+          // pas planter, retomber sur des coordonnées nulles.
+          final locRaw = (ispInfo['loc'] ?? '').toString();
+          final locParts = locRaw.split(',');
+          final lat = locParts.isNotEmpty ? double.tryParse(locParts[0]) : null;
+          final lon = locParts.length > 1 ? double.tryParse(locParts[1]) : null;
 
           final locationData = LocationData(
-            latitude: double.tryParse(loc[0]) ?? 0.0,
-            longitude: double.tryParse(loc[1]) ?? 0.0,
+            latitude: lat ?? 0.0,
+            longitude: lon ?? 0.0,
             city: ispInfo['city'] ?? 'Unknown',
             region: ispInfo['region'] ?? '',
             country: ispInfo['country'] ?? 'Unknown',

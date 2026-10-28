@@ -3,6 +3,7 @@
 ## [Non publiée]
 
 ### Ajouté
+- IMP-12 : score global unique (échelle ouverte `yele-open-1.0.0`). Moteur pur `lib/services/yele_scoring_engine.dart` (cinq composantes, 75 000 points de référence, non plafonné) stocké dans `SpeedTestResult` (Hive 44-51, aucun index existant renuméroté) et affiché dans l'historique sous forme d'un indice 0-100 identique partout. Un score global n'existe que si les cinq composantes sont complètes ; un test incomplet affiche le sous-total des composantes mesurées suivi de « * », jamais des points fictifs. Validation : `flutter analyze` sans avertissement, `flutter test` 141/141. Fiche : `docs/fiches/IMP-12-score-global-ouvert.md`.
 
 - IMP-02 : enrichissement du menu Réglages (FAQ native, Contactez-nous, À propos). ([#48](https://github.com/yele-bf/mobilefront/pull/48))
 - IMP-05 : définition de référence de l'échelle de score YELE (`docs/echelle-score.md`) — unité en points sur une échelle ouverte, cinq composantes avec leurs formules, règle « une absence n'est jamais un zéro », condition d'existence du score global, format d'affichage unique et version du référentiel `yele-open-1.0.0`. ([#11](https://github.com/yele-bf/mobilefront/issues/11))

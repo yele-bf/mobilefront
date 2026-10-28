@@ -76,6 +76,57 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return (dl + ul + lat).round().clamp(0, 100);
   }
 
+  /// Score affiché dans la colonne : indice 0-100 du scoring ouvert (IMP-12).
+  ///
+  /// Résultat complet → score global ; incomplet → sous-total des composantes
+  /// réellement mesurées, suivi de « * » (jamais de points fictifs) ; résultat
+  /// antérieur au scoring → ancienne note dérivée des débits et de la latence.
+  String _scoreText(SpeedTestResult r) {
+    if (r.scoringVersion == null) return '${_score(r)}';
+    final global = r.scoreGlobalOn100;
+    if (global != null) return global.toStringAsFixed(0);
+    final partial = r.scoreMeasuredOn100;
+    return partial == null ? '—' : '${partial.toStringAsFixed(0)}*';
+  }
+
+  /// Détail du scoring ouvert : score global et composantes mesurées.
+  List<Widget> _openScoreLines(
+      SpeedTestResult r, Widget Function(String k, String v) line) {
+    String pts(double v) => v.toStringAsFixed(0);
+    final out = <Widget>[];
+    final global = r.scoreGlobal;
+    if (global != null) {
+      out.add(line(
+          'Score ouvert ${r.scoringVersion}',
+          '${pts(global)} pts · '
+              '${r.scoreGlobalOn100!.toStringAsFixed(0)}/100'));
+    } else {
+      final sub = r.scoreMeasuredSubtotal;
+      out.add(line(
+          'Score ouvert ${r.scoringVersion}',
+          sub == null
+              ? 'non mesuré'
+              : 'incomplet · ${pts(sub)} pts mesurés '
+                  '(composantes absentes exclues)'));
+    }
+    if (r.scoreDownload != null) {
+      out.add(line('Débit ↓', '${pts(r.scoreDownload!)} pts'));
+    }
+    if (r.scoreUpload != null) {
+      out.add(line('Débit ↑', '${pts(r.scoreUpload!)} pts'));
+    }
+    if (r.scorePingJitter != null) {
+      out.add(line('Latence', '${pts(r.scorePingJitter!)} pts'));
+    }
+    if (r.scoreBrowsing != null) {
+      out.add(line('Navigation (score ouvert)', '${pts(r.scoreBrowsing!)} pts'));
+    }
+    if (r.scoreStreaming != null) {
+      out.add(line('Streaming (score ouvert)', '${pts(r.scoreStreaming!)} pts'));
+    }
+    return out;
+  }
+
   List<SpeedTestResult> get _filtered =>
       _all.where((r) => _tab == 0 ? _isComplet(r) : !_isComplet(r)).toList();
 
@@ -331,7 +382,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   flex: 12,
                   child: Column(
                     children: [
-                      Text('${_score(r)}',
+                      Text(_scoreText(r),
                           style: const TextStyle(
                               color: Color(0xFFCFD6E0),
                               fontSize: 16,
@@ -440,6 +491,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
           if (r.hasBrowsingTest)
             line('Navigation',
                 '${(r.browsingAvgLoadMs! / 1000).toStringAsFixed(1)} s · ${r.browsingScore!.toStringAsFixed(0)}/100'),
+          // IMP-12 : score global ouvert et composantes mesurées.
+          if (r.scoringVersion != null) ..._openScoreLines(r, line),
           if ((r.latitude ?? 0) != 0) ..._coordBlock(r, line),
           if (r.qoeRating != null && r.qoeRating! > 0)
             line('QoE', '${r.qoeRating}/5'),

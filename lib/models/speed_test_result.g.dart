@@ -52,20 +52,27 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
       streamingQualitiesJson: fields[33] as String?,
       dataUsedKiB: fields[34] as int?,
       simSlot: fields[35] as int?,
-      // 35 est réservé à simSlot (ISS-02) : champs suivants à partir de 36.
       signalDbm: fields[36] as int?,
       signalRsrp: fields[37] as int?,
       signalRsrq: fields[38] as int?,
       signalNrRsrp: fields[39] as int?,
       signalNrRsrq: fields[40] as int?,
       wifiRssi: fields[41] as int?,
+      scoringVersion: fields[44] as String?,
+      scoreDownload: fields[45] as double?,
+      scoreUpload: fields[46] as double?,
+      scorePingJitter: fields[47] as double?,
+      scoreBrowsing: fields[48] as double?,
+      scoreStreaming: fields[49] as double?,
+      scoreGlobal: fields[50] as double?,
+      scoringStatusesJson: fields[51] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, SpeedTestResult obj) {
     writer
-      ..writeByte(41)
+      ..writeByte(49)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -134,7 +141,6 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
       ..write(obj.streamingQualitiesJson)
       ..writeByte(34)
       ..write(obj.dataUsedKiB)
-      // 35 réservé à simSlot (ISS-02).
       ..writeByte(35)
       ..write(obj.simSlot)
       ..writeByte(36)
@@ -148,7 +154,23 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
       ..writeByte(40)
       ..write(obj.signalNrRsrq)
       ..writeByte(41)
-      ..write(obj.wifiRssi);
+      ..write(obj.wifiRssi)
+      ..writeByte(44)
+      ..write(obj.scoringVersion)
+      ..writeByte(45)
+      ..write(obj.scoreDownload)
+      ..writeByte(46)
+      ..write(obj.scoreUpload)
+      ..writeByte(47)
+      ..write(obj.scorePingJitter)
+      ..writeByte(48)
+      ..write(obj.scoreBrowsing)
+      ..writeByte(49)
+      ..write(obj.scoreStreaming)
+      ..writeByte(50)
+      ..write(obj.scoreGlobal)
+      ..writeByte(51)
+      ..write(obj.scoringStatusesJson);
   }
 
   @override

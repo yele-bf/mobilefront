@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import '../models/speed_test_result.dart';
 import '../services/local_storage_service.dart';
 import '../services/reverse_geocoding_service.dart';
+import '../services/yele_scoring_engine.dart';
 import '../theme/yele_theme.dart';
 import '../widgets/export_sheet.dart';
 import '../widgets/yele_scaffold.dart';
@@ -76,16 +77,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return (dl + ul + lat).round().clamp(0, 100);
   }
 
-  /// Score affiché dans la colonne : indice 0-100 du scoring ouvert (IMP-12).
+  /// Score affiché dans la colonne : **score ouvert en points** (IMP-12).
+  ///
+  /// La méthode retenue est celle de nPerf : un score composite ouvert, exprimé
+  /// en points et non plafonné. L'indice /100 n'est qu'une lecture secondaire,
+  /// affichée dans le dépli — il n'est jamais la valeur principale.
   ///
   /// Résultat complet → score global ; incomplet → sous-total des composantes
   /// réellement mesurées, suivi de « * » (jamais de points fictifs) ; résultat
   /// antérieur au scoring → ancienne note dérivée des débits et de la latence.
   String _scoreText(SpeedTestResult r) {
     if (r.scoringVersion == null) return '${_score(r)}';
-    final global = r.scoreGlobalOn100;
+    final global = r.scoreGlobal;
     if (global != null) return global.toStringAsFixed(0);
-    final partial = r.scoreMeasuredOn100;
+    final partial = r.scoreMeasuredSubtotal;
     return partial == null ? '—' : '${partial.toStringAsFixed(0)}*';
   }
 
@@ -99,7 +104,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
       out.add(line(
           'Score ouvert ${r.scoringVersion}',
           '${pts(global)} pts · '
-              '${r.scoreGlobalOn100!.toStringAsFixed(0)}/100'));
+              '${YeleScoringEngine.classify(global).label}'));
+      out.add(line(
+          'Indice (lecture)',
+          '${r.scoreGlobalOn100!.toStringAsFixed(0)}/100'));
     } else {
       final sub = r.scoreMeasuredSubtotal;
       out.add(line(

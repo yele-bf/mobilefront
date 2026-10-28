@@ -44,11 +44,9 @@ cinq sont complètes. Sinon il vaut `null` avec un statut explicite
 (`partial`, `failed`, `invalid`, `unavailable`) : un total partiel n'est jamais
 présenté comme un score.
 
-**Indice 0-100.** Le score ouvert s'exprime en points (somme de référence
-75 000, non plafonnée). L'indice affiché est `points / 75 000 × 100`, écrêté à
-100 — c'est la seule valeur 0-100 de l'application, et elle est calculée par un
-getter unique (`SpeedTestResult.scoreGlobalOn100`), donc identique partout où
-elle est affichée.
+**Méthode de référence : nPerf.** nPerf produit un score composite **ouvert**, exprimé en « nPoints » : cinq composantes (débit descendant, débit montant, latence, navigation, streaming), échelle **logarithmique** sur les débits, et **aucun plafond publié** — un résultat officiel affiche 185 437 nPoints. Les coefficients exacts ne sont pas publiés par nPerf : YELE applique donc la même **méthode**, avec des allocations documentées dans le tableau ci-dessus. **La valeur affichée est le total en points**, comme chez nPerf.
+
+**Indice /100, lecture secondaire.** L'indice `points / 75 000 × 100`, écrêté à 100, n'est qu'une lecture d'accompagnement, calculée par le getter unique `SpeedTestResult.scoreGlobalOn100`. Il n'est jamais présenté comme le score.
 
 **Convention « zéro = non mesuré ».** Une composante absente vaut `null`, jamais
 0 ; 0 est réservé à une mesure valide qui rapporte réellement zéro point.
@@ -92,13 +90,13 @@ historique). Ce commit couvre l'application et l'historique :
 
 ## Critère d'acceptation
 
-Pour un même résultat, l'indice affiché est identique dans l'écran de résultat
-et dans l'historique, et il est dérivé du seul score global stocké.
+Pour un même résultat, **le score en points** affiché est identique dans l'écran
+de résultat et dans l'historique, et il est dérivé du seul score global stocké.
 
 | Situation | Attendu |
 |---|---|
-| Cinq composantes complètes | score global = somme, indice 0-100 sans marque |
-| Test de débit seul (sans navigation ni streaming) | score global `null`, sous-total mesuré suivi de `*` |
+| Cinq composantes complètes | score global en points, sans marque, avec sa classification |
+| Test de débit seul (sans navigation ni streaming) | score global `null`, sous-total mesuré en points suivi de `*` |
 | Aucune composante mesurée | `—` |
 | Résultat antérieur au scoring | ancienne note d'écran, aucune version attribuée |
 
@@ -112,6 +110,16 @@ et dans l'historique, et il est dérivé du seul score global stocké.
   seules les deux vues de `mobilefront` existent à ce stade, le dashboard
   `New_web` n'étant pas branché.
 - **Non réalisé** : aucun test sur APK ni dans Chrome pour ce commit.
+
+## Arbitrage avec le classeur
+
+Le classeur V14 libelle l'item « score global unique **0-100** ». La méthode
+nPerf retenue ici est un score **ouvert en points**, non plafonné : afficher un
+0-100 comme valeur principale reviendrait à s'écarter de la méthode de
+référence et à perdre l'information de progression au-delà de 100. Le 0-100
+subsiste donc comme lecture secondaire, et **la ligne du classeur mérite d'être
+reformulée** en « score global unique, exprimé en points, identique sur l'app,
+le dashboard et l'historique ».
 
 ## Limites connues
 

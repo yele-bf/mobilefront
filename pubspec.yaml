@@ -47,6 +47,9 @@ dependencies:
   logger: ^2.0.0
   uuid: ^4.0.0
 
+  # IMP-02 : ouvrir FAQ web / envoyer un e-mail de support
+  url_launcher: ^6.3.0
+
   # Interop DOM pour les tests streaming/navigation sur le web (Chrome)
   web: ^1.1.1
 

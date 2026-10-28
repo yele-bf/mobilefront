@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'models/test_selection.dart';
 import 'screens/coverage_screen.dart';
+import 'screens/faq_screen.dart';
 import 'screens/full_test_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/settings_screen.dart';
@@ -157,6 +158,7 @@ class _YeleAppState extends State<YeleApp> with WidgetsBindingObserver {
         '/usage': (_) => const UsageScreen(),
         '/coverage': (_) => const CoverageScreen(),
         '/settings': (_) => const SettingsScreen(),
+        '/faq': (_) => const FaqScreen(),
       },
       builder: (context, child) {
         // ISS-12 : langue minimale (Réglages + tiroir). L'i18n complète

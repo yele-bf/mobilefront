@@ -4,6 +4,8 @@
 
 ### Ajouté
 
+- IMP-02 : enrichissement du menu Réglages (FAQ native, Contactez-nous, À propos). ([#48](https://github.com/yele-bf/mobilefront/pull/48))
+
 - IMP-01 : formalisation de la consommation data par test (fiche + ligne de registre). Mesure via `TrafficStats` Android (rx+tx) dans `TrafficStatsService`/`DataUsageCapture`, branchée sur débit et streaming (classique/HLS), affichée dans score/historique, exportée CSV/JSON, suivi mensuel dans Réglages. iOS non mesurable (« — »). Validation par lecture de code (test APK terrain non réalisé dans cet environnement).
 - IMP-11 : formalisation de l'export des résultats sur l'APK depuis l'écran de fin de mesure et l'onglet historique (CSV/PDF/PNG/Excel). Code existant (`export_service.dart`, `export_sheet.dart`, branchement `score_screen.dart` + `history_screen.dart`) ajouté majoritairement sous IMP-13, harmonisé vers IMP-11. JSON retiré du périmètre.
 - Preuves : six captures de validation terrain (ISS-01, ISS-03, ISS-07, ISS-10) versionnées dans `docs/preuves/`, et règle de preuve au CONTRIBUTING §6.1 (une image, pas un récit ; `A/B` = l'un ou l'autre suffit, `A + B` = les deux ; 5G non déployée au Burkina Faso, ISS-01 validée sur capture 4G).

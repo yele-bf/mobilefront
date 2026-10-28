@@ -6,6 +6,7 @@ import '../services/dashboard_api_service.dart';
 import '../services/local_storage_service.dart';
 import '../services/speed_test_api_service.dart';
 import '../services/streaming_test_service.dart';
+import '../services/yele_scoring_engine.dart';
 import '../theme/yele_theme.dart';
 import '../widgets/export_sheet.dart';
 import '../widgets/qoe_dialog.dart';
@@ -111,6 +112,9 @@ class _ScoreScreenState extends State<ScoreScreen> {
                   _serverBar(),
                   // N'affiche que les sections du/des test(s) réellement faits.
                   if (_speedDone) ...[_metrics(), _qualityBand()],
+                  // IMP-12 — même score qu'en historique : la valeur en points
+                  // est la seule valeur de référence (docs/echelle-score.md).
+                  if (r.scoringVersion != null) _scoreCard(),
                   // IMP-09 — Baromètre de comparaison « mon résultat vs les autres ».
                   if (_speedDone) _barometerCard(),
                   // Affiché aussi en cas d'échec, pour en montrer la raison.
@@ -487,6 +491,114 @@ class _ScoreScreenState extends State<ScoreScreen> {
           Expanded(
             child: Text(message,
                 style: TextStyle(fontSize: 13, color: YeleColors.surface.ink)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// IMP-12 — score YELE en points, identique à la colonne « Score » de
+  /// l'historique. La définition de l'échelle fait autorité dans
+  /// `docs/echelle-score.md` (IMP-05) : unité en points, échelle ouverte,
+  /// jamais de score global sur 100.
+  ///
+  /// Résultat complet → score global ; incomplet → sous-total des composantes
+  /// réellement mesurées, sans points fictifs ; un résultat antérieur au
+  /// scoring n'affiche pas de carte (aucune version attribuée).
+  Widget _scoreCard() {
+    final version = r.scoringVersion;
+    if (version == null) return const SizedBox.shrink();
+    final global = r.scoreGlobal;
+    final sousTotal = r.scoreMeasuredSubtotal;
+    String pts(double v) => v.toStringAsFixed(0);
+    final lignes = <({String k, String v})>[
+      if (r.scoreDownload != null)
+        (k: 'Débit ↓', v: '${pts(r.scoreDownload!)} pts'),
+      if (r.scoreUpload != null)
+        (k: 'Débit ↑', v: '${pts(r.scoreUpload!)} pts'),
+      if (r.scorePingJitter != null)
+        (k: 'Latence', v: '${pts(r.scorePingJitter!)} pts'),
+      if (r.scoreBrowsing != null)
+        (k: 'Navigation', v: '${pts(r.scoreBrowsing!)} pts'),
+      if (r.scoreStreaming != null)
+        (k: 'Streaming', v: '${pts(r.scoreStreaming!)} pts'),
+      (k: 'Référentiel', v: version),
+    ];
+    final String legende;
+    if (global != null) {
+      legende = YeleScoringEngine.classify(global).label;
+    } else if (sousTotal == null) {
+      legende = 'Score global non calculé : aucune composante mesurée';
+    } else {
+      legende = 'Score global non calculé : ${pts(sousTotal)} pts mesurés, '
+          'composantes absentes exclues';
+    }
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 10)],
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: YeleColors.primary,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(12)),
+            ),
+            child: Row(
+              children: [
+                const Text('🏅', style: TextStyle(fontSize: 20)),
+                const SizedBox(width: 8),
+                const Text('Score YELE',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700)),
+                const Spacer(),
+                Text(
+                  global != null ? '${pts(global)} pts' : 'incomplet',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              children: [
+                for (final l in lignes)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 3),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(l.k,
+                            style: TextStyle(
+                                color: YeleColors.surface.muted, fontSize: 13)),
+                        Text(l.v,
+                            style: TextStyle(
+                                color: YeleColors.surface.ink,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700)),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 6),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(legende,
+                      style: TextStyle(
+                          fontSize: 12, color: YeleColors.surface.muted)),
+                ),
+              ],
+            ),
           ),
         ],
       ),

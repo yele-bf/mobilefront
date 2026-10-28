@@ -18,8 +18,8 @@ class FaqScreen extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(14, 6, 14, 28),
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(4, 10, 4, 2),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 10, 4, 2),
               child: Text(
                 'Questions fréquentes',
                 style: TextStyle(
@@ -28,8 +28,8 @@ class FaqScreen extends StatelessWidget {
                     color: YeleColors.ink),
               ),
             ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(4, 0, 4, 14),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 0, 4, 14),
               child: Text(
                 "Tout ce qu'il faut savoir sur Yélé et la mesure de la "
                 'qualité des réseaux mobiles au Burkina Faso.',
@@ -41,7 +41,7 @@ class FaqScreen extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
                 child: Text(
                   section.title,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
                       color: YeleColors.primary),
@@ -75,7 +75,7 @@ class FaqScreen extends StatelessWidget {
                   fontWeight: FontWeight.w700,
                   color: YeleColors.primary)),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             "Écrivez-nous à support@yele.bf — nous répondons au mieux sous "
             "quelques jours ouvrés. Vous pouvez aussi signaler un problème "
             "directement depuis l'application : Réglages → Contactez-nous.",
@@ -328,12 +328,9 @@ const _sections = <_Section>[
 class _FaqCard extends StatefulWidget {
   final String question;
   final String answer;
-  final bool initiallyExpanded;
-
   const _FaqCard({
     required this.question,
     required this.answer,
-    this.initiallyExpanded = false,
   });
 
   @override
@@ -341,7 +338,7 @@ class _FaqCard extends StatefulWidget {
 }
 
 class _FaqCardState extends State<_FaqCard> {
-  late bool _open = widget.initiallyExpanded;
+  bool _open = false;
 
   @override
   Widget build(BuildContext context) {
@@ -367,7 +364,7 @@ class _FaqCardState extends State<_FaqCard> {
           onExpansionChanged: (v) => setState(() => _open = v),
           title: Text(
             widget.question,
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 15, fontWeight: FontWeight.w600, color: YeleColors.ink),
           ),
           trailing: Icon(_open ? Icons.remove : Icons.add,
@@ -391,9 +388,9 @@ class _RichAnswer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const base =
+    final base =
         TextStyle(fontSize: 14, height: 1.55, color: YeleColors.muted);
-    const bold = TextStyle(
+    final bold = TextStyle(
         fontSize: 14,
         height: 1.55,
         color: YeleColors.ink,

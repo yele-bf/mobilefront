@@ -32,7 +32,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'Active/désactive la géolocalisation des tests', _useGps,
                 (v) => setState(() => _useGps = v)),
             _supportSection(),
-            const SizedBox(height: 24),
+            SizedBox(height: 24),
           ],
         ),
       ),
@@ -114,7 +114,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('À propos de Yélé'),
-        content: const Text(
+        content: Text(
           'Version 1.0.0\n\n'
           'Mesure de la qualité des réseaux mobiles au Burkina Faso',
           style: TextStyle(fontSize: 14, height: 1.5, color: YeleColors.ink),
@@ -145,22 +145,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Row(
           children: [
             Icon(icon, size: 22, color: YeleColors.primary),
-            const SizedBox(width: 14),
+            SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(title,
                       style:
-                          const TextStyle(fontSize: 16, color: YeleColors.ink)),
-                  const SizedBox(height: 2),
+                          TextStyle(fontSize: 16, color: YeleColors.ink)),
+                  SizedBox(height: 2),
                   Text(sub,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 13, color: YeleColors.muted)),
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right, size: 20, color: YeleColors.muted),
+            Icon(Icons.chevron_right, size: 20, color: YeleColors.muted),
           ],
         ),
       ),
@@ -177,7 +177,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _section(String t) => Padding(
         padding: const EdgeInsets.fromLTRB(18, 22, 18, 6),
         child: Text(t,
-            style: const TextStyle(
+            style: TextStyle(
                 color: YeleColors.primary,
                 fontSize: 15,
                 fontWeight: FontWeight.w700)),
@@ -192,10 +192,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(title,
-                style: const TextStyle(fontSize: 16, color: YeleColors.ink)),
-            const SizedBox(height: 2),
+                style: TextStyle(fontSize: 16, color: YeleColors.ink)),
+            SizedBox(height: 2),
             Text(sub,
-                style: const TextStyle(fontSize: 13, color: YeleColors.muted)),
+                style: TextStyle(fontSize: 13, color: YeleColors.muted)),
           ],
         ),
       );
@@ -214,11 +214,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title,
-                    style: const TextStyle(fontSize: 16, color: YeleColors.ink)),
-                const SizedBox(height: 2),
+                    style: TextStyle(fontSize: 16, color: YeleColors.ink)),
+                SizedBox(height: 2),
                 Text(sub,
                     style:
-                        const TextStyle(fontSize: 13, color: YeleColors.muted)),
+                        TextStyle(fontSize: 13, color: YeleColors.muted)),
               ],
             ),
           ),

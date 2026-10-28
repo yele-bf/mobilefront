@@ -5,6 +5,7 @@
 ### Ajouté
 
 - IMP-02 : enrichissement du menu Réglages (FAQ native, Contactez-nous, À propos). ([#48](https://github.com/yele-bf/mobilefront/pull/48))
+- IMP-05 : définition de référence de l'échelle de score YELE (`docs/echelle-score.md`) — unité en points sur une échelle ouverte, cinq composantes avec leurs formules, règle « une absence n'est jamais un zéro », condition d'existence du score global, format d'affichage unique et version du référentiel `yele-open-1.0.0`. ([#11](https://github.com/yele-bf/mobilefront/issues/11))
 
 - IMP-01 : formalisation de la consommation data par test (fiche + ligne de registre). Mesure via `TrafficStats` Android (rx+tx) dans `TrafficStatsService`/`DataUsageCapture`, branchée sur débit et streaming (classique/HLS), affichée dans score/historique, exportée CSV/JSON, suivi mensuel dans Réglages. iOS non mesurable (« — »). Validation par lecture de code (test APK terrain non réalisé dans cet environnement).
 - IMP-11 : formalisation de l'export des résultats sur l'APK depuis l'écran de fin de mesure et l'onglet historique (CSV/PDF/PNG/Excel). Code existant (`export_service.dart`, `export_sheet.dart`, branchement `score_screen.dart` + `history_screen.dart`) ajouté majoritairement sous IMP-13, harmonisé vers IMP-11. JSON retiré du périmètre.

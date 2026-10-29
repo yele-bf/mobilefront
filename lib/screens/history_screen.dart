@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import '../models/speed_test_result.dart';
 import '../services/local_storage_service.dart';
 import '../services/reverse_geocoding_service.dart';
+import '../services/yele_scoring_engine.dart';
 import '../theme/yele_theme.dart';
 import '../widgets/export_sheet.dart';
 import '../widgets/yele_scaffold.dart';
@@ -74,6 +75,64 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ? 0.0
             : (300 - r.ping) / 280 * 20;
     return (dl + ul + lat).round().clamp(0, 100);
+  }
+
+  /// Score affiché dans la colonne : **score ouvert en points** (IMP-12).
+  ///
+  /// La méthode retenue est celle de nPerf : un score composite ouvert, exprimé
+  /// en points et non plafonné. L'indice /100 n'est qu'une lecture secondaire,
+  /// affichée dans le dépli — il n'est jamais la valeur principale.
+  ///
+  /// Résultat complet → score global ; incomplet → sous-total des composantes
+  /// réellement mesurées, suivi de « * » (jamais de points fictifs) ; résultat
+  /// antérieur au scoring → ancienne note dérivée des débits et de la latence.
+  String _scoreText(SpeedTestResult r) {
+    if (r.scoringVersion == null) return '${_score(r)}';
+    final global = r.scoreGlobal;
+    if (global != null) return global.toStringAsFixed(0);
+    final partial = r.scoreMeasuredSubtotal;
+    return partial == null ? '—' : '${partial.toStringAsFixed(0)}*';
+  }
+
+  /// Détail du scoring ouvert : score global et composantes mesurées.
+  List<Widget> _openScoreLines(
+      SpeedTestResult r, Widget Function(String k, String v) line) {
+    String pts(double v) => v.toStringAsFixed(0);
+    final out = <Widget>[];
+    final global = r.scoreGlobal;
+    if (global != null) {
+      out.add(line(
+          'Score ouvert ${r.scoringVersion}',
+          '${pts(global)} pts · '
+              '${YeleScoringEngine.classify(global).label}'));
+      out.add(line(
+          'Indice (lecture)',
+          '${r.scoreGlobalOn100!.toStringAsFixed(0)}/100'));
+    } else {
+      final sub = r.scoreMeasuredSubtotal;
+      out.add(line(
+          'Score ouvert ${r.scoringVersion}',
+          sub == null
+              ? 'non mesuré'
+              : 'incomplet · ${pts(sub)} pts mesurés '
+                  '(composantes absentes exclues)'));
+    }
+    if (r.scoreDownload != null) {
+      out.add(line('Débit ↓', '${pts(r.scoreDownload!)} pts'));
+    }
+    if (r.scoreUpload != null) {
+      out.add(line('Débit ↑', '${pts(r.scoreUpload!)} pts'));
+    }
+    if (r.scorePingJitter != null) {
+      out.add(line('Latence', '${pts(r.scorePingJitter!)} pts'));
+    }
+    if (r.scoreBrowsing != null) {
+      out.add(line('Navigation (score ouvert)', '${pts(r.scoreBrowsing!)} pts'));
+    }
+    if (r.scoreStreaming != null) {
+      out.add(line('Streaming (score ouvert)', '${pts(r.scoreStreaming!)} pts'));
+    }
+    return out;
   }
 
   List<SpeedTestResult> get _filtered =>
@@ -331,7 +390,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   flex: 12,
                   child: Column(
                     children: [
-                      Text('${_score(r)}',
+                      Text(_scoreText(r),
                           style: const TextStyle(
                               color: Color(0xFFCFD6E0),
                               fontSize: 16,
@@ -440,6 +499,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
           if (r.hasBrowsingTest)
             line('Navigation',
                 '${(r.browsingAvgLoadMs! / 1000).toStringAsFixed(1)} s · ${r.browsingScore!.toStringAsFixed(0)}/100'),
+          // IMP-12 : score global ouvert et composantes mesurées.
+          if (r.scoringVersion != null) ..._openScoreLines(r, line),
           if ((r.latitude ?? 0) != 0) ..._coordBlock(r, line),
           if (r.qoeRating != null && r.qoeRating! > 0)
             line('QoE', '${r.qoeRating}/5'),

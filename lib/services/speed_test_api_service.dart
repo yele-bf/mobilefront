@@ -14,6 +14,7 @@ import 'browsing_test_service.dart';
 import 'device_identity_service.dart';
 import 'streaming_backend_setting.dart';
 import 'streaming_test_service.dart';
+import 'yele_scoring_engine.dart';
 // Le moteur HLS est natif (WebView + serveur local) : sur le web, un stub
 // évite d'importer dart:io et webview_flutter dans le build.
 import 'streaming_test_service_hls_stub.dart'
@@ -491,6 +492,11 @@ class SpeedTestApiService {
         dataUsedKiB: await dataUsage.stopKiB(),
       );
 
+      // IMP-12 : score global ouvert (yele-open-1.0.0), calculé à partir des
+      // mesures réellement disponibles — jamais complété par des valeurs
+      // fictives, et jamais attribué à un résultat qui n'a pas été mesuré.
+      _applyOpenScore(result);
+
       // Par défaut : QoE puis envoi immédiat. Si autoUpload=false, l'UI gère
       // l'affichage du bilan, le QoE et l'envoi après coup.
       if (autoUpload) {
@@ -761,6 +767,56 @@ class SpeedTestApiService {
   }
 
   // Envoyer les résultats sauvegardés au serveur via telemetry.
+  /// Renseigne les champs du scoring ouvert (IMP-12) sur [result].
+  ///
+  /// Le streaming est reconstruit depuis les paliers réellement servis : la
+  /// durée totale est la somme des paliers joués, le buffering la somme des
+  /// arrêts mesurés — aucun chiffre n'est inventé. La navigation s'appuie sur
+  /// le temps moyen enregistré, seul temps conservé aujourd'hui (les temps par
+  /// page ne sont pas persistés) : limite documentée dans la fiche IMP-12.
+  void _applyOpenScore(SpeedTestResult result) {
+    final reached = result.streamingQualities.where((q) => q.reached).toList();
+    final totalSec = reached.isEmpty
+        ? null
+        : reached.length * STREAMING_LEVEL_DURATION_SEC;
+    final bufferingSec = reached.isEmpty
+        ? null
+        : reached.fold<double>(0, (sum, q) => sum + q.bufferingSec);
+
+    final scored = YeleScoringEngine().scoreAll(
+      downloadMbps: result.downloadSpeed,
+      uploadMbps: result.uploadSpeed,
+      pingMs: result.ping,
+      jitterMs: result.jitter,
+      // Temps moyen déjà stocké, exprimé en secondes. La QoE du moteur étant
+      // linéaire en temps, la moyenne des QoE égale la QoE du temps moyen.
+      browsingLoadTimesSec: (result.browsingAvgLoadMs ?? 0) > 0
+          ? [result.browsingAvgLoadMs! / 1000]
+          : const [],
+      streamingTotalSec: totalSec?.toDouble(),
+      streamingBufferingSec: bufferingSec,
+      streamingStallCount: reached.isEmpty
+          ? null
+          : reached.fold<int>(0, (sum, q) => sum + q.rebufferCount),
+    );
+
+    result.scoringVersion = scored.version;
+    result.scoreDownload = scored.download.score;
+    result.scoreUpload = scored.upload.score;
+    result.scorePingJitter = scored.pingJitter.score;
+    result.scoreBrowsing = scored.browsing.score;
+    result.scoreStreaming = scored.streaming.score;
+    result.scoreGlobal = scored.globalScore;
+    result.scoringStatusesJson = jsonEncode({
+      'download': scored.download.status.name,
+      'upload': scored.upload.status.name,
+      'pingJitter': scored.pingJitter.status.name,
+      'browsing': scored.browsing.status.name,
+      'streaming': scored.streaming.status.name,
+      'global': scored.globalStatus.name,
+    });
+  }
+
   Future<bool> uploadTestResult(SpeedTestResult result) async {
     try {
       // IMP-13 : UUID d'appareil anonyme et stable, généré localement —

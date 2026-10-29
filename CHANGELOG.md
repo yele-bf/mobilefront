@@ -3,6 +3,7 @@
 ## [Non publiée]
 
 ### Ajouté
+- IMP-12 : score global unique appliqué à l'application et à l'historique. Le moteur `lib/services/yele_scoring_engine.dart` (cinq composantes, 75 000 points de référence, non plafonné) alimente une carte « Score YELE » sur l'écran de résultat et la colonne « Score » de l'historique, avec la même valeur en points et le même formateur ; l'indice /100 reste une lecture secondaire. La définition de l'échelle est publiée par IMP-05 (`docs/echelle-score.md`). ([#16](https://github.com/yele-bf/mobilefront/issues/16))
 
 - IMP-02 : enrichissement du menu Réglages (FAQ native, Contactez-nous, À propos). ([#48](https://github.com/yele-bf/mobilefront/pull/48))
 - IMP-05 : définition de référence de l'échelle de score YELE (`docs/echelle-score.md`) — unité en points sur une échelle ouverte, cinq composantes avec leurs formules, règle « une absence n'est jamais un zéro », condition d'existence du score global, format d'affichage unique et version du référentiel `yele-open-1.0.0`. ([#11](https://github.com/yele-bf/mobilefront/issues/11))

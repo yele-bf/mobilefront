@@ -1,11 +1,7 @@
-import 'dart:convert';
-
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 
-import '../constants/config.dart';
 import '../services/streaming_test_service.dart';
-import '../services/yele_scoring_engine.dart';
 
 part 'speed_test_result.g.dart';
 
@@ -118,71 +114,16 @@ class SpeedTestResult extends HiveObject {
   @HiveField(33)
   String? streamingQualitiesJson;
 
-  // ── IMP-01 : données consommées pendant le test ──
+  // ── Métriques détaillées style nPerf (null = version antérieure ou phase
+  // non effectuée) ──
   @HiveField(34)
-  int? dataUsedKiB; // Total rx + tx du test, en kibioctets (-1 = non mesuré)
-
-  // ── IMP-03 : compte connecté au moment du test, null si anonyme ──
-  // Index 59 : 52 est réservé à IMP-07 et 53 à 58 à ISS-06.
-  @HiveField(59)
-  String? accountId;
+  double? downloadPeakSpeed; // Débit descendant de pointe (Mbps)
 
   @HiveField(35)
-  int? simSlot; // Emplacement 0-indexé de la SIM data active (ISS-02)
+  double? uploadPeakSpeed; // Débit montant de pointe (Mbps)
 
-  // ── Métriques de signal au moment du test (Android ; null = non mesuré) ──
-  // Le champ 35 est réservé à simSlot (ISS-02) : les nouveaux champs
-  // commencent à 36 et ne renumérotent jamais un champ existant.
   @HiveField(36)
-  int? signalDbm; // Puissance générique toutes technos (dBm)
-
-  @HiveField(37)
-  int? signalRsrp; // RSRP LTE/4G (dBm)
-
-  @HiveField(38)
-  int? signalRsrq; // RSRQ LTE/4G (dB)
-
-  @HiveField(39)
-  int? signalNrRsrp; // SS-RSRP 5G SA (dBm) ; null en 5G NSA (ancre LTE)
-
-  @HiveField(40)
-  int? signalNrRsrq; // SS-RSRQ 5G SA (dB)
-
-  @HiveField(41)
-  int? wifiRssi; // RSSI du Wi-Fi associé (dBm), null en données mobiles
-
-  // ── IMP-12 : score global ouvert (yele-open-1.0.0) ──
-  // Null = résultat antérieur au scoring : aucune version ni aucun score ne
-  // doit être rétro-attribué à un enregistrement qui ne les a jamais portés.
-  @HiveField(44)
-  String? scoringVersion; // ex. 'yele-open-1.0.0'
-
-  @HiveField(45)
-  double? scoreDownload; // points, non plafonné
-
-  @HiveField(46)
-  double? scoreUpload; // points, non plafonné
-
-  @HiveField(47)
-  double? scorePingJitter; // points, plafond 15 000
-
-  @HiveField(48)
-  double? scoreBrowsing; // points, plafond 17 500
-
-  @HiveField(49)
-  double? scoreStreaming; // points, plafond 17 500
-
-  @HiveField(50)
-  double? scoreGlobal; // somme des cinq, null si incomplet
-
-  @HiveField(51)
-  String? scoringStatusesJson; // JSON {composante: statut}
-
-  // ── IMP-07 : perte de paquets vers le serveur de test ──
-  // Null = non mesurée (test sans phase de débit, ou résultat antérieur) ;
-  // 0 est une valeur légitime (aucun paquet perdu).
-  @HiveField(52)
-  double? packetLoss; // %
+  double? pingMin; // Latence minimale (ms)
 
   SpeedTestResult({
     String? id,
@@ -218,24 +159,9 @@ class SpeedTestResult extends HiveObject {
     this.simOperator,
     this.cellularTech,
     this.streamingQualitiesJson,
-    this.dataUsedKiB,
-    this.simSlot,
-    this.accountId,
-    this.signalDbm,
-    this.signalRsrp,
-    this.signalRsrq,
-    this.signalNrRsrp,
-    this.signalNrRsrq,
-    this.wifiRssi,
-    this.scoringVersion,
-    this.scoreDownload,
-    this.scoreUpload,
-    this.scorePingJitter,
-    this.scoreBrowsing,
-    this.scoreStreaming,
-    this.scoreGlobal,
-    this.scoringStatusesJson,
-    this.packetLoss,
+    this.downloadPeakSpeed,
+    this.uploadPeakSpeed,
+    this.pingMin,
   }) {
     this.id = id ?? const Uuid().v4();
     this.timestamp = timestamp ?? DateTime.now();
@@ -261,7 +187,6 @@ class SpeedTestResult extends HiveObject {
       'osVersion': osVersion,
       'simOperator': simOperator,
       'cellularTech': cellularTech,
-      'simSlot': simSlot,
       'testLog': testLog,
       'qoeRating': qoeRating,
       'qoeUsage': qoeUsage,
@@ -272,27 +197,13 @@ class SpeedTestResult extends HiveObject {
       'streamingMaxResolution': streamingMaxResolution,
       'streamingScore': streamingScore,
       'streamingQualities': streamingQualitiesJson,
-      'dataUsedKiB': dataUsedKiB,
       'browsingAvgLoadMs': browsingAvgLoadMs,
       'browsingSuccessRate': browsingSuccessRate,
       'browsingPagesTested': browsingPagesTested,
       'browsingScore': browsingScore,
-      'signalDbm': signalDbm,
-      'signalRsrp': signalRsrp,
-      'signalRsrq': signalRsrq,
-      'signalNrRsrp': signalNrRsrp,
-      'signalNrRsrq': signalNrRsrq,
-      'wifiRssi': wifiRssi,
-      // IMP-12 : champs additionnels, ignorés par un backend plus ancien.
-      'scoringVersion': scoringVersion,
-      'scoreDownload': scoreDownload,
-      'scoreUpload': scoreUpload,
-      'scorePingJitter': scorePingJitter,
-      'scoreBrowsing': scoreBrowsing,
-      'scoreStreaming': scoreStreaming,
-      'scoreGlobal': scoreGlobal,
-      'scoringStatuses': scoringStatusesJson,
-      'packetLoss': packetLoss, // IMP-07, %
+      'downloadPeakSpeed': downloadPeakSpeed,
+      'uploadPeakSpeed': uploadPeakSpeed,
+      'pingMin': pingMin,
     };
   }
 
@@ -311,60 +222,6 @@ class SpeedTestResult extends HiveObject {
   /// Vrai si le test de navigation web a été effectué
   bool get hasBrowsingTest => browsingScore != null && browsingScore! > 0;
 
-  // ── IMP-12 : score global ouvert ──
-
-  /// Vrai si ce résultat porte le scoring ouvert et un score global complet.
-  bool get hasOpenScore => scoringVersion != null && scoreGlobal != null;
-
-  /// Indice 0-100 du score global, dérivé de la somme de référence 75 000.
-  ///
-  /// Le score ouvert est exprimé en points et n'est pas plafonné ; cet indice
-  /// est la seule valeur 0-100, identique dans l'app et l'historique. Il n'est
-  /// calculé que sur un score global complet (jamais sur un sous-total).
-  double? get scoreGlobalOn100 {
-    final s = scoreGlobal;
-    if (s == null || !s.isFinite || s < 0) return null;
-    final v = s / YeleScoringEngine.referenceTotal * 100;
-    return v > 100 ? 100 : v;
-  }
-
-  /// Somme des composantes réellement mesurées — jamais complétée par des
-  /// zéros. Null si aucune composante n'est disponible.
-  double? get scoreMeasuredSubtotal {
-    final parts = <double>[
-      ?scoreDownload,
-      ?scoreUpload,
-      ?scorePingJitter,
-      ?scoreBrowsing,
-      ?scoreStreaming,
-    ];
-    if (parts.isEmpty) return null;
-    return parts.fold<double>(0, (a, b) => a + b);
-  }
-
-  /// Indice 0-100 du sous-total mesuré (voir [scoreMeasuredSubtotal]).
-  /// À n'afficher qu'accompagné d'une mention explicite : ce n'est pas le
-  /// score global, qui exige les cinq composantes complètes.
-  double? get scoreMeasuredOn100 {
-    final s = scoreMeasuredSubtotal;
-    if (s == null) return null;
-    final v = s / YeleScoringEngine.referenceTotal * 100;
-    return v > 100 ? 100 : v;
-  }
-
-  /// Statuts des composantes du scoring ouvert ({composante: statut}).
-  Map<String, String> get scoringStatuses {
-    final raw = scoringStatusesJson;
-    if (raw == null || raw.isEmpty) return const {};
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! Map) return const {};
-      return decoded.map((k, v) => MapEntry(k.toString(), v.toString()));
-    } on FormatException {
-      return const {};
-    }
-  }
-
   // Convertir depuis JSON
   factory SpeedTestResult.fromJson(Map<String, dynamic> json) {
     double readDouble(List<String> keys, {double fallback = 0}) {
@@ -376,29 +233,21 @@ class SpeedTestResult extends HiveObject {
       return fallback;
     }
 
-    // Lit un double optionnel : absent, illisible ou NaN → null (jamais 0,
-    // pour ne pas confondre absence de mesure et mesure nulle).
-    double? readOptionalDouble(List<String> keys) {
-      for (final key in keys) {
-        final value = json[key];
-        if (value is num) {
-          final d = value.toDouble();
-          return d.isNaN ? null : d;
-        }
-        if (value is String) {
-          final d = double.tryParse(value);
-          if (d != null && !d.isNaN) return d;
-        }
-      }
-      return null;
-    }
-
     int? readInt(List<String> keys) {
       for (final key in keys) {
         final value = json[key];
         if (value is int) return value;
         if (value is num) return value.toInt();
         if (value is String) return int.tryParse(value);
+      }
+      return null;
+    }
+
+    double? readDoubleOrNull(List<String> keys) {
+      for (final key in keys) {
+        final value = json[key];
+        if (value is num) return value.toDouble();
+        if (value is String) return double.tryParse(value);
       }
       return null;
     }
@@ -417,7 +266,7 @@ class SpeedTestResult extends HiveObject {
       uploadSpeed: readDouble(['uploadSpeed', 'upload', 'ul']),
       ping: readDouble(['ping']),
       jitter: readDouble(['jitter']),
-      server: (json['server'] ?? serverDisplayName).toString(),
+      server: (json['server'] ?? 'Render.com').toString(),
       clientIp: (json['clientIp'] ?? json['ip'])?.toString(),
       networkType: json['networkType']?.toString(),
       operator: (json['operator'] ?? json['ispinfo'])?.toString(),
@@ -432,31 +281,16 @@ class SpeedTestResult extends HiveObject {
       osVersion: json['osVersion']?.toString(),
       simOperator: json['simOperator']?.toString(),
       cellularTech: json['cellularTech']?.toString(),
-      simSlot: readInt(['simSlot', 'dataSimSlot']),
       streamingQualitiesJson: json['streamingQualities'] as String?,
-      dataUsedKiB: readInt(['dataUsedKiB']),
-      signalDbm: readInt(['signalDbm']),
-      signalRsrp: readInt(['signalRsrp']),
-      signalRsrq: readInt(['signalRsrq']),
-      signalNrRsrp: readInt(['signalNrRsrp']),
-      signalNrRsrq: readInt(['signalNrRsrq']),
-      wifiRssi: readInt(['wifiRssi']),
-      // IMP-12 : lecture tolérante (absent = ancien résultat, rien n'est
-      // recalculé et aucune version de scoring n'est fabriquée).
-      scoringVersion: json['scoringVersion']?.toString(),
-      scoreDownload: readOptionalDouble(['scoreDownload']),
-      scoreUpload: readOptionalDouble(['scoreUpload']),
-      scorePingJitter: readOptionalDouble(['scorePingJitter']),
-      scoreBrowsing: readOptionalDouble(['scoreBrowsing']),
-      scoreStreaming: readOptionalDouble(['scoreStreaming']),
-      scoreGlobal: readOptionalDouble(['scoreGlobal']),
-      scoringStatusesJson: json['scoringStatuses']?.toString(),
       imagePath: json['imagePath'] as String?,
       testLog: json['testLog'] as String?,
       isUploaded: json['isUploaded'] as bool? ?? false,
       qoeRating: readInt(['qoeRating']),
       qoeUsage: json['qoeUsage']?.toString(),
       qoeSatisfaction: json['qoeSatisfaction']?.toString(),
+      downloadPeakSpeed: readDoubleOrNull(['downloadPeakSpeed']),
+      uploadPeakSpeed: readDoubleOrNull(['uploadPeakSpeed']),
+      pingMin: readDoubleOrNull(['pingMin']),
     );
   }
 

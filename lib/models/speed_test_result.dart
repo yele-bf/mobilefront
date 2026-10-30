@@ -173,6 +173,12 @@ class SpeedTestResult extends HiveObject {
   @HiveField(51)
   String? scoringStatusesJson; // JSON {composante: statut}
 
+  // ── IMP-07 : perte de paquets vers le serveur de test ──
+  // Null = non mesurée (test sans phase de débit, ou résultat antérieur) ;
+  // 0 est une valeur légitime (aucun paquet perdu).
+  @HiveField(52)
+  double? packetLoss; // %
+
   SpeedTestResult({
     String? id,
     DateTime? timestamp,
@@ -223,6 +229,7 @@ class SpeedTestResult extends HiveObject {
     this.scoreStreaming,
     this.scoreGlobal,
     this.scoringStatusesJson,
+    this.packetLoss,
   }) {
     this.id = id ?? const Uuid().v4();
     this.timestamp = timestamp ?? DateTime.now();
@@ -279,6 +286,7 @@ class SpeedTestResult extends HiveObject {
       'scoreStreaming': scoreStreaming,
       'scoreGlobal': scoreGlobal,
       'scoringStatuses': scoringStatusesJson,
+      'packetLoss': packetLoss, // IMP-07, %
     };
   }
 

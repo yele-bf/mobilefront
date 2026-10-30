@@ -3,6 +3,7 @@
 ## [Non publiée]
 
 ### Ajouté
+- IMP-07 : perte de paquets mesurée à la fin de la phase de latence, vers le serveur de test : `ping` ICMP du système sur Android (20 paquets espacés de 200 ms), repli par 20 sondes HTTP de 2 s ailleurs ou si l'ICMP est filtré (`lib/services/packet_loss_service.dart`). Affichée sous la latence dans le bilan et dans le détail de l'historique, stockée (Hive 52) et envoyée au serveur (`packetLoss`, omise si non mesurée). Serveur : yele-bf/mobiletest, même branche. ([#13](https://github.com/yele-bf/mobilefront/issues/13))
 - IMP-12 : score global unique appliqué à l'application et à l'historique. Le moteur `lib/services/yele_scoring_engine.dart` (cinq composantes, 75 000 points de référence, non plafonné) alimente une carte « Score YELE » sur l'écran de résultat et la colonne « Score » de l'historique, avec la même valeur en points et le même formateur ; l'indice /100 reste une lecture secondaire. La définition de l'échelle est publiée par IMP-05 (`docs/echelle-score.md`). ([#16](https://github.com/yele-bf/mobilefront/issues/16))
 
 - IMP-02 : enrichissement du menu Réglages (FAQ native, Contactez-nous, À propos). ([#48](https://github.com/yele-bf/mobilefront/pull/48))

@@ -25,6 +25,7 @@
 | 2026-10-26 | IMP-06 | feat | NIKIEMA Abdoul Fatahou | NIKIEMA Abdoul Fatahou / NONGUIERMA WENDINSOO LEONEL | `feat/IMP-06-seuils-arcep` | `8d67bdf` | Analyse sans avertissement + 88 tests verts (63 sur `main`, +25) dont les cas limites autour des seuils (29,9/30,1 s ; 4,999/5,001 s ; 9,9/10,1 % ; 479/480p ; 0/1 interruption) ; non vérifié sur APK ni Chrome (support « local : jeux de valeurs ») | Transmis |
 | 2026-10-28 | IMP-02 | feat | NANA Amoin Agnès | NANA Amoin Agnès / Cissé Aboubacar Sidiki | `imp/IMP-02-parametres` (#48) | `98e5580` | Local Chrome + APK réel sur TECNO CAMON 20 Pro | En cours |
 | 2026-10-28 | IMP-05 | docs | TRAORE Abdoulaye | TRAORE Abdoulaye / KIEMA François | `imp/IMP-05-echelle-score` | `—` | Local : échelle définie et documentée dans `docs/echelle-score.md`, tables de valeurs recalculées ; conformité des 3 vues non vérifiée (dashboard non branché) | En cours |
+| 2026-10-30 | IMP-07 | feat | SANOU Zossoun Aristide Daouda | SANOU Zossoun Aristide Daouda / TRAORE Oumou Kal / Ilboudo Wendpagnagdé Elsa Fleur | `imp/IMP-07-perte-paquets` | _après merge_ | Tests automatisés (`test/packet_loss_test.dart` : lecture de la sortie de `ping`, repli HTTP, affichage) ; mesure sur APK réel et comparaison nPerf à joindre dans `docs/preuves/IMP-07/` | En cours |
 
 ## Nomenclature V14 vs V11 vs V4 (à lire avant de citer un Sous-ID)
 

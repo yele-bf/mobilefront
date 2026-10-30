@@ -66,13 +66,14 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
       scoreStreaming: fields[49] as double?,
       scoreGlobal: fields[50] as double?,
       scoringStatusesJson: fields[51] as String?,
+      packetLoss: fields[52] as double?,
     );
   }
 
   @override
   void write(BinaryWriter writer, SpeedTestResult obj) {
     writer
-      ..writeByte(49)
+      ..writeByte(50)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -170,7 +171,9 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
       ..writeByte(50)
       ..write(obj.scoreGlobal)
       ..writeByte(51)
-      ..write(obj.scoringStatusesJson);
+      ..write(obj.scoringStatusesJson)
+      ..writeByte(52)
+      ..write(obj.packetLoss);
   }
 
   @override

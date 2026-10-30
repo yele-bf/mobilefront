@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../models/speed_test_result.dart';
 import '../services/local_storage_service.dart';
+import '../services/packet_loss_service.dart';
 import '../services/reverse_geocoding_service.dart';
 import '../services/yele_scoring_engine.dart';
 import '../theme/yele_theme.dart';
@@ -490,6 +491,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
           if ((r.deviceModel ?? '').isNotEmpty) line('Appareil', r.deviceModel!),
           line('Latence', '${r.ping.toStringAsFixed(0)} ms'),
           line('Gigue', '${r.jitter.toStringAsFixed(0)} ms'),
+          // IMP-07 : masquée si non mesurée (anciens résultats).
+          if (r.packetLoss != null)
+            line('Perte de paquets', formatPacketLoss(r.packetLoss!)),
           // IMP-01 : données consommées par le test (masqué si non mesuré).
           if ((r.dataUsedKiB ?? -1) >= 0) line('Données', _formatData(r.dataUsedKiB!)),
           ..._signalLines(r, line),

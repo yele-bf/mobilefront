@@ -1,4 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:yele/models/speed_test_result.dart';
 import 'package:yele/services/packet_loss_service.dart';
 
 /// IMP-07 — perte de paquets.
@@ -50,5 +54,30 @@ void main() {
     expect(formatPacketLoss(0), '0 %');
     expect(formatPacketLoss(2.5), '2,5 %');
     expect(formatPacketLoss(100), '100 %');
+  });
+
+  // packetLoss est le dernier champ écrit par l'adaptateur : si le nombre de
+  // champs déclaré (`writeByte`) est trop petit, c'est lui qui est perdu.
+  test('packetLoss survit au stockage Hive (index 52)', () async {
+    final tmp = await Directory.systemTemp.createTemp('yele_loss');
+    Hive.init(tmp.path);
+    if (!Hive.isAdapterRegistered(0)) {
+      Hive.registerAdapter(SpeedTestResultAdapter());
+    }
+    final box = await Hive.openBox<SpeedTestResult>('perte');
+    await box.put(
+        'r',
+        SpeedTestResult(
+            downloadSpeed: 10,
+            uploadSpeed: 2,
+            ping: 40,
+            jitter: 5,
+            server: 's',
+            packetLoss: 2.5));
+    await box.close();
+    final relu = (await Hive.openBox<SpeedTestResult>('perte')).get('r')!;
+    expect(relu.packetLoss, 2.5);
+    await Hive.close();
+    await tmp.delete(recursive: true);
   });
 }

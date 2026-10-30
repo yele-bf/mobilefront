@@ -73,6 +73,8 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
   @override
   void write(BinaryWriter writer, SpeedTestResult obj) {
     writer
+      // Nombre de champs écrits : 49 + packetLoss (IMP-07). Une autre PR qui
+      // ajoute un champ doit additionner, pas remplacer.
       ..writeByte(50)
       ..writeByte(0)
       ..write(obj.id)

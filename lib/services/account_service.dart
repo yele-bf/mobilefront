@@ -121,7 +121,7 @@ class AccountService {
       final data = Map<String, dynamic>.from(res.data as Map);
       final account =
           Account.fromJson(Map<String, dynamic>.from(data['user'] as Map));
-      return saveSession(data['token'] as String, account);
+      return await saveSession(data['token'] as String, account);
     } on DioException catch (e) {
       throw AccountException(messageFor(e.response?.statusCode));
     }

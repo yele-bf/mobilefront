@@ -74,7 +74,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // retirer son accord.
         _actionItem(
           icon: Icons.policy_outlined,
-          title: 'Conditions d'utilisation',
+          title: "Conditions d'utilisation",
           sub: 'Données collectées, usage et vos droits',
           onTap: () => Navigator.of(context).pushNamed('/conditions'),
         ),
@@ -130,8 +130,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Retirer mon accord ?'),
         content: Text(
-          'Aucun test ne sera possible tant que vous n'aurez pas accepté à '
-          'nouveau les conditions d'utilisation.',
+          "Aucun test ne sera possible tant que vous n'aurez pas accepté à "
+          "nouveau les conditions d'utilisation.",
           style: TextStyle(fontSize: 14, height: 1.5, color: YeleColors.ink),
         ),
         actions: [

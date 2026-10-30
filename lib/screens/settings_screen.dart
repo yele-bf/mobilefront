@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../services/consent_service.dart';
 import '../theme/yele_theme.dart';
 import '../widgets/yele_scaffold.dart';
 
@@ -69,6 +70,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
           sub: 'Assistance téléphonique ($_supportPhone)',
           onTap: _callSupport,
         ),
+        // IMP-14 : relire les conditions acceptées au premier lancement, ou
+        // retirer son accord.
+        _actionItem(
+          icon: Icons.policy_outlined,
+          title: 'Conditions d'utilisation',
+          sub: 'Données collectées, usage et vos droits',
+          onTap: () => Navigator.of(context).pushNamed('/conditions'),
+        ),
+        _actionItem(
+          icon: Icons.block_outlined,
+          title: 'Retirer mon accord',
+          sub: 'Les conditions vous seront présentées à nouveau',
+          onTap: _withdrawConsent,
+        ),
         _actionItem(
           icon: Icons.info_outline,
           title: 'À propos de Yélé',
@@ -107,6 +122,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (_) {
       _snack('Appel impossible. Appelez le $_supportPhone');
     }
+  }
+
+  Future<void> _withdrawConsent() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Retirer mon accord ?'),
+        content: Text(
+          'Aucun test ne sera possible tant que vous n'aurez pas accepté à '
+          'nouveau les conditions d'utilisation.',
+          style: TextStyle(fontSize: 14, height: 1.5, color: YeleColors.ink),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Retirer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await ConsentService.instance.withdraw();
+    if (!mounted) return;
+    Navigator.of(context).pushNamedAndRemoveUntil('/consent', (_) => false);
   }
 
   void _showAbout() {

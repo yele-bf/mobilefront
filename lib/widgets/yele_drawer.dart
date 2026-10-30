@@ -19,6 +19,7 @@ class YeleDrawer extends StatelessWidget {
       '/history': AppLocale.t('Historique', 'History'),
       '/usage': AppLocale.t('Consommation', 'Data usage'),
       '/coverage': AppLocale.t('Cartes de couverture', 'Coverage maps'),
+      '/account': AppLocale.t('Mon compte', 'My account'),
       '/settings': AppLocale.t('Réglages', 'Settings'),
     };
 
@@ -37,6 +38,9 @@ class YeleDrawer extends StatelessWidget {
             _item(context, Icons.data_usage, labels['/usage']!, '/usage'),
             _item(context, Icons.map_outlined, labels['/coverage']!,
                 '/coverage'),
+            // IMP-03 : comptes utilisateurs.
+            _item(context, Icons.person_outline, labels['/account']!,
+                '/account'),
             _item(context, Icons.settings, labels['/settings']!, '/settings'),
           ],
         ),

@@ -122,6 +122,11 @@ class SpeedTestResult extends HiveObject {
   @HiveField(34)
   int? dataUsedKiB; // Total rx + tx du test, en kibioctets (-1 = non mesuré)
 
+  // ── IMP-03 : compte connecté au moment du test, null si anonyme ──
+  // Index 59 : 52 est réservé à IMP-07 et 53 à 58 à ISS-06.
+  @HiveField(59)
+  String? accountId;
+
   @HiveField(35)
   int? simSlot; // Emplacement 0-indexé de la SIM data active (ISS-02)
 
@@ -215,6 +220,7 @@ class SpeedTestResult extends HiveObject {
     this.streamingQualitiesJson,
     this.dataUsedKiB,
     this.simSlot,
+    this.accountId,
     this.signalDbm,
     this.signalRsrp,
     this.signalRsrq,

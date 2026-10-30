@@ -3,12 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'models/test_selection.dart';
+import 'screens/account_screen.dart';
 import 'screens/coverage_screen.dart';
 import 'screens/faq_screen.dart';
 import 'screens/full_test_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/usage_screen.dart';
+import 'services/account_service.dart';
 import 'services/local_storage_service.dart';
 import 'services/settings_service.dart';
 import 'services/streaming_backend_setting.dart';
@@ -40,6 +42,11 @@ Future<void> main() async {
     await UsageTrackerService.initialize();
   } catch (_) {
     // Sans suivi de consommation, le reste de l'app fonctionne normalement.
+  }
+  try {
+    await AccountService.initialize();
+  } catch (_) {
+    // IMP-03 : compte illisible = utilisateur anonyme, l'app reste utilisable.
   }
   runApp(const YeleApp());
 }
@@ -158,6 +165,7 @@ class _YeleAppState extends State<YeleApp> with WidgetsBindingObserver {
         '/usage': (_) => const UsageScreen(),
         '/coverage': (_) => const CoverageScreen(),
         '/settings': (_) => const SettingsScreen(),
+        '/account': (_) => const AccountScreen(),
         '/faq': (_) => const FaqScreen(),
       },
       builder: (context, child) {

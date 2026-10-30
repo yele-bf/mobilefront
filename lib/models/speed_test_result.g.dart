@@ -52,6 +52,7 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
       streamingQualitiesJson: fields[33] as String?,
       dataUsedKiB: fields[34] as int?,
       simSlot: fields[35] as int?,
+      accountId: fields[59] as String?,
       signalDbm: fields[36] as int?,
       signalRsrp: fields[37] as int?,
       signalRsrq: fields[38] as int?,
@@ -72,7 +73,9 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
   @override
   void write(BinaryWriter writer, SpeedTestResult obj) {
     writer
-      ..writeByte(49)
+      // Nombre de champs écrits : 49 + accountId (IMP-03). Une autre PR qui
+      // ajoute un champ doit additionner, pas remplacer.
+      ..writeByte(50)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -143,6 +146,8 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
       ..write(obj.dataUsedKiB)
       ..writeByte(35)
       ..write(obj.simSlot)
+      ..writeByte(59)
+      ..write(obj.accountId)
       ..writeByte(36)
       ..write(obj.signalDbm)
       ..writeByte(37)

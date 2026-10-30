@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../models/speed_test_result.dart';
+import '../services/account_service.dart';
 import '../services/local_storage_service.dart';
 import '../services/reverse_geocoding_service.dart';
 import '../services/yele_scoring_engine.dart';
@@ -58,7 +59,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   void initState() {
     super.initState();
-    _all = _storage.getResultsSorted();
+    // IMP-03 : chaque compte ne voit que ses mesures ; déconnecté, on voit
+    // celles faites sans compte.
+    _all = _storage
+        .getResultsSorted()
+        .where((r) => AccountService.isVisible(r.accountId))
+        .toList();
   }
 
   bool _isComplet(SpeedTestResult r) =>

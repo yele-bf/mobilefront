@@ -92,24 +92,35 @@ class SpeedTestProgress {
 }
 
 class SpeedTransferMeasurement {
-  final double mbps;
+  final double mbps; // débit moyen (hors montée en charge)
   final int bytes;
   final Duration duration;
+
+  /// ISS-06 : débits instantanés le plus bas et le plus haut relevés pendant
+  /// la phase, échantillonnés toutes les 500 ms hors montée en charge.
+  final double minMbps;
+  final double maxMbps;
 
   const SpeedTransferMeasurement({
     required this.mbps,
     required this.bytes,
     required this.duration,
+    this.minMbps = 0,
+    this.maxMbps = 0,
   });
 }
 
 class LatencyMeasurement {
-  final double ping;
+  final double ping; // moyenne
   final double jitter;
+  final double minPing; // ISS-06
+  final double maxPing; // ISS-06
 
   const LatencyMeasurement({
     required this.ping,
     required this.jitter,
+    this.minPing = 0,
+    this.maxPing = 0,
   });
 }
 
@@ -151,10 +162,30 @@ class _TransferRun {
   bool _warmupDone = false;
   int _lastEmitMs = 0;
 
+  /// ISS-06 : débits instantanés relevés à intervalle fixe, hors montée en
+  /// charge. Un minuteur, et non l'arrivée des octets, cadence le relevé :
+  /// une coupure du flux donne bien un échantillon à 0 au lieu de passer
+  /// inaperçue.
+  final List<double> _samples = [];
+  late final Timer _sampler;
+
   _TransferRun({required this.duration, this.onLive}) {
     _deadline = Timer(duration, () {
       if (!cancelToken.isCancelled) cancelToken.cancel('phase terminée');
     });
+    _sampler = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      final nowMs = _watch.elapsedMilliseconds;
+      if (nowMs < SPEED_WARMUP_MS || nowMs > duration.inMilliseconds) return;
+      _evict(nowMs);
+      _samples.add(_liveMbps(nowMs));
+    });
+  }
+
+  /// Retire de la fenêtre glissante les relevés plus vieux que sa taille.
+  void _evict(int nowMs) {
+    while (_window.isNotEmpty && nowMs - _window.first.ms > SPEED_LIVE_WINDOW_MS) {
+      _windowBytes -= _window.removeFirst().bytes;
+    }
   }
 
   bool isExpired() => _watch.elapsed >= duration;
@@ -170,9 +201,7 @@ class _TransferRun {
 
     _window.add((ms: nowMs, bytes: delta));
     _windowBytes += delta;
-    while (_window.isNotEmpty && nowMs - _window.first.ms > SPEED_LIVE_WINDOW_MS) {
-      _windowBytes -= _window.removeFirst().bytes;
-    }
+    _evict(nowMs);
 
     if (onLive == null) return;
     // ~8 émissions/s : assez pour une jauge fluide, sans noyer l'UI.
@@ -196,6 +225,7 @@ class _TransferRun {
   SpeedTransferMeasurement finish() {
     _watch.stop();
     _deadline.cancel();
+    _sampler.cancel();
     final elapsed = _watch.elapsed;
 
     // Sur un transfert trop court pour sortir de la montée en charge, on garde
@@ -205,10 +235,14 @@ class _TransferRun {
         ? elapsed - const Duration(milliseconds: SPEED_WARMUP_MS)
         : elapsed;
 
+    final mean = _mbps(bytes, window);
     return SpeedTransferMeasurement(
-      mbps: _mbps(bytes, window),
+      mbps: mean,
       bytes: _totalBytes,
       duration: elapsed,
+      // Phase trop courte pour échantillonner : min = max = moyenne.
+      minMbps: _samples.isEmpty ? mean : _samples.reduce(min),
+      maxMbps: _samples.isEmpty ? mean : _samples.reduce(max),
     );
   }
 }
@@ -295,6 +329,8 @@ class SpeedTestApiService {
 
       // Débit : exécuté uniquement si demandé (tests indépendants).
       // Ordre : download, upload, puis latence.
+      // ISS-06 : min / max des débits et de la latence (null = non mesurés).
+      double? dlMin, dlMax, ulMin, ulMax, pingMin, pingMax;
       double dlMbps = 0, ulMbps = 0, pingMs = 0, jitterMs = 0;
       if (selection.speed) {
         onProgress?.call(const SpeedTestProgress(
@@ -311,6 +347,8 @@ class SpeedTestApiService {
           )),
         );
         dlMbps = download.mbps;
+        dlMin = download.minMbps;
+        dlMax = download.maxMbps;
         onProgress?.call(SpeedTestProgress(
           phase: SpeedTestPhase.download,
           message: 'Téléchargement mesuré',
@@ -332,6 +370,8 @@ class SpeedTestApiService {
           )),
         );
         ulMbps = upload.mbps;
+        ulMin = upload.minMbps;
+        ulMax = upload.maxMbps;
 
         // La latence se mesure en dernier, donc juste après avoir saturé le
         // lien. Les files d'attente des équipements réseau mettent un instant
@@ -359,6 +399,8 @@ class SpeedTestApiService {
           )),
         );
         pingMs = latency.ping;
+        pingMin = latency.minPing;
+        pingMax = latency.maxPing;
         jitterMs = latency.jitter;
         onProgress?.call(SpeedTestProgress(
           phase: SpeedTestPhase.ping,
@@ -476,6 +518,12 @@ class SpeedTestApiService {
         signalNrRsrp: signalNrRsrp,
         signalNrRsrq: signalNrRsrq,
         wifiRssi: wifiRssi,
+        downloadMin: dlMin,
+        downloadMax: dlMax,
+        uploadMin: ulMin,
+        uploadMax: ulMax,
+        pingMin: pingMin,
+        pingMax: pingMax,
         // JSON complet -> le backend en extrait city/country/coordonnées IP.
         testLog: ipRawJson ?? ipInfo,
         streamingStartupMs: streaming?.startupMs,
@@ -712,7 +760,8 @@ class SpeedTestApiService {
   }
 
   Future<LatencyMeasurement> measureLatency({
-    int samples = 5,
+    // ISS-06 : 10 sondes, pour que le min et le max aient un sens.
+    int samples = 10,
     // Moyenne/gigue provisoires + avancement, après chaque échantillon.
     void Function(double ping, double jitter, double progress)? onSample,
   }) async {
@@ -739,7 +788,12 @@ class SpeedTestApiService {
 
     logger.i(
         'Ping: ${ping.toStringAsFixed(2)} ms, jitter: ${jitter.toStringAsFixed(2)} ms');
-    return LatencyMeasurement(ping: ping, jitter: jitter);
+    return LatencyMeasurement(
+      ping: ping,
+      jitter: jitter,
+      minPing: measurements.reduce(min),
+      maxPing: measurements.reduce(max),
+    );
   }
 
   double _avg(List<double> values) =>
@@ -863,6 +917,14 @@ class SpeedTestApiService {
             'browsingSuccessRate': result.browsingSuccessRate ?? 0.0,
             'browsingPagesTested': result.browsingPagesTested ?? 0,
             'browsingScore': result.browsingScore ?? 0.0,
+            // ISS-06 : min / max des débits (Mb/s) et de la latence (ms),
+            // omis s'ils n'ont pas été mesurés.
+            if (result.downloadMin != null) 'downloadMin': result.downloadMin,
+            if (result.downloadMax != null) 'downloadMax': result.downloadMax,
+            if (result.uploadMin != null) 'uploadMin': result.uploadMin,
+            if (result.uploadMax != null) 'uploadMax': result.uploadMax,
+            if (result.pingMin != null) 'pingMin': result.pingMin,
+            if (result.pingMax != null) 'pingMax': result.pingMax,
             // Métriques de signal typées ; null = non mesuré, envoyé 0 =
             // absent côté backend (0 est impossible physiquement : en dBm,
             // 0 signifierait « émetteur collé à l'antenne »).

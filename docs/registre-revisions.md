@@ -25,6 +25,7 @@
 | 2026-10-26 | IMP-06 | feat | NIKIEMA Abdoul Fatahou | NIKIEMA Abdoul Fatahou / NONGUIERMA WENDINSOO LEONEL | `feat/IMP-06-seuils-arcep` | `8d67bdf` | Analyse sans avertissement + 88 tests verts (63 sur `main`, +25) dont les cas limites autour des seuils (29,9/30,1 s ; 4,999/5,001 s ; 9,9/10,1 % ; 479/480p ; 0/1 interruption) ; non vérifié sur APK ni Chrome (support « local : jeux de valeurs ») | Transmis |
 | 2026-10-28 | IMP-02 | feat | NANA Amoin Agnès | NANA Amoin Agnès / Cissé Aboubacar Sidiki | `imp/IMP-02-parametres` (#48) | `98e5580` | Local Chrome + APK réel sur TECNO CAMON 20 Pro | En cours |
 | 2026-10-28 | IMP-05 | docs | TRAORE Abdoulaye | TRAORE Abdoulaye / KIEMA François | `imp/IMP-05-echelle-score` | `—` | Local : échelle définie et documentée dans `docs/echelle-score.md`, tables de valeurs recalculées ; conformité des 3 vues non vérifiée (dashboard non branché) | En cours |
+| 2026-10-30 | ISS-06 | fix | SANOU Zossoun Aristide Daouda | Wangraoua Aicha Bénédicte Flore Myriam / SAWADOGO Sutongnoma Saturnin | `iss/ISS-06-min-moy-max` | _après merge_ | Tests automatisés (`test/min_moy_max_test.dart` : trois valeurs, valeurs absentes, persistance Hive 53–58) ; capture Chrome + dashboard à joindre dans `docs/preuves/ISS-06/` | En cours |
 
 ## Nomenclature V14 vs V11 vs V4 (à lire avant de citer un Sous-ID)
 

@@ -206,6 +206,51 @@ class _ScoreScreenState extends State<ScoreScreen> {
                     fontWeight: FontWeight.w600),
               ),
             ),
+          // ISS-06 : min / moy / max des débits et de la latence.
+          _minMeanMaxTable(r),
+        ],
+      ),
+    );
+  }
+
+  /// ISS-06 — Tableau Min / Moy / Max, une ligne par métrique mesurée.
+  /// Masqué si aucune métrique n'a de min et de max (ancien résultat, test
+  /// sans phase de débit).
+  Widget _minMeanMaxTable(SpeedTestResult r) {
+    final rows = <(String, MinMeanMax, String, int)>[
+      if (r.downloadStats != null) ('▼ Download', r.downloadStats!, 'Mb/s', 2),
+      if (r.uploadStats != null) ('▲ Upload', r.uploadStats!, 'Mb/s', 2),
+      if (r.pingStats != null) ('↔ Latence', r.pingStats!, 'ms', 0),
+    ];
+    if (rows.isEmpty) return const SizedBox.shrink();
+
+    const head = TextStyle(
+        fontSize: 11, color: Color(0xFF2C3650), fontWeight: FontWeight.w700);
+    const cell = TextStyle(
+        fontSize: 13, color: YeleColors.field, fontWeight: FontWeight.w700);
+    Widget c(String t, TextStyle s, {TextAlign a = TextAlign.right}) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+          child: Text(t, style: s, textAlign: a),
+        );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+      child: Table(
+        columnWidths: const {0: FlexColumnWidth(1.4)},
+        children: [
+          TableRow(children: [
+            c('', head, a: TextAlign.left),
+            c('Min', head),
+            c('Moy', head),
+            c('Max', head),
+          ]),
+          for (final (label, s, unit, digits) in rows)
+            TableRow(children: [
+              c(label, head, a: TextAlign.left),
+              c(s.min.toStringAsFixed(digits), cell),
+              c(s.mean.toStringAsFixed(digits), cell),
+              c('${s.max.toStringAsFixed(digits)} $unit', cell),
+            ]),
         ],
       ),
     );

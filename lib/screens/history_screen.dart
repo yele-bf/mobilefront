@@ -488,6 +488,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     .join(' · ')),
           line('Réseau', r.location ?? '—'),
           if ((r.deviceModel ?? '').isNotEmpty) line('Appareil', r.deviceModel!),
+          // ISS-06 : min / moy / max, masqués pour les anciens résultats.
+          if (r.downloadStats != null)
+            line('Download min / moy / max',
+                _minMeanMax(r.downloadStats!, 'Mb/s', 2)),
+          if (r.uploadStats != null)
+            line('Upload min / moy / max', _minMeanMax(r.uploadStats!, 'Mb/s', 2)),
+          if (r.pingStats != null)
+            line('Latence min / moy / max', _minMeanMax(r.pingStats!, 'ms', 0)),
           line('Latence', '${r.ping.toStringAsFixed(0)} ms'),
           line('Gigue', '${r.jitter.toStringAsFixed(0)} ms'),
           // IMP-01 : données consommées par le test (masqué si non mesuré).
@@ -572,5 +580,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return lines;
   }
 
-
+  /// ISS-06 : « 3.20 / 18.40 / 41.00 Mb/s ».
+  String _minMeanMax(MinMeanMax s, String unit, int digits) =>
+      '${s.min.toStringAsFixed(digits)} / ${s.mean.toStringAsFixed(digits)} / '
+      '${s.max.toStringAsFixed(digits)} $unit';
 }

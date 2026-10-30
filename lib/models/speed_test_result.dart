@@ -146,6 +146,28 @@ class SpeedTestResult extends HiveObject {
   @HiveField(41)
   int? wifiRssi; // RSSI du Wi-Fi associé (dBm), null en données mobiles
 
+  // ── ISS-06 : min / max des débits et de la latence ──
+  // La moyenne est déjà portée par downloadSpeed / uploadSpeed / ping.
+  // Null = non mesurés (test sans phase de débit, ou résultat antérieur).
+  // Index 53 à 58 : le 52 est réservé à packetLoss (IMP-07).
+  @HiveField(53)
+  double? downloadMin; // Mb/s
+
+  @HiveField(54)
+  double? downloadMax; // Mb/s
+
+  @HiveField(55)
+  double? uploadMin; // Mb/s
+
+  @HiveField(56)
+  double? uploadMax; // Mb/s
+
+  @HiveField(57)
+  double? pingMin; // ms
+
+  @HiveField(58)
+  double? pingMax; // ms
+
   // ── IMP-12 : score global ouvert (yele-open-1.0.0) ──
   // Null = résultat antérieur au scoring : aucune version ni aucun score ne
   // doit être rétro-attribué à un enregistrement qui ne les a jamais portés.
@@ -215,6 +237,12 @@ class SpeedTestResult extends HiveObject {
     this.signalNrRsrp,
     this.signalNrRsrq,
     this.wifiRssi,
+    this.downloadMin,
+    this.downloadMax,
+    this.uploadMin,
+    this.uploadMax,
+    this.pingMin,
+    this.pingMax,
     this.scoringVersion,
     this.scoreDownload,
     this.scoreUpload,
@@ -270,6 +298,13 @@ class SpeedTestResult extends HiveObject {
       'signalNrRsrp': signalNrRsrp,
       'signalNrRsrq': signalNrRsrq,
       'wifiRssi': wifiRssi,
+      // ISS-06 : min / max (la moyenne est downloadSpeed, uploadSpeed, ping).
+      'downloadMin': downloadMin,
+      'downloadMax': downloadMax,
+      'uploadMin': uploadMin,
+      'uploadMax': uploadMax,
+      'pingMin': pingMin,
+      'pingMax': pingMax,
       // IMP-12 : champs additionnels, ignorés par un backend plus ancien.
       'scoringVersion': scoringVersion,
       'scoreDownload': scoreDownload,
@@ -463,4 +498,21 @@ class SpeedTestResult extends HiveObject {
     if (downloadSpeed > 10) return 'Moyen';
     return 'Faible';
   }
+}
+
+/// ISS-06 — Les trois valeurs d'une métrique, quand min et max sont connus.
+typedef MinMeanMax = ({double min, double mean, double max});
+
+extension MinMeanMaxOf on SpeedTestResult {
+  MinMeanMax? get downloadStats => downloadMin == null || downloadMax == null
+      ? null
+      : (min: downloadMin!, mean: downloadSpeed, max: downloadMax!);
+
+  MinMeanMax? get uploadStats => uploadMin == null || uploadMax == null
+      ? null
+      : (min: uploadMin!, mean: uploadSpeed, max: uploadMax!);
+
+  MinMeanMax? get pingStats => pingMin == null || pingMax == null
+      ? null
+      : (min: pingMin!, mean: ping, max: pingMax!);
 }

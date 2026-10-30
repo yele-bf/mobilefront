@@ -7,7 +7,7 @@ prises sur l'application Android (APK de debug).
 |---|---|
 | `IMP-03_01_menu-mon-compte.jpeg` | L'entrée « Mon compte » dans le menu latéral de l'application. |
 | `IMP-03_02_connexion.jpeg` | L'écran « Se connecter » : e-mail, mot de passe, « Pas de compte ? En créer un ». |
-| `IMP-03_03_selection-compte-google.jpeg` | La feuille de sélection de compte ouverte depuis le bouton Google. |
+| `IMP-03_03_selection-compte-google.jpeg` | La feuille de sélection de compte ouverte depuis le bouton Google. **L'adresse e-mail du compte est masquée** (pixellisation) depuis le 30/10/2026 : la version d'origine affichait une adresse personnelle dans un dépôt public. |
 | `IMP-03_04_creation-de-compte.jpeg` | L'écran « Créer un compte » : nom facultatif, e-mail, mot de passe (8 caractères au moins), « J'ai déjà un compte ». |
 
 ## Ce que ces captures attestent

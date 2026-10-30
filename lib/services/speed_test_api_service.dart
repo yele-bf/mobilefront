@@ -10,8 +10,10 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import '../constants/config.dart';
 import '../models/speed_test_result.dart';
 import '../models/test_selection.dart';
+import 'account_service.dart';
 import 'browsing_test_service.dart';
 import 'device_identity_service.dart';
+import 'packet_loss_service.dart';
 import 'streaming_backend_setting.dart';
 import 'streaming_test_service.dart';
 import 'yele_scoring_engine.dart';
@@ -296,6 +298,7 @@ class SpeedTestApiService {
       // Débit : exécuté uniquement si demandé (tests indépendants).
       // Ordre : download, upload, puis latence.
       double dlMbps = 0, ulMbps = 0, pingMs = 0, jitterMs = 0;
+      double? packetLoss; // IMP-07, % ; null = non mesurée
       if (selection.speed) {
         onProgress?.call(const SpeedTestProgress(
           phase: SpeedTestPhase.download,
@@ -360,6 +363,17 @@ class SpeedTestApiService {
         );
         pingMs = latency.ping;
         jitterMs = latency.jitter;
+
+        // IMP-07 : perte de paquets, juste après la latence (même serveur).
+        onProgress?.call(SpeedTestProgress(
+          phase: SpeedTestPhase.ping,
+          message: 'Mesure de la perte de paquets',
+          downloadSpeed: dlMbps,
+          uploadSpeed: ulMbps,
+          ping: pingMs,
+          jitter: jitterMs,
+        ));
+        packetLoss = await measurePacketLoss();
         onProgress?.call(SpeedTestProgress(
           phase: SpeedTestPhase.ping,
           message: 'Latence mesurée',
@@ -470,6 +484,8 @@ class SpeedTestApiService {
         simOperator: simOperator,
         cellularTech: cellularTech,
         simSlot: simSlot,
+        // IMP-03 : mesure rattachée au compte connecté (historique isolé).
+        accountId: AccountService.currentId,
         signalDbm: signalDbm,
         signalRsrp: signalRsrp,
         signalRsrq: signalRsrq,
@@ -490,6 +506,7 @@ class SpeedTestApiService {
         browsingScore: browsing?.score,
         // IMP-01 : volume rx + tx consommé par l'app pendant le test.
         dataUsedKiB: await dataUsage.stopKiB(),
+        packetLoss: packetLoss,
       );
 
       // IMP-12 : score global ouvert (yele-open-1.0.0), calculé à partir des
@@ -742,6 +759,27 @@ class SpeedTestApiService {
     return LatencyMeasurement(ping: ping, jitter: jitter);
   }
 
+  /// IMP-07 — Perte de paquets en % vers le serveur de test (ICMP sur
+  /// Android, repli par sondes HTTP), ou null si elle n'a pas pu être mesurée.
+  Future<double?> measurePacketLoss() async {
+    try {
+      return await PacketLossService().measure(
+        Uri.parse(baseUrl).host,
+        httpProbe: () => _dio.get(
+          '/empty',
+          queryParameters: {'r': DateTime.now().microsecondsSinceEpoch},
+          options: Options(
+            receiveTimeout: const Duration(seconds: 2),
+            sendTimeout: const Duration(seconds: 2),
+          ),
+        ),
+      );
+    } catch (e) {
+      logger.w('Perte de paquets non mesurée : $e');
+      return null;
+    }
+  }
+
   double _avg(List<double> values) =>
       values.isEmpty ? 0 : values.reduce((a, b) => a + b) / values.length;
 
@@ -872,9 +910,18 @@ class SpeedTestApiService {
             'signalNrRsrp': result.signalNrRsrp ?? 0,
             'signalNrRsrq': result.signalNrRsrq ?? 0,
             'wifiRssi': result.wifiRssi ?? 0,
+            // IMP-07 : perte de paquets en %. Omise si non mesurée : 0 est
+            // une valeur légitime (aucune perte), elle ne peut pas signifier
+            // « absent ».
+            if (result.packetLoss != null) 'packetLoss': result.packetLoss,
           }),
         },
-        options: Options(contentType: Headers.formUrlEncodedContentType),
+        // IMP-03 : le jeton de session rattache la mesure au compte sur le
+        // serveur ; aucun en-tête si l'utilisateur est anonyme.
+        options: Options(
+          contentType: Headers.formUrlEncodedContentType,
+          headers: AccountService.authHeaders,
+        ),
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {

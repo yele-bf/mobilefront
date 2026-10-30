@@ -4,6 +4,7 @@ import '../constants/config.dart';
 import '../models/speed_test_result.dart';
 import '../services/dashboard_api_service.dart';
 import '../services/local_storage_service.dart';
+import '../services/packet_loss_service.dart';
 import '../services/speed_test_api_service.dart';
 import '../services/streaming_test_service.dart';
 import '../services/yele_scoring_engine.dart';
@@ -191,8 +192,13 @@ class _ScoreScreenState extends State<ScoreScreen> {
             children: [
               m('▼ Download', r.downloadSpeed.toStringAsFixed(2), 'Mb/s', ''),
               m('▲ Upload', r.uploadSpeed.toStringAsFixed(2), 'Mb/s', ''),
-              m('↔ Latence', r.ping.toStringAsFixed(0), 'ms',
-                  'Gigue : ${r.jitter.toStringAsFixed(0)} ms'),
+              m('↔ Latence', r.ping.toStringAsFixed(0), 'ms', [
+                'Gigue : ${r.jitter.toStringAsFixed(0)} ms',
+                // IMP-07 : perte de paquets, à côté du ping et de la gigue
+                // comme sur nPerf.
+                if (r.packetLoss != null)
+                  'Perte : ${formatPacketLoss(r.packetLoss!)}',
+              ].join('\n')),
             ],
           ),
           // IMP-01 : données consommées par le test (Android ; « — » sur iOS).

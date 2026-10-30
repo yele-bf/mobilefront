@@ -83,7 +83,7 @@ mise en place du garde-fou, dont les commits ne respectent pas encore le §2.
 | ISS-10 | Historique — P2 | SAWADOGO Hassan Achraf Ammar | Valide |
 | IMP-05 | Échelle de score — P2 | TRAORE Abdoulaye / KIEMA François | Valide |
 | IMP-12 | Échelle de score — P2 | TRAORE Abdoulaye / KIEMA François | Valide |
-| ISS-06 | Débit / Latence — P2 | Wangraoua Aicha Bénédicte Flore Myriam / SAWADOGO Sutongnoma Saturnin | Valide |
+| ISS-06 | Débit / Latence — P2 | Wangraoua Aicha Bénédicte Flore Myriam / SAWADOGO Sutongnoma Saturnin | Valide | mobilefront a735cf6e / mobiletest 0fc094a4 / New_web 12e44934 |
 | ISS-02 | Identification réseau — P1 | BAMBA Seydou / NANEMA Wendinkonté Dimitri Judicaël | Valide |
 | ISS-04 | Serveur — P1 | KOHOUN Damou Daniel / TAMINI Heremave | Valide |
 | ISS-01 | Mesures radio — P1 | SAWADOGO Hassan Achraf Ammar | Valide |

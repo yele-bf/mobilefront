@@ -1,32 +1,34 @@
 # Preuves — IMP-03 (comptes utilisateurs)
 
-Captures fournies par l'owner de l'item, SANOU Zossoun Aristide Daouda, le 30/10/2026,
-prises sur l'application Android (APK de debug).
+## Captures retirées
 
-| Fichier | Ce que la capture montre |
-|---|---|
-| `IMP-03_01_menu-mon-compte.jpeg` | L'entrée « Mon compte » dans le menu latéral de l'application. |
-| `IMP-03_02_connexion.jpeg` | L'écran « Se connecter » : e-mail, mot de passe, « Pas de compte ? En créer un ». |
-| `IMP-03_03_selection-compte-google.jpeg` | La feuille de sélection de compte ouverte depuis le bouton Google. **L'adresse e-mail du compte est masquée** (pixellisation) depuis le 30/10/2026 : la version d'origine affichait une adresse personnelle dans un dépôt public. |
-| `IMP-03_04_creation-de-compte.jpeg` | L'écran « Créer un compte » : nom facultatif, e-mail, mot de passe (8 caractères au moins), « J'ai déjà un compte ». |
+Les quatre captures qui se trouvaient ici (menu « Mon compte », connexion, sélection
+de compte, création de compte) ont été **retirées le 30/10/2026 à la demande de l'owner**,
+SANOU Zossoun Aristide Daouda. Elles sont toujours présentes dans l'historique Git
+(commits `4c14905`, puis `4be42650` qui en masquait l'adresse e-mail).
 
-## Ce que ces captures attestent
+Motif : elles provenaient d'une build locale contenant un bouton « Continuer avec Google »
+absent du dépôt (aucun `google_sign_in`, aucune occurrence de « Google » dans
+`lib/screens/account_screen.dart`), et l'une d'elles affichait une adresse personnelle
+dans un dépôt public.
 
-L'espace de gestion de compte demandé par le classeur existe et est atteignable :
-création de compte, connexion, et sélection d'un fournisseur d'identité.
+## Statut de l'item
 
-## Réserves
+IMP-03 reste **`Validé`** et l'issue `yele-bf/mobilefront#9` reste fermée. L'owner pourra
+verser de nouvelles captures dans ce dossier (build de `main`, sur Android et dans Chrome) :
+elles seront ajoutées ici et mentionnées au registre, sans rouvrir l'item.
 
-- Les captures montrent un bouton **« Continuer avec Google »** et un texte d'introduction
-  (« …sur un nouveau téléphone… ») qui **ne sont pas dans le code de cette branche** :
-  `lib/screens/account_screen.dart` n'a aucune occurrence de « Google », et `google_sign_in`
-  n'est déclaré dans aucun `pubspec.yaml` du dépôt. La connexion Google est donc explicitement
-  hors périmètre de cette PR ; les captures proviennent d'une build locale qui la contient.
-  À reproduire après fusion sur la build de `main` si l'on veut une preuve strictement
-  conforme au code livré.
-- La méthode de test du classeur — « créer plusieurs comptes et vérifier l'isolation des
-  historiques » — **n'est pas photographiée**. Elle est couverte par `test/account_test.dart`
-  (deux comptes puis aucun compte : seules les mesures du compte connecté, ou les mesures
-  anonymes, apparaissent).
-- Aucune capture du parcours serveur (`/api/me/results`) : le backend n'était pas disponible
-  sur le poste de l'agent au moment de la validation.
+## Ce qui atteste l'item en l'absence de captures
+
+- `test/account_test.dart` (mobilefront) : état anonyme, session mémorisée puis rechargée,
+  isolation des historiques entre deux comptes et sans compte, persistance de `accountId`
+  (`HiveField(59)`).
+- `database/mongodb/accounts_test.go` et `results/auth_test.go` (mobiletest) : hachage
+  PBKDF2, empreinte du jeton, limiteur, validation de l'e-mail, en-tête Bearer.
+- Le code mergé : `mobilefront#57` → `b29474c`, `mobiletest#19` → `c679e7e`.
+
+## Réserves maintenues
+
+- Le parcours serveur complet (register → login → me → results) n'a pas été rejoué de bout
+  en bout : ni MongoDB ni `mongod` sur le poste de relecture.
+- La connexion Google n'est pas implémentée dans ce dépôt.

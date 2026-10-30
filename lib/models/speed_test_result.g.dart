@@ -58,6 +58,12 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
       signalNrRsrp: fields[39] as int?,
       signalNrRsrq: fields[40] as int?,
       wifiRssi: fields[41] as int?,
+      downloadMin: fields[53] as double?,
+      downloadMax: fields[54] as double?,
+      uploadMin: fields[55] as double?,
+      uploadMax: fields[56] as double?,
+      pingMin: fields[57] as double?,
+      pingMax: fields[58] as double?,
       scoringVersion: fields[44] as String?,
       scoreDownload: fields[45] as double?,
       scoreUpload: fields[46] as double?,
@@ -72,7 +78,9 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
   @override
   void write(BinaryWriter writer, SpeedTestResult obj) {
     writer
-      ..writeByte(49)
+      // Nombre de champs écrits : 49 + 6 min / max (ISS-06). Une autre PR qui
+      // ajoute un champ doit additionner, pas remplacer.
+      ..writeByte(55)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -155,6 +163,18 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
       ..write(obj.signalNrRsrq)
       ..writeByte(41)
       ..write(obj.wifiRssi)
+      ..writeByte(53)
+      ..write(obj.downloadMin)
+      ..writeByte(54)
+      ..write(obj.downloadMax)
+      ..writeByte(55)
+      ..write(obj.uploadMin)
+      ..writeByte(56)
+      ..write(obj.uploadMax)
+      ..writeByte(57)
+      ..write(obj.pingMin)
+      ..writeByte(58)
+      ..write(obj.pingMax)
       ..writeByte(44)
       ..write(obj.scoringVersion)
       ..writeByte(45)

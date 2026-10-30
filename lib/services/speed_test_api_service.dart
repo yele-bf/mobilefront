@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import '../constants/config.dart';
 import '../models/speed_test_result.dart';
 import '../models/test_selection.dart';
+import 'account_service.dart';
 import 'browsing_test_service.dart';
 import 'device_identity_service.dart';
 import 'streaming_backend_setting.dart';
@@ -470,6 +471,8 @@ class SpeedTestApiService {
         simOperator: simOperator,
         cellularTech: cellularTech,
         simSlot: simSlot,
+        // IMP-03 : mesure rattachée au compte connecté (historique isolé).
+        accountId: AccountService.currentId,
         signalDbm: signalDbm,
         signalRsrp: signalRsrp,
         signalRsrq: signalRsrq,
@@ -874,7 +877,12 @@ class SpeedTestApiService {
             'wifiRssi': result.wifiRssi ?? 0,
           }),
         },
-        options: Options(contentType: Headers.formUrlEncodedContentType),
+        // IMP-03 : le jeton de session rattache la mesure au compte sur le
+        // serveur ; aucun en-tête si l'utilisateur est anonyme.
+        options: Options(
+          contentType: Headers.formUrlEncodedContentType,
+          headers: AccountService.authHeaders,
+        ),
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {

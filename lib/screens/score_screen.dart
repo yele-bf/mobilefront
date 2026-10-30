@@ -47,7 +47,8 @@ class _ScoreScreenState extends State<ScoreScreen> {
     // l'API répond (et seulement pour un test de débit).
     if (_speedDone) {
       _dashboard
-          .fetchBarometer(r.downloadSpeed, r.uploadSpeed, r.ping)
+          .fetchBarometer(r.downloadSpeed, r.uploadSpeed, r.ping,
+              operator: barometerOperatorOf(r))
           .then((v) {
         if (mounted && v != null) setState(() => _barometer = v);
       });
@@ -265,9 +266,46 @@ class _ScoreScreenState extends State<ScoreScreen> {
               'plus rapide que ${b.uploadPercentile.toStringAsFixed(0)} % des mesures'),
           _barometerRow('↔ Latence', b.pingPercentile,
               'meilleure que ${b.pingPercentile.toStringAsFixed(0)} % des mesures'),
+          // IMP-09 : même lecture, parmi les seuls clients de l'opérateur.
+          if (b.hasOperatorComparison) ..._operatorBarometer(b),
         ],
       ),
     );
+  }
+
+  /// IMP-09 — Bloc « Parmi les clients de l'opérateur » et débits moyens.
+  List<Widget> _operatorBarometer(BarometerResult b) {
+    final op = b.operator!;
+    final muted = TextStyle(fontSize: 12, color: YeleColors.surface.muted);
+    return [
+      const Divider(height: 22),
+      Row(
+        children: [
+          Expanded(
+            child: Text('Parmi les clients $op',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: YeleColors.surface.ink)),
+          ),
+          Text('${b.operatorSampleSize} mesures', style: muted),
+        ],
+      ),
+      const SizedBox(height: 4),
+      _barometerRow('▼ Download', b.operatorDownloadPercentile,
+          'plus rapide que ${b.operatorDownloadPercentile.toStringAsFixed(0)} % des clients $op'),
+      _barometerRow('▲ Upload', b.operatorUploadPercentile,
+          'plus rapide que ${b.operatorUploadPercentile.toStringAsFixed(0)} % des clients $op'),
+      _barometerRow('↔ Latence', b.operatorPingPercentile,
+          'meilleure que ${b.operatorPingPercentile.toStringAsFixed(0)} % des clients $op'),
+      const SizedBox(height: 6),
+      Text(
+        'Débit moyen ▼ : vous ${r.downloadSpeed.toStringAsFixed(1)} Mb/s · '
+        '$op ${b.operatorAvgDownload.toStringAsFixed(1)} Mb/s · '
+        'toutes mesures ${b.nationalAvgDownload.toStringAsFixed(1)} Mb/s',
+        style: muted,
+      ),
+    ];
   }
 
   /// Une ligne du baromètre : métrique + mini-jauge de centile.

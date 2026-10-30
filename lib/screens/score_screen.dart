@@ -267,7 +267,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
     );
   }
 
-  /// IMP-09 — Bloc « Parmi les clients <opérateur> » et débits moyens.
+  /// IMP-09 — Bloc « Parmi les clients de l'opérateur » et débits moyens.
   List<Widget> _operatorBarometer(BarometerResult b) {
     final op = b.operator!;
     final muted = TextStyle(fontSize: 12, color: YeleColors.surface.muted);

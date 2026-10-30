@@ -3,12 +3,15 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'models/test_selection.dart';
+import 'screens/conditions_screen.dart';
+import 'screens/consent_screen.dart';
 import 'screens/coverage_screen.dart';
 import 'screens/faq_screen.dart';
 import 'screens/full_test_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/usage_screen.dart';
+import 'services/consent_service.dart';
 import 'services/local_storage_service.dart';
 import 'services/settings_service.dart';
 import 'services/streaming_backend_setting.dart';
@@ -41,11 +44,21 @@ Future<void> main() async {
   } catch (_) {
     // Sans suivi de consommation, le reste de l'app fonctionne normalement.
   }
-  runApp(const YeleApp());
+  try {
+    await ConsentService.instance.initialize();
+  } catch (_) {
+    // Illisible : hasAccepted vaudra faux et l'accord sera redemandé (IMP-14).
+  }
+  runApp(YeleApp(hasAccepted: ConsentService.instance.hasAccepted));
 }
 
 class YeleApp extends StatefulWidget {
-  const YeleApp({super.key});
+  /// IMP-14 : faux tant que les conditions d'utilisation n'ont pas été
+  /// acceptées ; l'app s'ouvre alors sur l'écran des conditions. Vrai par
+  /// défaut pour les tests de widgets, qui ne passent pas par main().
+  final bool hasAccepted;
+
+  const YeleApp({super.key, this.hasAccepted = true});
 
   @override
   State<YeleApp> createState() => _YeleAppState();
@@ -128,8 +141,11 @@ class _YeleAppState extends State<YeleApp> with WidgetsBindingObserver {
       themeMode:
           _settings.appStyle == AppStyle.dark ? ThemeMode.dark : ThemeMode.light,
       // ISS-12 : la route initiale dépend du réglage « Test par défaut ».
-      initialRoute: _settings.initialRoute,
+      // IMP-14 : conditions d'utilisation à accepter au premier lancement.
+      initialRoute: widget.hasAccepted ? _settings.initialRoute : '/consent',
       routes: {
+        '/consent': (_) => ConsentScreen(nextRoute: _settings.initialRoute),
+        '/conditions': (_) => const ConditionsScreen(),
         '/full': (_) => const FullTestScreen(
               selection: TestSelection.all(),
               title: 'Test complet',

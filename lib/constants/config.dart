@@ -1,10 +1,11 @@
 // Configuration des constantes de l'application Yélé
 
 // ========== API CONFIGURATION ==========
-// Backend de production hébergé sur Render. Le test IMP-13 du 08/09/2026 avait
-// nécessité une bascule temporaire sur un backend local (192.168.11.108:8989) ;
-// l'URL Render est rétablie ici avant diffusion aux agents (cf. push 09/10/2026).
-const String API_BASE_URL = 'https://mobiletest-j0c6.onrender.com';
+// Backend de production hébergé sur Render, branchement étape 12 (plan v1.5,
+// 04/11/2026) : l'ancien service `mobiletest-j0c6.onrender.com` est remplacé
+// par le service définitif, aligné sur le dashboard (config.js) et vérifié en
+// ligne (endpoints /api/*, CORS et Atlas ping au 04/11/2026).
+const String API_BASE_URL = 'https://yele-backend.onrender.com';
 // API MongoDB intégrée au même backend speedtest-go (/api/*)
 const String MONGO_API_BASE_URL = '$API_BASE_URL/api';
 

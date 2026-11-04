@@ -44,6 +44,7 @@ jobs:
           ls -l "$RUNNER_TEMP/yele-release.jks"
           echo "YELE_KEYSTORE_PATH=$RUNNER_TEMP/yele-release.jks" >> "$GITHUB_ENV"
           echo "YELE_KEY_ALIAS=yele-release" >> "$GITHUB_ENV"
+          echo "YELE_KEYSTORE_PASSWORD=${{ secrets.YELE_KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
 
       - name: Construire l'APK release (signe avec la cle de prod)
         run: flutter build apk --release

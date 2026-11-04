@@ -1,8 +1,21 @@
+import java.io.File
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+// Signature release : en build local (aucune variable d'env), on retombe sur
+// la clé debug pour que `flutter run --release` fonctionne. En CI, le
+// workflow release.yml fournit la vraie clé de production via les variables
+// d'environnement YELE_KEYSTORE_* (secrets GitHub : la clé n'est jamais
+// dans le dépôt ; l'empreinte publique du certificat est consignée dans
+// credentials/keystore-fingerprint.txt pour vérifier l'APK signé).
+val yeleKeystorePath = System.getenv("YELE_KEYSTORE_PATH")
+val yeleKeystorePass = System.getenv("YELE_KEYSTORE_PASSWORD")
+val yeleKeyAlias = System.getenv("YELE_KEY_ALIAS")
+val yeleSignFromEnv = !yeleKeystorePath.isNullOrBlank() && File(yeleKeystorePath).exists()
 
 android {
     namespace = "com.yele.mobilefront"
@@ -25,11 +38,26 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (yeleSignFromEnv) {
+            create("yeleRelease") {
+                storeFile = file(yeleKeystorePath!!)
+                storePassword = yeleKeystorePass
+                keyAlias = yeleKeyAlias
+                keyPassword = yeleKeystorePass
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Signature : clé de production si fournie par l'environnement
+            // (CI), sinon clé debug en local (comportement Flutter par défaut).
+            signingConfig = if (yeleSignFromEnv) {
+                signingConfigs.getByName("yeleRelease")
+            } else {
+                signingConfigs.getByName("debug")
+            }
 
             // R8 : retire le code Java/Kotlin non atteint et renomme le reste.
             // Les règles de conservation sont dans proguard-rules.pro — les

@@ -1,18 +1,18 @@
 name: release-apk
 
-# Étape 12 du plan v1.5 : APK signé publié automatiquement.
-# Déclenché par la création d'un tag v* (en local : git tag v2.0.0+2 && git push origin v2.0.0+2).
-# La clé de signature vit UNIQUEMENT dans les secrets GitHub du dépôt :
-#   YELE_KEYSTORE_B64      : keystore PKCS12 encodé base64
-#   YELE_KEYSTORE_PASSWORD : mot de passe du store et de la clé (identiques)
-# Elle n'apparaît jamais en clair dans les logs ni dans le dépôt. L'empreinte
-# publique du certificat (credentials/keystore-fingerprint.txt côté machine) est
-# vérifiée sur l'APK signé en sortie : le build échoue si un autre certificat
-# signe l'app.
+# Etape 12 du plan v1.5 : APK signe publie automatiquement.
+# Declenche par la creation d'un tag v*. La cle de signature vit UNIQUEMENT
+# dans les secrets GitHub du depot :
+#   YELE_KEYSTORE_B64      : keystore PKCS12 encode base64
+#   YELE_KEYSTORE_PASSWORD : mot de passe du store et de la cle (identiques)
+# Elle n'apparait jamais en clair dans les logs ni dans le depot. L'empreinte
+# publique du certificat (credentials/keystore-fingerprint.txt cote machine)
+# est verifiee sur l'APK signe : le build echoue si un autre certificat signe.
 
-on:
+"on":
   push:
-    tags: ['v*']
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
@@ -20,11 +20,8 @@ permissions:
 jobs:
   apk:
     runs-on: ubuntu-latest
-    env:
-      YELE_KEYSTORE_PATH: ${{ runner.temp }}/yele-release.jks
-      YELE_KEY_ALIAS: yele-release
     steps:
-      - name: Récupérer le dépôt
+      - name: Recuperer le depot
         uses: actions/checkout@v4
 
       - name: Installer Java 17 (requis par Gradle et apksigner)
@@ -38,30 +35,30 @@ jobs:
         with:
           channel: stable
 
-      - name: Dépendances
+      - name: Dependencies
         run: flutter pub get
 
-      - name: Décoder la clé de signature (chiffrée en secrets)
+      - name: Decoder la cle de signature (chiffree en secrets)
         run: |
           echo -n "${{ secrets.YELE_KEYSTORE_B64 }}" | base64 --decode > "$RUNNER_TEMP/yele-release.jks"
-          ls -l "$RUNNER_TEMP/yele-release.jks"   # taille seulement
+          ls -l "$RUNNER_TEMP/yele-release.jks"
+          echo "YELE_KEYSTORE_PATH=$RUNNER_TEMP/yele-release.jks" >> "$GITHUB_ENV"
+          echo "YELE_KEY_ALIAS=yele-release" >> "$GITHUB_ENV"
 
-      - name: Construire l'APK release (signé avec la clé de prod)
+      - name: Construire l'APK release (signe avec la cle de prod)
         run: flutter build apk --release
 
-      - name: Déplacer l'APK sous un nom final
+      - name: Deplacer l'APK sous un nom final
         run: |
           mkdir -p dist
           cp "build/app/outputs/flutter-apk/app-release.apk" "dist/yele-${GITHUB_REF_NAME#v}.apk"
 
-      - name: Vérifier la signature (apksigner + empreinte attendue)
+      - name: Verifier la signature (apksigner + empreinte attendue)
         run: |
           APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort | tail -1)
           "$APKSIGNER" verify --print-certs dist/*.apk | tee certs.txt
-          grep -qi "420507debf993c7d38bebe827bb580e3416504de8dfb330b0b71c2dd01a45f95" certs.txt \
-            && echo "Empreinte attendue OK."
           if ! grep -qi "420507debf993c7d38bebe827bb580e3416504de8dfb330b0b71c2dd01a45f95" certs.txt; then
-            echo "ECHEC : l'APK n'est pas signé avec le certificat de production attendu."
+            echo "ECHEC : l'APK n'est pas signe avec le certificat de production attendu."
             exit 1
           fi
 
@@ -71,7 +68,7 @@ jobs:
           files: dist/*.apk
           generate_release_notes: true
 
-      - name: Artifact (mêmes fichiers, durable 90 jours)
+      - name: Artifact ( memes fichiers, durable 90 jours )
         uses: actions/upload-artifact@v4
         with:
           name: yele-apk-${{ github.ref_name }}

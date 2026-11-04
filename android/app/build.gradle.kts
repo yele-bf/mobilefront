@@ -1,3 +1,5 @@
+import java.io.File
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -13,7 +15,7 @@ plugins {
 val yeleKeystorePath = System.getenv("YELE_KEYSTORE_PATH")
 val yeleKeystorePass = System.getenv("YELE_KEYSTORE_PASSWORD")
 val yeleKeyAlias = System.getenv("YELE_KEY_ALIAS")
-val yeleSignFromEnv = !yeleKeystorePath.isNullOrBlank() && java.io.File(yeleKeystorePath).exists()
+val yeleSignFromEnv = !yeleKeystorePath.isNullOrBlank() && File(yeleKeystorePath).exists()
 
 android {
     namespace = "com.yele.mobilefront"

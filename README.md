@@ -61,8 +61,9 @@ dart run build_runner build --delete-conflicting-outputs
 flutter run
 ```
 
-L'application pointe par défaut sur le backend de démonstration hébergé sur
-Render. Aucune configuration n'est nécessaire pour un premier lancement.
+L'application pointe par défaut sur le backend de production hébergé sur
+Render (`yele-backend.onrender.com`, étape 12 du plan v1.5 — 04/11/2026).
+Aucune configuration n'est nécessaire pour un premier lancement.
 
 ## Configuration
 
@@ -70,7 +71,7 @@ Tout est centralisé dans **`lib/constants/config.dart`**.
 
 | Constante | Rôle | Défaut |
 |---|---|---|
-| `API_BASE_URL` | URL du backend Go | `https://mobiletest-j0c6.onrender.com` |
+| `API_BASE_URL` | URL du backend Go | `https://yele-backend.onrender.com` |
 | `SPEED_PHASE_DURATION_SEC` | Durée d'une phase de mesure de débit | `10` s |
 | `SPEED_WARMUP_MS` | Montée en charge exclue du calcul | `1000` ms |
 | `STREAMING_YOUTUBE_VIDEO_ID` | Vidéo de référence du test streaming | `aqz-KE-bpKQ` |

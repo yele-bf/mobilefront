@@ -54,6 +54,16 @@ class NetworkStatus {
   /// Internet passe par le Wi-Fi.
   final int? wifiRssi;
 
+  /// Norme du réseau Wi-Fi associé (« Wi-Fi 4 » … « Wi-Fi 7 »). Renseignée
+  /// seulement si Internet passe par le Wi-Fi et que l'appareil divulgue la
+  /// norme ; les réseaux anciens (b/g) restent null.
+  final String? wifiStandard;
+
+  /// Nom du réseau Wi-Fi (SSID)associé au test, si Internet passe par le
+  /// Wi-Fi et que l'appareil le divulgue (Android exige la localisation
+  /// précise + services de position actifs). null sinon.
+  final String? wifiSsid;
+
   const NetworkStatus({
     required this.connectionType,
     this.cellularTech,
@@ -67,6 +77,8 @@ class NetworkStatus {
     this.signalNrRsrp,
     this.signalNrRsrq,
     this.wifiRssi,
+    this.wifiStandard,
+    this.wifiSsid,
   });
 
   bool get isWifi => connectionType == 'WiFi';
@@ -80,7 +92,7 @@ class NetworkStatus {
       'NetworkStatus($connectionType, tech=$cellularTech, sim=$simOperator, '
       'slot=$dataSimSlot/$simCount, dbm=$signalDbm, rsrp=$signalRsrp, '
       'rsrq=$signalRsrq, nrRsrp=$signalNrRsrp, nrRsrq=$signalNrRsrq, '
-      'wifiRssi=$wifiRssi)';
+      'wifiRssi=$wifiRssi, wifiStandard=$wifiStandard, wifiSsid=$wifiSsid)';
 }
 
 /// Service d'information réseau : type de connexion (connectivity_plus) +
@@ -95,7 +107,7 @@ class NetworkInfoService {
   // vide. Le nom fourni par le système reste la source principale. Limité au
   // Burkina Faso (pays de déploiement) pour éviter des libellés erronés.
   static const Map<String, String> operatorsByMccMnc = {
-    '61301': 'Telmob (Onatel)', // MCC 613 = Burkina Faso
+    '61301': 'Moov Africa BF', // ONATEL/Telmob — décision produit 05/11
     '61302': 'Orange Burkina Faso',
     '61303': 'Telecel Faso',
   };
@@ -108,6 +120,8 @@ class NetworkInfoService {
 
     final connectionType = await _connectionType();
 
+    String? wifiSsid; // alimenté depuis le canal natif ci-dessous
+
     String? cellularTech;
     String? simOperator;
     int? dataSimSlot;
@@ -119,6 +133,7 @@ class NetworkInfoService {
     int? signalNrRsrp;
     int? signalNrRsrq;
     int? wifiRssi;
+    String? wifiStandard; // norme du Wi-Fi associé (Wi-Fi 4…7), null en SIM
 
     // Sur Android, on s'assure d'avoir la permission avant de lire.
     if (Platform.isAndroid) {
@@ -135,10 +150,18 @@ class NetworkInfoService {
         cellularTech = (info['cellularTech'] as String?)?.trim();
         if (cellularTech != null && cellularTech.isEmpty) cellularTech = null;
 
-        simOperator = (info['simOperator'] as String?)?.trim();
-        if (simOperator == null || simOperator.isEmpty) {
-          final mccMnc = (info['mccMnc'] as String?)?.trim();
-          simOperator = _operatorFromMccMnc(mccMnc);
+        // Règle produit (retour B1 personnes) : le nom affiché vient
+        // D'ABORD de la table MCC/MNC (noms canoniques ARCEP, ex. 61301 →
+        // « Moov Africa BF », jamais le code brut « 613 01 ») ; le nom
+        // natif du téléphone (parfois abrégé : « Orange BF ») n'est utilisé
+        // qu'en repli si la table ne connaît pas l'opérateur.
+        final rawOperator = (info['simOperator'] as String?)?.trim();
+        final simOperatorCanonique =
+            _operatorFromMccMnc(info['mccMnc'] as String?);
+        if (simOperatorCanonique != null && simOperatorCanonique.isNotEmpty) {
+          simOperator = simOperatorCanonique;
+        } else if (rawOperator != null && rawOperator.isNotEmpty) {
+          simOperator = rawOperator;
         }
         dataSimSlot = (info['dataSimSlot'] as num?)?.toInt();
         simCount = (info['simCount'] as num?)?.toInt() ?? 0;
@@ -156,6 +179,18 @@ class NetworkInfoService {
         signalNrRsrp = readSignal('signalNrRsrp');
         signalNrRsrq = readSignal('signalNrRsrq');
         wifiRssi = readSignal('wifiRssi');
+        // Norme du Wi-Fi associé (« Wi-Fi 4 »…) : le natif ne la fournit
+        // qu'en Wi-Fi actif, jamais en chaîne vide.
+        final std = (info['wifiStandard'] as String?)?.trim();
+        if (std != null && std.isNotEmpty) wifiStandard = std;
+        // SSID du Wi-Fi associé : le natif ne le fournit qu'en Wi-Fi actif,
+        // jamais « <unknown ssid> » ni entre guillemets.
+        if (connectionType == 'WiFi') {
+          final ssid = (info['wifiSsid'] as String?)?.trim();
+          if (ssid != null && ssid.isNotEmpty && ssid != '<unknown ssid>') {
+            wifiSsid = ssid;
+          }
+        }
       }
     } on MissingPluginException {
       // Canal natif absent (ex. tests) : on reste sur le type de connexion.
@@ -165,6 +200,7 @@ class NetworkInfoService {
 
     final status = NetworkStatus(
       connectionType: connectionType,
+      wifiSsid: wifiSsid,
       cellularTech: cellularTech,
       simOperator: simOperator,
       dataSimSlot: dataSimSlot,
@@ -176,6 +212,7 @@ class NetworkInfoService {
       signalNrRsrp: signalNrRsrp,
       signalNrRsrq: signalNrRsrq,
       wifiRssi: wifiRssi,
+      wifiStandard: wifiStandard,
     );
     logger.i('📶 $status');
     return status;
@@ -198,7 +235,11 @@ class NetworkInfoService {
 
   String? _operatorFromMccMnc(String? mccMnc) {
     if (mccMnc == null || mccMnc.isEmpty) return null;
-    return operatorsByMccMnc[mccMnc];
+    // Normalisation : le natif peut renvoyer des séparateurs
+    // (« 613 01 ») — on comparaison sur les chiffres seuls.
+    final digits = mccMnc.replaceAll(RegExp(r'\D'), '');
+    if (digits.isEmpty) return null;
+    return operatorsByMccMnc[digits];
   }
 
   // ── Compatibilité : anciens appels ponctuels ────────────────────────────────

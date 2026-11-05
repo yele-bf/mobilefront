@@ -86,6 +86,7 @@ class _FullTestScreenState extends State<FullTestScreen>
   String _connection = '—'; // WiFi / Mobile (par où passe Internet)
   String _fai = '—'; // FAI de connexion (déduit de l'IP)
   String _mobileNet = '—'; // Réseau mobile SIM : « 4G · Orange »
+  String _wifiSsid = '—'; // Nom du réseau Wi-Fi (SSID), n.d. hors Wi-Fi
 
   StreamingDisplay? _stream; // test de streaming (lecteur YouTube visible)
   BrowsingDisplay? _web; // test de navigation (pages visibles)
@@ -133,24 +134,24 @@ class _FullTestScreenState extends State<FullTestScreen>
     final loc = await _location.getCurrentLocation();
     if (!mounted) return;
     setState(() {
-      _connection = status.connectionType;
-      _fai = loc?.operator.isNotEmpty == true ? loc!.operator : '—';
+      // Règle produit : « Connexion » affiche la techno seule (2G/3G/4G/5G)
+      // en données mobiles ; et le FAI (déduit de l'IP du réseau mobile)
+      // n'est pas montré pour un test SIM.
+      _connection = status.isWifi ? 'WiFi' : (status.cellularTech ?? '—');
+      _fai = status.isWifi
+          ? (loc?.operator.isNotEmpty == true ? loc!.operator : '—')
+          : '—';
       _mobileNet = _formatMobile(status);
     });
   }
 
-  /// « 4G · Orange », « 4G », ou « — » selon ce qui est disponible.
+  /// Règle produit : le nom de l'opérateur seul — pas la techno (déjà
+  /// affichée par « Connexion »), pas le numéro de SIM. « — » en Wi-Fi et
+  /// si le nom n'est pas déterminé (jamais un code brut type « 613 01 »).
   String _formatMobile(NetworkStatus s) {
     if (s.isWifi) return '—';
-    final tech = s.cellularTech;
     final sim = s.simOperator;
-    final details = [
-      if (tech != null && tech.isNotEmpty) tech,
-      if (sim != null && sim.isNotEmpty) sim,
-      if (s.simCount > 1 && s.dataSimSlot != null)
-        'SIM ${s.dataSimSlot! + 1}',
-    ];
-    return details.isEmpty ? '—' : details.join(' · ');
+    return (sim != null && sim.isNotEmpty) ? sim : '—';
   }
 
   /// Fixe la cible ; le Ticker se charge d'y amener l'aiguille.
@@ -243,9 +244,21 @@ class _FullTestScreenState extends State<FullTestScreen>
 
       if (mounted) {
         setState(() {
-          _connection = status.connectionType;
-          _fai = ipLoc?.operator.isNotEmpty == true ? ipLoc!.operator : _fai;
+          // Règle produit : « Connexion » = techno seule en SIM ; FAI
+          // affiché uniquement en Wi-Fi (celui du réseau mobile est
+          // déduit de l'IP mais non montré, il reste pour le backend).
+          _connection = status.isWifi ? 'WiFi' : (status.cellularTech ?? '—');
+          _fai = status.isWifi
+              ? (ipLoc?.operator.isNotEmpty == true ? ipLoc!.operator : '—')
+              : '—';
           _mobileNet = _formatMobile(status);
+          // SSID divulgué par l'appareil uniquement en Wi-Fi ; le cache
+          // Android peut renvoyer « <unknown ssid> » si la localisation
+          // est éteinte : on n'affiche jamais cette valeur.
+          final rawSsid = status.isWifi ? (status.wifiSsid ?? '').trim() : '';
+          _wifiSsid = (rawSsid.isNotEmpty && rawSsid != '<unknown ssid>')
+              ? rawSsid
+              : '—';
         });
       }
 
@@ -262,6 +275,15 @@ class _FullTestScreenState extends State<FullTestScreen>
         signalNrRsrp: signalNrRsrp,
         signalNrRsrq: signalNrRsrq,
         wifiRssi: wifiRssi,
+        wifiSsid: status.isWifi ? status.wifiSsid : null,
+        // Ligne « Technologie » (retour produit B1) : norme du Wi-Fi
+        // (« Wi-Fi 5 »…, repli « Wi-Fi ») si le test passe par le Wi-Fi,
+        // 2G/3G/4G/5G avec une SIM.
+        technology: status.isWifi
+            ? ((status.wifiStandard ?? '').isNotEmpty
+                ? status.wifiStandard
+                : 'Wi-Fi')
+            : status.cellularTech,
         latitude: gps?.latitude ?? ipLoc?.latitude,
         longitude: gps?.longitude ?? ipLoc?.longitude,
         location: ipLoc != null ? '${ipLoc.city}, ${ipLoc.countryName}' : null,
@@ -636,7 +658,7 @@ class _FullTestScreenState extends State<FullTestScreen>
               size: 20, color: Color(0xFF5A6B3A)),
           const SizedBox(width: 10),
           Expanded(
-            child: Text('Serveur de test : $serverDisplayName',
+            child: Text('Serveur de test : $serverRichLabel',
                 style: const TextStyle(color: Color(0xFF33402A), fontSize: 13)),
           ),
         ],
@@ -746,6 +768,7 @@ class _FullTestScreenState extends State<FullTestScreen>
         children: [
           c('Connexion', _connection),
           c('FAI', _fai),
+          c('SSID Wi-Fi', _wifiSsid),
           c('Réseau mobile', _mobileNet),
         ],
       ),

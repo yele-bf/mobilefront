@@ -115,8 +115,52 @@ object SignalMetrics {
         }
     }
 
-    /** Vrai si le lien Internet actif de l'appareil est le Wi-Fi. */
-    fun isOnWifi(context: Context): Boolean {
+    /**
+     * Nom du réseau Wi-Fi (SSID)associé, ou null si l'appareil n'est pas
+     * associé ou ne le divulgue pas : Android exige la localisation précise
+     * et les services de position actifs, sinon il renvoie « <unknown ssid> ».
+     */
+    @Suppress("DEPRECATION") // connectionInfo : déprécié API 31, toujours fonctionnel ;
+    // lecture ponctuelle synchrone (voir wifiRssi ci-dessus).
+    fun wifiSsid(context: Context): String? {
+        return try {
+            val wm = context.applicationContext
+                .getSystemService(Context.WIFI_SERVICE) as? WifiManager
+                ?: return null
+            val info = wm.connectionInfo ?: return null
+            val ssid = info.ssid?.trim()?.removeSurrounding("\"") ?: return null
+            if (wm.isWifiEnabled && ssid.isNotEmpty() && ssid != "<unknown ssid>") ssid else null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Norme du réseau Wi-Fi associé (Wi-Fi 4/5/6/…), ou null si l'appareil
+     * n'est pas associé, ne divulgue pas la norme, ou que celle-ci est une
+     * légende ancienne (b/g). getWifiStandard existe à partir d'Android 10
+     * (API 29) ; les constantes WifiInfo.WIFI_STANDARD_* sont encodées en
+     * littéral pour rester compilables quel que soit le SDK cible.
+     */
+    @Suppress("DEPRECATION") // connectionInfo : voir wifiRssi ci-dessus.
+    fun wifiStandard(context: Context): String? {
+        return try {
+            val wm = context.applicationContext
+                .getSystemService(Context.WIFI_SERVICE) as? WifiManager
+                ?: return null
+            val info = wm.connectionInfo ?: return null
+            when (info.wifiStandard) { // 0=UNKNOWN, 1=LEGACY, 2=11n, 3=11ac, 4=11ax
+                2 -> "Wi-Fi 4"
+                3 -> "Wi-Fi 5"
+                4 -> "Wi-Fi 6"
+                else -> null // b/g ancien ou inconnu
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** Vrai si le lien Internet actif de l'appareil est le Wi-Fi. */    fun isOnWifi(context: Context): Boolean {
         return try {
             val cm = context.applicationContext
                 .getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager

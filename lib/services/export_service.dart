@@ -12,6 +12,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../constants/config.dart';
 import '../models/speed_test_result.dart';
 import '../theme/yele_theme.dart';
 
@@ -333,7 +334,7 @@ class ExportService {
               pw.Spacer(),
               pw.Divider(color: _hex(YeleColors.line)),
               pw.Text(
-                'Généré par l\'application $_appName le ${_dateLong(DateTime.now())} — Serveur de test : ${r.server}.',
+                'Généré par l\'application $_appName le ${_dateLong(DateTime.now())} — Serveur de test : ${serverHumanLabel(r.server)}.',
                 style: _ts(regular, bold, 7.5, _hex(YeleColors.muted)),
               ),
             ],
@@ -439,7 +440,7 @@ class ExportService {
       ['Type de connexion', r.networkType ?? '—', ''],
       ['Réseau mobile', _mobileLabel(r), ''],
       ['FAI / Opérateur', r.operator ?? '—', ''],
-      ['Serveur', r.server, ''],
+      ['Serveur', serverHumanLabel(r.server), ''],
       ['Localisation', r.location ?? '—', ''],
       if ((r.latitude ?? 0) != 0) ...[
         ['Latitude', r.latitude!.toStringAsFixed(6), '°'],
@@ -511,11 +512,13 @@ class ExportService {
     ];
   }
 
+  /// Règle produit (alignée sur score_screen / history_screen) :
+  /// uniquement le nom de l'opérateur, « — » en Wi-Fi.
   String _mobileLabel(SpeedTestResult r) {
-    final parts = [r.cellularTech, r.simOperator]
-        .where((e) => (e ?? '').isNotEmpty)
-        .join(' · ');
-    return parts.isEmpty ? '—' : parts;
+    final isWifi = (r.networkType ?? '').toUpperCase().contains('WIFI');
+    if (isWifi) return '—';
+    final sim = r.simOperator;
+    return (sim != null && sim.isNotEmpty) ? sim : '—';
   }
 
   /// Mêmes seuils que l'écran de résultat (score_screen.dart) : cohérence

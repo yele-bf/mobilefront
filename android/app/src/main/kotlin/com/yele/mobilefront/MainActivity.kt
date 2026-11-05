@@ -512,10 +512,12 @@ class MainActivity : FlutterActivity() {
         } catch (_: Exception) {
         }
 
-        // RSSI du Wi-Fi associé, seulement si Internet passe par le Wi-Fi —
-        // en données mobiles il n'a pas de sens pour qualifier le test.
+        // SSID + RSSI du Wi-Fi associé, seulement si Internet passe par le
+        // Wi-Fi — en données mobiles, ni l'un ni l'autre ne qualifie le test.
         if (SignalMetrics.isOnWifi(this)) {
             SignalMetrics.wifiRssi(this)?.let { info["wifiRssi"] = it }
+            SignalMetrics.wifiSsid(this)?.let { info["wifiSsid"] = it }
+            SignalMetrics.wifiStandard(this)?.let { info["wifiStandard"] = it }
         }
 
         return info

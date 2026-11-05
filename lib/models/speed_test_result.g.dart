@@ -74,6 +74,8 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
       scoreGlobal: fields[50] as double?,
       scoringStatusesJson: fields[51] as String?,
       packetLoss: fields[52] as double?,
+      wifiSsid: fields[60] as String?,
+      technology: fields[61] as String?,
     );
   }
 
@@ -81,9 +83,9 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
   void write(BinaryWriter writer, SpeedTestResult obj) {
     writer
       // Nombre de champs écrits : 49 + accountId (IMP-03) + packetLoss (IMP-07)
-      // + 6 min / max (ISS-06). Une autre PR qui ajoute un champ doit
-      // additionner, pas remplacer.
-      ..writeByte(57)
+      // + 6 min / max (ISS-06) + wifiSsid (60) + technology (61). Une autre
+      // PR qui ajoute un champ doit additionner, pas remplacer.
+      ..writeByte(59)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -197,7 +199,11 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
       ..writeByte(51)
       ..write(obj.scoringStatusesJson)
       ..writeByte(52)
-      ..write(obj.packetLoss);
+      ..write(obj.packetLoss)
+      ..writeByte(60)
+      ..write(obj.wifiSsid)
+      ..writeByte(61)
+      ..write(obj.technology);
   }
 
   @override

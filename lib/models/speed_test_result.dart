@@ -151,6 +151,19 @@ class SpeedTestResult extends HiveObject {
   @HiveField(41)
   int? wifiRssi; // RSSI du Wi-Fi associé (dBm), null en données mobiles
 
+  // ── Wi-Fi : nom du réseau (SSID) associé au test ──
+  // Null = test en données mobiles, ou ancien résultat antérieur à ce champ,
+  // ou Android n'a pas divulgué le SSID (localisation éteinte).
+  @HiveField(60)
+  String? wifiSsid;
+
+  // ── Technologie du lien utilisé pour le test ──
+  // « Wi-Fi 4/5/6/7 » (norme du réseau Wi-Fi) ou « Wi-Fi » en repli, et
+  // « 2G/3G/4G/5G » avec une SIM. Null = ancien enregistrement antérieur
+  // à ce champ (l'historique retombe alors sur cellularTech).
+  @HiveField(61)
+  String? technology;
+
   // ── ISS-06 : min / max des débits et de la latence ──
   // La moyenne est déjà portée par downloadSpeed / uploadSpeed / ping.
   // Null = non mesurés (test sans phase de débit, ou résultat antérieur).
@@ -249,6 +262,8 @@ class SpeedTestResult extends HiveObject {
     this.signalNrRsrp,
     this.signalNrRsrq,
     this.wifiRssi,
+    this.wifiSsid,
+    this.technology,
     this.downloadMin,
     this.downloadMax,
     this.uploadMin,
@@ -311,6 +326,8 @@ class SpeedTestResult extends HiveObject {
       'signalNrRsrp': signalNrRsrp,
       'signalNrRsrq': signalNrRsrq,
       'wifiRssi': wifiRssi,
+      'wifiSsid': wifiSsid,
+      'technology': technology,
       // ISS-06 : min / max (la moyenne est downloadSpeed, uploadSpeed, ping).
       'downloadMin': downloadMin,
       'downloadMax': downloadMax,
@@ -476,6 +493,8 @@ class SpeedTestResult extends HiveObject {
       signalNrRsrp: readInt(['signalNrRsrp']),
       signalNrRsrq: readInt(['signalNrRsrq']),
       wifiRssi: readInt(['wifiRssi']),
+      wifiSsid: json['wifiSsid']?.toString(),
+      technology: json['technology']?.toString(),
       // IMP-12 : lecture tolérante (absent = ancien résultat, rien n'est
       // recalculé et aucune version de scoring n'est fabriquée).
       scoringVersion: json['scoringVersion']?.toString(),

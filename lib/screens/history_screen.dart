@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../constants/config.dart';
 import '../models/speed_test_result.dart';
 import '../services/account_service.dart';
 import '../services/local_storage_service.dart';
@@ -475,25 +476,46 @@ class _HistoryScreenState extends State<HistoryScreen> {
       padding: const EdgeInsets.all(14),
       child: Column(
         children: [
-          line('Serveur', r.server),
-          line('FAI', r.operator ?? '—'),
-          // Règle métier : le réseau mobile (SIM) n'est montré que pour un test
-          // fait avec la carte SIM ; en Wi-Fi la ligne est masquée, même si
-          // d'anciens enregistrements contiennent encore ces champs.
-          if (!(r.networkType ?? '').toUpperCase().contains('WIFI') &&
-              ((r.simOperator ?? '').isNotEmpty ||
-                  (r.cellularTech ?? '').isNotEmpty ||
-                  r.simSlot != null))
-            line(
-                'Réseau mobile',
-                [
-                  r.cellularTech,
-                  r.simOperator,
-                  if (r.simSlot != null) 'SIM ${r.simSlot! + 1}',
-                ]
-                    .where((e) => (e ?? '').isNotEmpty)
-                    .join(' · ')),
-          line('Réseau', r.location ?? '—'),
+          line('Serveur', serverHumanLabel(r.server)),
+          // Règle produit : FAI affiché seulement pour un test Wi-Fi. En
+          // test SIM le FAI déduit de l'IP (ex. « Orange Burkina Faso ») est
+          // stocké pour le backend mais affiché « — ».
+          line(
+              'FAI',
+              (r.networkType ?? '').toUpperCase().contains('WIFI')
+                  ? (r.operator ?? '—')
+                  : '—'),
+          // Ligne SSID Wi-Fi : le nom du réseau Wi-Fi, « n.d. » pour les
+          // anciens enregistrements antérieurs à ce champ.
+          if ((r.networkType ?? '').toUpperCase().contains('WIFI'))
+            line('SSID Wi-Fi',
+                (r.wifiSsid != null && r.wifiSsid!.trim().isNotEmpty)
+                    ? r.wifiSsid!.trim()
+                    : 'n.d.'),
+          // Règle produit : UNE seule ligne « Réseau mobile » — « — » en
+          // Wi-Fi (aucun réseau mobile sollicité), le nom de l'opérateur
+          // canonique en test SIM (Orange Burkina Faso / Telecel Faso /
+          // Moov Africa BF). L'ancienne ligne « Réseau » (qui montrait la
+          // « Ville, Pays » de la géolocalisation IP) est supprimée ; la
+          // ville reste visible via la carte et « Coord. (adresse) ».
+          line(
+              'Réseau mobile',
+              (r.networkType ?? '').toUpperCase().contains('WIFI')
+                  ? '—'
+                  : ((r.simOperator ?? '').isNotEmpty
+                      ? r.simOperator!
+                      : '—')),
+          // Ligne « Technologie » (retour produit B1) : la norme du lien
+          // utilisé pour le test — Wi-Fi 4/5/6/7 (repli « Wi-Fi ») en Wi-Fi,
+          // 2G/3G/4G/5G avec une SIM. « n.d. » pour les anciens
+          // enregistrements antérieurs à ce champ.
+          line(
+              'Technologie',
+              (r.technology ?? '').isNotEmpty
+                  ? r.technology!
+                  : ((r.networkType ?? '').toUpperCase().contains('WIFI')
+                      ? 'Wi-Fi'
+                      : (r.cellularTech ?? 'n.d.'))),
           if ((r.deviceModel ?? '').isNotEmpty) line('Appareil', r.deviceModel!),
           // ISS-06 : min / moy / max, masqués pour les anciens résultats.
           if (r.downloadStats != null)
@@ -543,49 +565,65 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  /// Ligne(s) « Signal » : métriques radio typées selon la connexion utilisée
-  /// pour le test. Rien ne s'affiche si rien n'a été mesuré (iOS, Android < 9,
-  /// appareils qui n'exposent pas les compteurs).
+  /// Lignes « Puissance du Signal » / « Qualité du Signal » : métriques radio
+  /// typées selon la connexion utilisée pour le test. Rien ne s'affiche si
+  /// rien n'a été mesuré (iOS, Android < 9, appareils qui n'exposent pas les
+  /// compteurs).
   List<Widget> _signalLines(
       SpeedTestResult r, Widget Function(String k, String v) line) {
     // Seuils et libellés alignés sur le tableau de référence qualité signal
-    // (IUT) : RSRP −80/−95/−105, RSSI −65/−75/−85 → Excellent / Bon-Moyen /
-    // Acceptable / Mauvais-Faible.
-    String qualityLabel(int dbm, {required bool isRsrp}) {
-      final t = isRsrp ? [-80, -95, -105] : [-65, -75, -85];
+    // (IUT) : RSRP −80/−95/−105 et RSSI Wi-Fi −65/−75/−85 ; RSRQ −8/−10/−13
+    // (seuils adoptés en revue produit du 05/11). Qualité : Excellent /
+    // Bon-Moyen / Acceptable / Faible.
+    String qualityLabel(int dbm, {required String kind}) {
+      final t = switch (kind) {
+        'rsrq' => [-8, -10, -13],
+        'rssi' => [-65, -75, -85],
+        _ => [-80, -95, -105],
+      };
       if (dbm >= t[0]) return 'Excellent';
       if (dbm >= t[1]) return 'Bon/Moyen';
       if (dbm >= t[2]) return 'Acceptable';
-      return 'Mauvais/Faible';
+      return 'Faible';
     }
 
     final lines = <Widget>[];
 
-    // Puissance (dBm), avec libellé de qualité.
+    // Puissance du signal (dBm), avec libellé de qualité.
     if ((r.signalRsrp ?? 0) != 0) {
-      lines.add(line('Signal',
-          'RSRP ${r.signalRsrp} dBm (${qualityLabel(r.signalRsrp!, isRsrp: true)})'));
+      lines.add(line(
+          'Puissance du Signal',
+          'RSRP ${r.signalRsrp} dBm '
+              '(${qualityLabel(r.signalRsrp!, kind: 'rsrp')})'));
     }
     if ((r.signalNrRsrp ?? 0) != 0) {
-      lines.add(line('Signal', 'NR RSRP ${r.signalNrRsrp} dBm'));
+      lines.add(line('Puissance du Signal', 'NR RSRP ${r.signalNrRsrp} dBm'));
     }
     if ((r.wifiRssi ?? 0) != 0) {
-      lines.add(line('Signal',
-          'RSSI ${r.wifiRssi} dBm (${qualityLabel(r.wifiRssi!, isRsrp: false)})'));
+      lines.add(line(
+          'Puissance du Signal',
+          'RSSI ${r.wifiRssi} dBm '
+              '(${qualityLabel(r.wifiRssi!, kind: 'rssi')})'));
+      // Règle produit : en Wi-Fi aucune métrique de qualité radio (RSRQ)
+      // ne s'applique — la ligne existe mais montre explicitement « - ».
+      lines.add(line('Qualité du Signal', '-'));
     }
 
-    // Qualité (dB), ligne dédiée « Qualité du signal ».
+    // Qualité du signal (dB), ligne dédiée avec libellé (seuils RSRQ).
     if ((r.signalRsrq ?? 0) != 0) {
-      lines.add(line('Qualité du signal', 'RSRQ ${r.signalRsrq} dB'));
+      lines.add(line(
+          'Qualité du Signal',
+          'RSRQ ${r.signalRsrq} dB '
+              '(${qualityLabel(r.signalRsrq!, kind: 'rsrq')})'));
     }
     if ((r.signalNrRsrq ?? 0) != 0) {
-      lines.add(line('Qualité du signal', 'NR RSRQ ${r.signalNrRsrq} dB'));
+      lines.add(line('Qualité du Signal', 'NR RSRQ ${r.signalNrRsrq} dB'));
     }
 
     // Repli : mesure générique seule, si aucune métrique typée n'est
-    // disponible — affichée sur « Signal » sans libellé de qualité.
+    // disponible — affichée sur « Puissance du Signal » sans libellé.
     if (lines.isEmpty && (r.signalDbm ?? 0) != 0) {
-      lines.add(line('Signal', '${r.signalDbm} dBm'));
+      lines.add(line('Puissance du Signal', '${r.signalDbm} dBm'));
     }
     return lines;
   }

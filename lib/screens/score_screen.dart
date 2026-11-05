@@ -146,7 +146,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
               size: 20, color: Color(0xFF16557E)),
           const SizedBox(width: 10),
           Expanded(
-            child: Text('Serveur de test : $serverDisplayName',
+            child: Text('Serveur de test : $serverRichLabel',
                 style: const TextStyle(color: Color(0xFF33402A), fontSize: 13)),
           ),
         ],
@@ -742,7 +742,19 @@ class _ScoreScreenState extends State<ScoreScreen> {
       child: Row(
         children: [
           c('Connexion', r.networkType ?? '—'),
-          c('FAI', r.operator ?? '—'),
+          // Règle produit : en test SIM le FAI (déduit de l'IP sur le réseau
+          // mobile) ne s'affiche pas ; il est « — » même si le champ en
+          // enregistre un pour le backend. En Wi-Fi il reste pertinent.
+          c('FAI',
+              (r.networkType ?? '').toUpperCase().contains('WIFI')
+                  ? (r.operator ?? '—')
+                  : '—'),
+          c(
+              'SSID Wi-Fi',
+              (r.wifiSsid != null && r.wifiSsid!.trim().isNotEmpty &&
+                      r.wifiSsid!.trim() != '<unknown ssid>')
+                  ? r.wifiSsid!.trim()
+                  : '—'),
           c('Réseau mobile', _mobileLabel),
         ],
       ),
@@ -768,19 +780,12 @@ class _ScoreScreenState extends State<ScoreScreen> {
     );
   }
 
-  /// « 4G · Orange · SIM 2 » ou « 4G · Orange » selon les mesures disponibles.
+  /// Règle produit : seul le nom de l'opérateur, sans la techno (déjà
+  /// indiquée par « Connexion ») ni le numéro de SIM. « — » en Wi-Fi.
   String get _mobileLabel {
-    // Règle métier : rien n'est affiché pour un test fait en Wi-Fi, même si
-    // l'enregistrement contient encore des données SIM (anciennes versions).
     if ((r.networkType ?? '').toUpperCase().contains('WIFI')) return '—';
-    final tech = r.cellularTech;
     final sim = r.simOperator;
-    final details = [
-      if (tech != null && tech.isNotEmpty) tech,
-      if (sim != null && sim.isNotEmpty) sim,
-      if (r.simSlot != null) 'SIM ${r.simSlot! + 1}',
-    ];
-    return details.isEmpty ? '—' : details.join(' · ');
+    return (sim != null && sim.isNotEmpty) ? sim : '—';
   }
 
   Widget _actions() {

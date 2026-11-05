@@ -11,6 +11,29 @@ const String MONGO_API_BASE_URL = '$API_BASE_URL/api';
 
 final String serverDisplayName = Uri.parse(API_BASE_URL).host;
 
+// ISS-04 — retour produit du 05/11 : le serveur de mesure est un service
+// Render unique (comparabilité des mesures entre zones/utilisateurs), dont
+// la région est fixée au déploiement. Région confirmée sur le tableau de
+// bord Render le 05/11 : Francfort (UE). Ce libellé humain sert UNIQUEMENT
+// à l'affichage (écrans + historique) ; les champs stockés / télémétrie
+// garde l'hôte technique (`serverDisplayName`).
+const String SERVER_LOCATION = 'Francfort, Allemagne';
+final String serverRichLabel = '$serverDisplayName — $SERVER_LOCATION';
+
+/// Libellé de serveur à afficher dans l'historique / exports : la mesure
+/// dense d'un enregistrement ancien (« host ») est enrichie avec la région ;
+/// une autre valeur (ancien serveur) est conservée telle quelle.
+String serverHumanLabel(String? server) {
+  final raw = server?.trim() ?? '';
+  if (raw.isEmpty || raw == '—') return '—';
+  if (raw == serverDisplayName ||
+      raw == API_BASE_URL ||
+      raw == serverRichLabel) {
+    return serverRichLabel;
+  }
+  return raw;
+}
+
 // ========== APPLICATION CONFIGURATION ==========
 const String APP_NAME = 'Yélé - Test de Vitesse';
 const String APP_VERSION = '1.0.0';

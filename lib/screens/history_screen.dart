@@ -108,37 +108,38 @@ class _HistoryScreenState extends State<HistoryScreen> {
     String pts(double v) => v.toStringAsFixed(0);
     final out = <Widget>[];
     final global = r.scoreGlobal;
+    // Le référentiel (r.scoringVersion) est affiché par la carte détail
+    // juste après le titre « Score YÉLÉ » (plan owner du 06/11) : ici,
+    // seulement le score, l'indice et les composantes.
     if (global != null) {
-      out.add(line(
-          'Score ouvert ${r.scoringVersion}',
-          '${pts(global)} pts · '
-              '${YeleScoringEngine.classify(global).label}'));
+      out.add(line('Score ouvert',
+          '${pts(global)} pts · ${YeleScoringEngine.classify(global).label}'));
       out.add(line(
           'Indice (lecture)',
           '${r.scoreGlobalOn100!.toStringAsFixed(0)}/100'));
     } else {
       final sub = r.scoreMeasuredSubtotal;
       out.add(line(
-          'Score ouvert ${r.scoringVersion}',
+          'Score ouvert',
           sub == null
               ? 'non mesuré'
               : 'incomplet · ${pts(sub)} pts mesurés '
                   '(composantes absentes exclues)'));
     }
     if (r.scoreDownload != null) {
-      out.add(line('Débit ↓', '${pts(r.scoreDownload!)} pts'));
+      out.add(line('Download', '${pts(r.scoreDownload!)} pts'));
     }
     if (r.scoreUpload != null) {
-      out.add(line('Débit ↑', '${pts(r.scoreUpload!)} pts'));
+      out.add(line('Upload', '${pts(r.scoreUpload!)} pts'));
     }
     if (r.scorePingJitter != null) {
       out.add(line('Latence', '${pts(r.scorePingJitter!)} pts'));
     }
     if (r.scoreBrowsing != null) {
-      out.add(line('Navigation (score ouvert)', '${pts(r.scoreBrowsing!)} pts'));
+      out.add(line('Navigation', '${pts(r.scoreBrowsing!)} pts'));
     }
     if (r.scoreStreaming != null) {
-      out.add(line('Streaming (score ouvert)', '${pts(r.scoreStreaming!)} pts'));
+      out.add(line('Streaming', '${pts(r.scoreStreaming!)} pts'));
     }
     return out;
   }
@@ -470,80 +471,116 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
         );
 
+    final wifi = (r.networkType ?? '').toUpperCase().contains('WIFI');
+
+    // Revue du 06/11 — la carte de détail est rangée en six catégories
+    // (plan de l'owner, façon nPerf) ; une catégorie vide ne s'affiche pas.
+    Widget group(String title, List<Widget> lignes) => lignes.isEmpty
+        ? const SizedBox.shrink()
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 10, bottom: 2),
+                child: Row(children: [
+                  Container(
+                      width: 3, height: 12, color: const Color(0xFF1F3A00)),
+                  const SizedBox(width: 6),
+                  Text(title,
+                      style: const TextStyle(
+                          color: Color(0xFF1F3A00),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800)),
+                ]),
+              ),
+              ...lignes,
+            ],
+          );
+
     return Container(
       width: double.infinity,
       color: YeleColors.testMid,
       padding: const EdgeInsets.all(14),
       child: Column(
         children: [
-          line('Serveur', serverHumanLabel(r.server)),
-          // Règle produit : FAI affiché seulement pour un test Wi-Fi. En
-          // test SIM le FAI déduit de l'IP (ex. « Orange Burkina Faso ») est
-          // stocké pour le backend mais affiché « — ».
-          line(
-              'FAI',
-              (r.networkType ?? '').toUpperCase().contains('WIFI')
-                  ? (r.operator ?? '—')
-                  : '—'),
-          // Ligne SSID Wi-Fi : le nom du réseau Wi-Fi, « n.d. » pour les
-          // anciens enregistrements antérieurs à ce champ.
-          if ((r.networkType ?? '').toUpperCase().contains('WIFI'))
-            line('SSID Wi-Fi',
-                (r.wifiSsid != null && r.wifiSsid!.trim().isNotEmpty)
-                    ? r.wifiSsid!.trim()
-                    : 'n.d.'),
-          // Règle produit : UNE seule ligne « Réseau mobile » — « — » en
-          // Wi-Fi (aucun réseau mobile sollicité), le nom de l'opérateur
-          // canonique en test SIM (Orange Burkina Faso / Telecel Faso /
-          // Moov Africa BF). L'ancienne ligne « Réseau » (qui montrait la
-          // « Ville, Pays » de la géolocalisation IP) est supprimée ; la
-          // ville reste visible via la carte et « Coord. (adresse) ».
-          line(
-              'Réseau mobile',
-              (r.networkType ?? '').toUpperCase().contains('WIFI')
-                  ? '—'
-                  : ((r.simOperator ?? '').isNotEmpty
-                      ? r.simOperator!
-                      : '—')),
-          // Ligne « Technologie » (retour produit B1) : la norme du lien
-          // utilisé pour le test — Wi-Fi 4/5/6/7 (repli « Wi-Fi ») en Wi-Fi,
-          // 2G/3G/4G/5G avec une SIM. « n.d. » pour les anciens
-          // enregistrements antérieurs à ce champ.
-          line(
-              'Technologie',
-              (r.technology ?? '').isNotEmpty
-                  ? r.technology!
-                  : ((r.networkType ?? '').toUpperCase().contains('WIFI')
-                      ? 'Wi-Fi'
-                      : (r.cellularTech ?? 'n.d.'))),
-          if ((r.deviceModel ?? '').isNotEmpty) line('Appareil', r.deviceModel!),
-          // ISS-06 : min / moy / max, masqués pour les anciens résultats.
-          if (r.downloadStats != null)
-            line('Download min / moy / max',
-                _minMeanMax(r.downloadStats!, 'Mb/s', 2)),
-          if (r.uploadStats != null)
-            line('Upload min / moy / max', _minMeanMax(r.uploadStats!, 'Mb/s', 2)),
-          if (r.pingStats != null)
-            line('Latence min / moy / max', _minMeanMax(r.pingStats!, 'ms', 0)),
-          line('Latence', '${r.ping.toStringAsFixed(0)} ms'),
-          line('Gigue', '${r.jitter.toStringAsFixed(0)} ms'),
-          // IMP-07 : masquée si non mesurée (anciens résultats).
-          if (r.packetLoss != null)
-            line('Perte de paquets', formatPacketLoss(r.packetLoss!)),
-          // IMP-01 : données consommées par le test (masqué si non mesuré).
-          if ((r.dataUsedKiB ?? -1) >= 0) line('Données', _formatData(r.dataUsedKiB!)),
-          ..._signalLines(r, line),
-          if (r.hasStreamingTest)
-            line('Streaming',
-                '${r.streamingMaxResolution ?? '—'} · ${r.streamingScore!.toStringAsFixed(0)}/100'),
-          if (r.hasBrowsingTest)
-            line('Navigation',
-                '${(r.browsingAvgLoadMs! / 1000).toStringAsFixed(1)} s · ${r.browsingScore!.toStringAsFixed(0)}/100'),
-          // IMP-12 : score global ouvert et composantes mesurées.
-          if (r.scoringVersion != null) ..._openScoreLines(r, line),
-          if ((r.latitude ?? 0) != 0) ..._coordBlock(r, line),
-          if (r.qoeRating != null && r.qoeRating! > 0)
-            line('QoE', '${r.qoeRating}/5'),
+          // 0 … Position — la localisation se lit en premier (plan owner).
+          group('Position',
+              (r.latitude ?? 0) != 0 ? _coordBlock(r, line) : <Widget>[]),
+          // 1 … Connexion — identité du lien réellement utilisé.
+          // Règle produit B1 : FAI et SSID Wi-Fi seulement en Wi-Fi ;
+          // une seule ligne « Réseau mobile » (nom canonique, jamais le
+          // code brut) et la Technologie en test SIM.
+          group('Connexion', [
+            line('Serveur', serverHumanLabel(r.server)),
+            if (wifi)
+              line('FAI', r.operator ?? '—')
+            else
+              line('Réseau mobile',
+                  (r.simOperator ?? '').isNotEmpty ? r.simOperator! : '—'),
+            if (wifi)
+              line('SSID Wi-Fi',
+                  (r.wifiSsid != null && r.wifiSsid!.trim().isNotEmpty)
+                      ? r.wifiSsid!.trim()
+                      : 'n.d.'),
+            // Règle produit B1 (plan owner Confirmed) : la Technologie
+            // (2G/3G/4G/5G) reste affichée pour un test SIM ; « n.d. »
+            // pour les anciens enregistrements antérieurs à ce champ.
+            if (!wifi)
+              line('Technologie',
+                  (r.technology ?? '').isNotEmpty
+                      ? r.technology!
+                      : (r.cellularTech ?? 'n.d.')),
+            if ((r.deviceModel ?? '').isNotEmpty) line('Appareil', r.deviceModel!),
+          ]),
+          // 2 … Débit & Latence — ISS-06 (min/moy/max, masqués pour les
+          // anciens résultats), IMP-07 (perte, masquée si non mesurée),
+          // IMP-01 (données consommées par le test).
+          group('Débit & Latence', [
+            if (r.downloadStats != null)
+              line('Download min / moy / max',
+                  _minMeanMax(r.downloadStats!, 'Mb/s', 2)),
+            if (r.uploadStats != null)
+              line('Upload min / moy / max',
+                  _minMeanMax(r.uploadStats!, 'Mb/s', 2)),
+            if (r.pingStats != null)
+              line('Latence min / moy / max',
+                  _minMeanMax(r.pingStats!, 'ms', 0)),
+            // Sans stats ISS-06 (anciens enregistrements), le ping
+            // moyen reste visible seul.
+            if (r.pingStats == null)
+              line('Latence', '${r.ping.toStringAsFixed(0)} ms'),
+            line('Gigue', '${r.jitter.toStringAsFixed(0)} ms'),
+            if (r.packetLoss != null)
+              line('Perte de paquets', formatPacketLoss(r.packetLoss!)),
+            if ((r.dataUsedKiB ?? -1) >= 0)
+              line('Données consommées', _formatData(r.dataUsedKiB!)),
+          ]),
+          // 3 … Signal radio.
+          group('Signal radio', _signalLines(r, line)),
+          // 4 … Qualité perçue.
+          group('Qualité perçue', [
+            if (r.hasStreamingTest) ...[
+              // Note /100 de la carte : agrège les 3 résolutions mesurées
+              // (ISS-07) et les critères ARCEP — pas une seule résolution.
+              line('Streaming',
+                  '${r.streamingMaxResolution ?? '—'} · ${r.streamingScore!.toStringAsFixed(0)}/100'),
+              // Détail par résolution : le taux de performance de chaque
+              // palier mesuré (720p, 1080p, 1440p, 2160p).
+              for (final q in r.streamingQualities.where((q) => q.reached))
+                line('↳ ${q.label}', '${q.performanceRate.toStringAsFixed(0)} %'),
+            ],
+            if (r.hasBrowsingTest)
+              line('Navigation',
+                  '${(r.browsingAvgLoadMs! / 1000).toStringAsFixed(1)} s · ${r.browsingScore!.toStringAsFixed(0)}/100'),
+            if (r.qoeRating != null && r.qoeRating! > 0)
+              line('QoE', '${r.qoeRating}/5'),
+          ]),
+          // 5 … Score YÉLÉ — le référentiel est cité juste après le titre
+          // de catégorie (plan owner), puis score / indice / composantes.
+          group('Score YÉLÉ', [
+            if (r.scoringVersion != null) line('Référentiel', r.scoringVersion!),
+            if (r.scoringVersion != null) ..._openScoreLines(r, line),
+          ]),
           // IMP-13 — Export de cette mesure (CSV / Excel / PDF / PNG).
           const SizedBox(height: 10),
           SizedBox(
@@ -573,8 +610,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
       SpeedTestResult r, Widget Function(String k, String v) line) {
     // Seuils et libellés alignés sur le tableau de référence qualité signal
     // (IUT) : RSRP −80/−95/−105 et RSSI Wi-Fi −65/−75/−85 ; RSRQ −8/−10/−13
-    // (seuils adoptés en revue produit du 05/11). Qualité : Excellent /
-    // Bon-Moyen / Acceptable / Faible.
+    // (seuils adoptés en revue produit du 05/11 ; libellés harmonisés en
+    // revue du 06/11 : un seul mot par palier — Excellent / Bon / Moyen /
+    // Faible).
     String qualityLabel(int dbm, {required String kind}) {
       final t = switch (kind) {
         'rsrq' => [-8, -10, -13],
@@ -582,8 +620,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
         _ => [-80, -95, -105],
       };
       if (dbm >= t[0]) return 'Excellent';
-      if (dbm >= t[1]) return 'Bon/Moyen';
-      if (dbm >= t[2]) return 'Acceptable';
+      if (dbm >= t[1]) return 'Bon';
+      if (dbm >= t[2]) return 'Moyen';
       return 'Faible';
     }
 
@@ -604,9 +642,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
           'Puissance du Signal',
           'RSSI ${r.wifiRssi} dBm '
               '(${qualityLabel(r.wifiRssi!, kind: 'rssi')})'));
-      // Règle produit : en Wi-Fi aucune métrique de qualité radio (RSRQ)
-      // ne s'applique — la ligne existe mais montre explicitement « - ».
-      lines.add(line('Qualité du Signal', '-'));
+      // Règle produit (plan owner 06/11) : en Wi-Fi le seul indicateur
+      // radio pertinent est le RSSI — pas de ligne « Qualité du Signal »
+      // fantôme (le RSRQ ne concerne que le lien cellulaire).
     }
 
     // Qualité du signal (dB), ligne dédiée avec libellé (seuils RSRQ).

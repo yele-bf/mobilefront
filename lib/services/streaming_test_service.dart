@@ -70,11 +70,6 @@ class StreamingQualityResult {
   /// Hauteur en pixels déduite du libellé ('1080p' → 1080).
   int get height => int.tryParse(label.replaceAll('p', '')) ?? 0;
 
-  /// Libellé affiché en en-tête de colonne : la qualité réellement servie
-  /// quand la colonne porte une mesure, sinon la qualité demandée.
-  String get displayLabel =>
-      (reached && servedLabel.isNotEmpty) ? servedLabel : label;
-
   /// Hauteur réellement servie : celle de [servedLabel] quand le lecteur a
   /// livré autre chose que la qualité demandée, sinon [height]. C'est elle
   /// qui alimente la résolution maximale et le score.
@@ -277,31 +272,18 @@ class StreamingMetrics {
       }[key] ??
       (key.isEmpty ? 'inconnue' : key);
 
-  /// Explique les colonnes restées vides, quand YouTube n'a pas servi toutes
-  /// les qualités demandées. null si le tableau est complet.
-  static String? servedNote(
-      List<StreamingQualityResult> rows, List<String> served) {
-    if (served.isEmpty) {
-      return 'Aucune qualité n\'a pu être lue. Réseau trop faible ou lecteur '
-          'indisponible.';
-    }
-    if (rows.every((r) => r.reached)) return null;
-
-    final unique = served.toSet().toList();
-    return 'YouTube choisit lui-même la qualité selon le réseau et la taille '
-        'du lecteur : il a servi ${unique.join(', ')} pendant ce test. Les '
-        'qualités non servies restent vides.';
-  }
-
   /// Consolide les mesures par qualité en indicateurs globaux (stockés dans
   /// l'historique et envoyés au serveur).
   static StreamingTestResult aggregate(List<StreamingQualityResult> rows,
       {String? error}) {
     final reached = rows.where((r) => r.reached).toList();
 
+    // Résolution maximale et score : basés sur la qualité réellement SERVIE
+    // (servedHeight), pas sur ce qu'on a demandé. Demander 2160p sur un réseau
+    // qui n'a tenu que 1080p ne doit pas rapporter les points du 4K.
     final bestHeight = reached.isEmpty
         ? 0
-        : reached.map((r) => r.height).reduce((a, b) => a > b ? a : b);
+        : reached.map((r) => r.servedHeight).reduce((a, b) => a > b ? a : b);
     final startupMs =
         reached.isEmpty ? 0 : (reached.first.initialLoadingSec * 1000).round();
     final rebuffers =
@@ -417,8 +399,9 @@ abstract class StreamingRunner {
       for (final label in STREAMING_QUALITY_LEVELS.values)
         StreamingQualityResult.unavailable(label),
     ];
-    // Qualités effectivement servies, dans l'ordre : sert à expliquer à
-    // l'utilisateur pourquoi certaines colonnes restent vides.
+    // Qualités réellement servies, dans l'ordre simple des demandes :
+    // sert au journal de debug, l'écran n'utilise plus ce détail (l'info
+    // servie/demandée est indiquée palier par palier dans le tableau).
     final served = <String>[];
     onRows?.call(List.of(rows));
 
@@ -459,16 +442,14 @@ abstract class StreamingRunner {
         );
         if (!m.played) continue;
 
-        // La qualité demandée n'est qu'une suggestion : `setPlaybackQuality`
-        // est ignoré par le lecteur depuis 2019. On range donc la mesure dans
-        // la colonne de ce qui a été SERVI, jamais de ce qui a été demandé —
-        // sinon on jetterait des mesures parfaitement valides.
+        // Une colonne = une résolution DEMANDÉE (ISS-07) : la mesure de ce
+        // palier reste dans sa colonne. Ce que YouTube a réellement servi,
+        // quand il a servi autre chose que la demande, est signalé par
+        // [servedLabel] — le score reste fondé sur la qualité servie (voir
+        // [aggregate] et [StreamingQualityResult.servedHeight]).
         served.add(StreamingMetrics.qualityLabel(m.servedKey));
-        final column = keys.indexOf(m.servedKey);
-        if (column < 0) continue; // qualité hors tableau (360p, 1440p…)
-
-        rows[column] = StreamingQualityResult(
-          label: STREAMING_QUALITY_LEVELS[m.servedKey]!,
+        rows[i] = StreamingQualityResult(
+          label: label,
           reached: true,
           performanceRate: m.performanceRate,
           initialLoadingSec: m.initialLoadingSec,
@@ -476,6 +457,9 @@ abstract class StreamingRunner {
           rebufferCount: m.rebufferCount,
           dataUsedKiB: m.dataUsedKiB,
           stable: m.stable,
+          servedLabel: m.servedKey == key
+              ? ''
+              : StreamingMetrics.qualityLabel(m.servedKey),
         );
         onRows?.call(List.of(rows));
       }
@@ -492,8 +476,7 @@ abstract class StreamingRunner {
       await closePlayer();
     }
 
-    final result = StreamingMetrics.aggregate(
-        rows, error: playerError ?? StreamingMetrics.servedNote(rows, served));
+    final result = StreamingMetrics.aggregate(rows, error: playerError);
     logger.i('$result — servi : ${served.join(', ')}');
     return result;
   }

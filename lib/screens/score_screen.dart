@@ -10,7 +10,10 @@ import '../services/streaming_test_service.dart';
 import '../services/yele_scoring_engine.dart';
 import '../theme/yele_theme.dart';
 import '../widgets/export_sheet.dart';
+import '../widgets/navigation_explanation_sheet.dart';
 import '../widgets/qoe_dialog.dart';
+import '../widgets/score_explanation_sheet.dart';
+import '../widgets/streaming_explanation_sheet.dart';
 import '../widgets/streaming_table.dart';
 import '../widgets/yele_scaffold.dart';
 
@@ -450,8 +453,11 @@ class _ScoreScreenState extends State<ScoreScreen> {
   }
 
   // Carte de résultat d'un test, avec en-tête coloré et lignes clé/valeur.
+  // [onInfo] : pastille ⓘ optionnelle à droite du score, comme sur la carte
+  // Score YÉLÉ — ouvre le panneau explicatif du test en cours.
   Widget _resultCard(String icon, String title, Color color, double score,
-      List<({String k, String v})> lines) {
+      List<({String k, String v})> lines,
+      {VoidCallback? onInfo}) {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
       decoration: BoxDecoration(
@@ -482,6 +488,16 @@ class _ScoreScreenState extends State<ScoreScreen> {
                         color: Colors.white,
                         fontSize: 18,
                         fontWeight: FontWeight.w800)),
+                if (onInfo != null) ...[
+                  const SizedBox(width: 4),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    tooltip: "Comment c'est calculé",
+                    icon: const Icon(Icons.info_outline,
+                        color: Colors.white, size: 20),
+                    onPressed: onInfo,
+                  ),
+                ],
               ],
             ),
           ),
@@ -530,30 +546,37 @@ class _ScoreScreenState extends State<ScoreScreen> {
         (k: 'Résolution max soutenue', v: r.streamingMaxResolution ?? '—'),
         (k: 'Démarrage', v: '${r.streamingStartupMs ?? 0} ms'),
         (k: 'Interruptions', v: '${r.streamingRebufferCount ?? 0}'),
-      ]);
+      ], onInfo: () => showStreamingExplanationSheet(context, r));
     }
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
-          child: Row(
-            children: [
-              const Text('🎬', style: TextStyle(fontSize: 18)),
-              const SizedBox(width: 8),
-              const Text('Streaming vidéo',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700)),
-              const Spacer(),
-              Text('${(r.streamingScore ?? 0).toStringAsFixed(0)}/100',
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800)),
-            ],
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
+            child: Row(
+              children: [
+                const Text('🎬', style: TextStyle(fontSize: 18)),
+                const SizedBox(width: 8),
+                const Text('Streaming vidéo',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700)),
+                const Spacer(),
+                Text('${(r.streamingScore ?? 0).toStringAsFixed(0)}/100',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800)),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: "Comment c'est calculé",
+                  icon: const Icon(Icons.info_outline,
+                      color: Colors.white, size: 20),
+                  onPressed: () => showStreamingExplanationSheet(context, r),
+                ),
+              ],
+            ),
           ),
-        ),
         StreamingTable(qualities: rows, videoEngine: engine),
         if (error != null) _streamingError(error),
       ],
@@ -602,9 +625,9 @@ class _ScoreScreenState extends State<ScoreScreen> {
     String pts(double v) => v.toStringAsFixed(0);
     final lignes = <({String k, String v})>[
       if (r.scoreDownload != null)
-        (k: 'Débit ↓', v: '${pts(r.scoreDownload!)} pts'),
+        (k: 'Download', v: '${pts(r.scoreDownload!)} pts'),
       if (r.scoreUpload != null)
-        (k: 'Débit ↑', v: '${pts(r.scoreUpload!)} pts'),
+        (k: 'Upload', v: '${pts(r.scoreUpload!)} pts'),
       if (r.scorePingJitter != null)
         (k: 'Latence', v: '${pts(r.scorePingJitter!)} pts'),
       if (r.scoreBrowsing != null)
@@ -654,6 +677,16 @@ class _ScoreScreenState extends State<ScoreScreen> {
                       color: Colors.white,
                       fontSize: 18,
                       fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(width: 4),
+                // IMP-05 / IMP-12 — explique le calcul du score, au global
+                // comme par composante, pour le test en cours.
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: 'Comment le score est calculé',
+                  icon: const Icon(Icons.info_outline,
+                      color: Colors.white, size: 20),
+                  onPressed: () => showScoreExplanationSheet(context, r),
                 ),
               ],
             ),
@@ -706,7 +739,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
         v: '${((r.browsingSuccessRate ?? 0) * 100).toStringAsFixed(0)} %'
       ),
       (k: 'Pages testées', v: '${r.browsingPagesTested ?? 0}'),
-    ]);
+    ], onInfo: () => showNavigationExplanationSheet(context, r));
   }
 
   Widget _bottomInfo() {

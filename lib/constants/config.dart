@@ -78,6 +78,7 @@ const String STREAMING_YOUTUBE_VIDEO_ID = 'aqz-KE-bpKQ';
 const Map<String, String> STREAMING_QUALITY_LEVELS = {
   'hd720': '720p',
   'hd1080': '1080p',
+  'hd1440': '1440p',
   'hd2160': '2160p',
 };
 // Durée de lecture mesurée par qualité. nPerf tourne autour de 10 s ; c'est
@@ -115,6 +116,9 @@ const Map<String, int> STREAMING_LEVEL_BANDWIDTH_BPS = {
   'hd720': 2817071,
   'hd1080': 4317071,
   'hd2160': 12317071,
+  // Pas de variante 1440p dans l'échelle HLS auto-hébergée (ladder DASH
+  // Big Buck Bunny en 3 variantes) : si le backend 'hls' est réactivé, le
+  // palier hd1440 y est ignoré (qualité absente du manifeste).
 };
 
 // Marge appliquée au BANDWIDTH du manifeste pour estimer le débit minimal

@@ -4,24 +4,28 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:yele/services/streaming_test_service.dart';
 
 void main() {
-  group('StreamingQualityResult.displayLabel', () {
-    test('mesure présente : libellé de la qualité servie', () {
+  group('StreamingQualityResult : colonne = palier demandé', () {
+    test('la mesure reste dans la colonne du palier demandé', () {
       const r = StreamingQualityResult(
         label: '2160p',
         reached: true,
         servedLabel: '1440p',
       );
-      expect(r.displayLabel, '1440p');
+      expect(r.label, '2160p'); // colonne inchangée
+      expect(r.servedLabel, '1440p'); // qualité servie signalée à part
     });
 
     test('palier sans mesure : libellé de la qualité demandée', () {
       const r = StreamingQualityResult.unavailable('2160p');
-      expect(r.displayLabel, '2160p');
+      expect(r.label, '2160p');
+      expect(r.servedLabel, isEmpty);
     });
 
-    test('qualité servie = demandée : libellé inchangé', () {
+    test('qualité servie = demandée : pas de libellé servi', () {
       const r = StreamingQualityResult(label: '1080p', reached: true);
-      expect(r.displayLabel, '1080p');
+      expect(r.label, '1080p');
+      expect(r.servedLabel, isEmpty);
+      expect(r.servedHeight, 1080);
     });
   });
 

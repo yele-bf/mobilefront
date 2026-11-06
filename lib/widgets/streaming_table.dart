@@ -85,16 +85,11 @@ class StreamingTable extends StatelessWidget {
           e.value: minRequiredKbpsFor(STREAMING_LEVEL_BANDWIDTH_BPS[e.key] ?? 0),
     };
 
-    // En YouTube seulement : l'en-tête affiche la qualité servie, qui peut
-    // différer de la qualité demandée (1440p pour un palier 2160p) — sans
-    // cette légende, le libellé ressemblerait à un bug d'affichage.
-    final servedLegend = Text(
-      'Colonnes : qualité réellement servie par YouTube pour chaque palier '
-      'testé — il ajuste lui-même selon le réseau et la taille du lecteur.',
-      style: TextStyle(fontSize: 11, color: YeleColors.muted),
-    );
-    final alwaysShowLegend =
-        !isHls && qualities.any((q) => q.reached); // au moins un palier mesuré
+    // Colonnes = les 3 paliers DEMANDÉS (ISS-07 : une mesure par résolution).
+    // Quand YouTube a servi autre chose que la demande, l'en-tête du
+    // palier porte un astérisque, expliqué par la note en bas du tableau.
+    final alwaysShowNote = !isHls &&
+        qualities.any((q) => q.reached && (q.servedLabel.isNotEmpty || !q.stable));
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 14, 16, 0),
@@ -117,33 +112,27 @@ class StreamingTable extends StatelessWidget {
                     'démarrage : un réseau qui ne tient pas ce débit laisse '
                     'le palier vide.'),
           _row('Interruptions', _rebuffers, last: !isHls),
-          if (alwaysShowLegend)
-            Container(
-              width: double.infinity,
-              color: YeleColors.panel2,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: servedLegend,
-            ),
-          if (qualities.any((q) => q.reached && !q.stable)) _unstableNote(),
+          if (alwaysShowNote) _unstableNote(),
         ],
       ),
     );
   }
 
-  /// YouTube peut basculer de qualité en cours de lecture. Le signaler évite
-  /// de présenter comme une mesure d'une qualité des chiffres qui en
-  /// mélangent deux.
+  /// YouTube ne suit pas toujours la demande : il peut servir une autre
+  /// qualité que le palier demandé, ou en changer au milieu de la mesure. Le
+  /// signaler évite de présenter comme une mesure d'une qualité des chiffres
+  /// qui en mélangent deux.
   Widget _unstableNote() {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
+        color: YeleColors.panel2,
         border: Border(top: BorderSide(color: YeleColors.line)),
       ),
-      color: YeleColors.panel2,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Text(
-        '* qualité modifiée par YouTube pendant la mesure : valeurs indicatives',
+        '* YouTube a servi une autre qualité que la demande pendant ce palier '
+        '(ou en a changé en cours de mesure) : valeurs indicatives',
         style: TextStyle(fontSize: 11, color: YeleColors.muted),
       ),
     );
@@ -170,7 +159,7 @@ class StreamingTable extends StatelessWidget {
         ),
         for (final q in qualities)
           Expanded(
-            flex: 22,
+            flex: 24,
             child: Container(
               color: q.label == activeLabel
                   ? YeleColors.primary.withValues(alpha: 0.18)
@@ -178,14 +167,12 @@ class StreamingTable extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 14),
               alignment: Alignment.center,
               child: Text(
-                // En YouTube : la qualité réellement servie pour ce palier
-                // (ex. 1440p affiché sous le palier 2160p), et la qualité
-                // demandée tant qu'aucune mesure n'existe. Les doublons
-                // restent : une colonne par palier testé.
-                // En HLS la qualité est verrouillée : toujours la demandée.
-                q.reached && !q.stable && !isHls
-                    ? '${q.displayLabel} *'
-                    : q.displayLabel,
+                // Colonne = palier DEMANDÉ (ISS-07). L'astérisque signale
+                // que YouTube a servi autre chose (note en bas du tableau).
+                // En HLS la qualité est verrouillée : jamais d'astérisque.
+                !isHls && q.reached && (q.servedLabel.isNotEmpty || !q.stable)
+                    ? '${q.label} *'
+                    : q.label,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                     fontSize: 15,
@@ -214,7 +201,7 @@ class StreamingTable extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            flex: 34,
+            flex: 24,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
               child: Column(

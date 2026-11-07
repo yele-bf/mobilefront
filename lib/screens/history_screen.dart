@@ -588,7 +588,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             if (r.scoringVersion != null) line('Référentiel', r.scoringVersion!),
             if (r.scoringVersion != null) ..._openScoreLines(r, line),
           ]),
-          // IMP-13 — Export de cette mesure (CSV / Excel / PDF / PNG).
+          // IMP-11 — Export de cette mesure (CSV / Excel / PDF / PNG).
           const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,

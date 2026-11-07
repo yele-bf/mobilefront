@@ -16,9 +16,12 @@ import '../constants/config.dart';
 import '../models/speed_test_result.dart';
 import '../theme/yele_theme.dart';
 
-/// IMP-13 — Export d'une mesure, façon nPerf : depuis l'écran de résultat
+/// IMP-11 — Export d'une mesure, façon nPerf : depuis l'écran de résultat
 /// ou l'historique, l'utilisateur partage la mesure choisie au format
 /// CSV, Excel (xlsx), PDF (rapport brandé) ou PNG (résumé en image).
+/// (Ancien libellé « IMP-13 » des commentaires : drift de nomenclature
+/// V11 → V14 corrigé le 07/11/2026 — en V14, IMP-13 = identification
+/// appareil.)
 ///
 /// Le fichier est écrit dans le répertoire temporaire de l'app puis remis
 /// à la feuille de partage Android (Fichiers, WhatsApp, e-mail, Drive…).

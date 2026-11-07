@@ -142,7 +142,10 @@ class ExportService {
   Future<void> exportPng(SpeedTestResult r) async {
     final address = await _resolveAddress(r);
     final doc = await _buildPdf(r, address: address);
-    final pages = await Printing.raster(await doc.save(), dpi: 144).toList();
+    // 300 dpi = qualité impression : à 144 dpi le texte du rapport était
+    // flou et illisible dès la mise à l'échelle de l'image (re-test du
+    // 07/11 17:43, A059).
+    final pages = await Printing.raster(await doc.save(), dpi: 300).toList();
     if (pages.isEmpty) {
       throw Exception('Rasterisation impossible sur cette plateforme');
     }

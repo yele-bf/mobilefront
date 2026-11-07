@@ -507,8 +507,11 @@ class ExportService {
     final regular = await _embeddedFont();
     final bold = await _embeddedFont(bold: true) ?? regular;
     final quality = _qualityLabel(r.downloadSpeed);
-    final double tileValue = 17;
-    final double bodySize = 9.5;
+    // Rapport compact : les six catégories doivent tenir sur UNE page A4
+    // (re-test du 07/11 18:16 — un PNG sur deux pages est jugé flou une fois
+    // mis à l'échelle du téléphone ; MultiPage reste le filet de sécurité).
+    final double tileSize = 13;
+    final double bodySize = 7.6;
 
     pdf.addPage(
       pw.MultiPage(
@@ -517,7 +520,7 @@ class ExportService {
         // aussi présent dans le PDF, sans effet visible là-bas.
         pageTheme: pw.PageTheme(
           pageFormat: PdfPageFormat.a4,
-          margin: const pw.EdgeInsets.fromLTRB(40, 30, 40, 30),
+          margin: const pw.EdgeInsets.all(26),
           buildBackground: (context) =>
               pw.Container(color: PdfColor.fromInt(0xFFFFFFFF)),
         ),
@@ -531,17 +534,16 @@ class ExportService {
             pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.center,
               children: [
-                if (logo != null) pw.Image(pw.MemoryImage(logo), width: 40),
-                if (logo != null) pw.SizedBox(width: 10),
+                if (logo != null) pw.Image(pw.MemoryImage(logo), width: 32),
+                if (logo != null) pw.SizedBox(width: 8),
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
                     pw.Text(_appName,
-                        style: _ts(regular, bold, 22, _hex(YeleColors.primary),
+                        style: _ts(regular, bold, 18, _hex(YeleColors.primary),
                             isBold: true)),
                     pw.Text(_appTagline,
-                        style:
-                            _ts(regular, bold, 8.5, _hex(YeleColors.muted))),
+                        style: _ts(regular, bold, 7, _hex(YeleColors.muted))),
                   ],
                 ),
                 pw.Spacer(),
@@ -559,14 +561,14 @@ class ExportService {
                   ),
               ],
             ),
-            pw.SizedBox(height: 4),
-            pw.Container(height: 3, color: _hex(YeleColors.primary)),
-            pw.SizedBox(height: context.pageNumber == 1 ? 14 : 8),
+            pw.SizedBox(height: 3),
+            pw.Container(height: 2, color: _hex(YeleColors.primary)),
+            pw.SizedBox(height: context.pageNumber == 1 ? 10 : 6),
           ],
         ),
         // Pied de page sur chaque page, avec pagination.
         footer: (context) => pw.Padding(
-          padding: const pw.EdgeInsets.only(top: 6),
+          padding: const pw.EdgeInsets.only(top: 4),
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
@@ -574,8 +576,8 @@ class ExportService {
               pw.Text(
                 'Généré par l\'application $_appName le ${_dateLong(DateTime.now())} — '
                 'Serveur de test : ${serverHumanLabel(r.server)} — '
-                'Page ${context.page} / ${context.pagesCount}',
-                style: _ts(regular, bold, 7.5, _hex(YeleColors.muted)),
+                'Page ${context.pageNumber} / ${context.pagesCount}',
+                style: _ts(regular, bold, 6.5, _hex(YeleColors.muted)),
               ),
             ],
           ),
@@ -587,8 +589,8 @@ class ExportService {
             children: [
               pw.Text('Rapport de mesure',
                   style: _ts(
-                      regular, bold, 18, _hex(YeleColors.ink), isBold: true)),
-              pw.SizedBox(width: 10),
+                      regular, bold, 15, _hex(YeleColors.ink), isBold: true)),
+              pw.SizedBox(width: 8),
               // Badge solide + texte blanc : contraste garanti quel que
               // soit le palier (revue 07/11 — le texte se fondait dans
               // une pastille teintée).
@@ -606,25 +608,25 @@ class ExportService {
               ),
             ],
           ),
-          pw.SizedBox(height: 14),
+          pw.SizedBox(height: 10),
 
           // ── Tuiles débits / latence ──
           pw.Row(
             children: [
               _tile('Download', r.downloadSpeed.toStringAsFixed(2), 'Mb/s',
-                  tileValue, regular, bold),
+                  tileSize, regular, bold),
               pw.SizedBox(width: 10),
               _tile('Upload', r.uploadSpeed.toStringAsFixed(2), 'Mb/s',
-                  tileValue, regular, bold),
+                  tileSize, regular, bold),
               pw.SizedBox(width: 10),
-              _tile('Latence', r.ping.toStringAsFixed(0), 'ms', tileValue,
+              _tile('Latence', r.ping.toStringAsFixed(0), 'ms', tileSize,
                   regular, bold),
             ],
           ),
           pw.SizedBox(height: 4),
           pw.Text('Gigue : ${r.jitter.toStringAsFixed(0)} ms',
               style: _ts(regular, bold, bodySize, _hex(YeleColors.muted))),
-          pw.SizedBox(height: 14),
+          pw.SizedBox(height: 10),
 
           // ── Sections (catégories de l'app — source unique
           //    [measureSections], 07/11/2026) ──
@@ -634,7 +636,7 @@ class ExportService {
               children: [
                 _pdfSection(
                     section.title, section.rows, bodySize, regular, bold),
-                pw.SizedBox(height: 12),
+                pw.SizedBox(height: 8),
               ],
             ),
           ],
@@ -649,7 +651,7 @@ class ExportService {
       pw.Font? regular, pw.Font? bold) {
     return pw.Expanded(
       child: pw.Container(
-        padding: const pw.EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+        padding: const pw.EdgeInsets.symmetric(vertical: 7, horizontal: 6),
         decoration: pw.BoxDecoration(
           color: _hex(YeleColors.panel),
           borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
@@ -658,13 +660,13 @@ class ExportService {
         child: pw.Column(
           children: [
             pw.Text(label,
-                style: _ts(regular, bold, 8, _hex(YeleColors.muted))),
-            pw.SizedBox(height: 3),
+                style: _ts(regular, bold, 6.8, _hex(YeleColors.muted))),
+            pw.SizedBox(height: 2),
             pw.Text(value,
                 style: _ts(regular, bold, valueSize, _hex(YeleColors.field),
                     isBold: true)),
             pw.Text(unit,
-                style: _ts(regular, bold, 8, _hex(YeleColors.field))),
+                style: _ts(regular, bold, 6.8, _hex(YeleColors.field))),
           ],
         ),
       ),
@@ -673,13 +675,13 @@ class ExportService {
 
   pw.Widget _pdfSection(String title, List<List<String>> rows, double fontSize,
       pw.Font? regular, pw.Font? bold,
-      {double labelWidth = 150}) {
+      {double labelWidth = 130}) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.Container(
           padding:
-              const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              const pw.EdgeInsets.symmetric(horizontal: 7, vertical: 3),
           decoration: pw.BoxDecoration(
             color: _hex(YeleColors.primary),
             borderRadius:
@@ -690,9 +692,9 @@ class ExportService {
                   PdfColor.fromInt(0xFFFFFFFF),
                   isBold: true)),
         ),
-        pw.SizedBox(height: 4),
+        pw.SizedBox(height: 3),
         ...rows.map((row) => pw.Padding(
-              padding: const pw.EdgeInsets.symmetric(vertical: 1.5),
+              padding: const pw.EdgeInsets.symmetric(vertical: 1.0),
               child: pw.Row(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [

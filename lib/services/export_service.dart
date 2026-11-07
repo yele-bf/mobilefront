@@ -3,9 +3,10 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:excel/excel.dart';
-import 'package:image/image.dart' as img;
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/material.dart' show Color;
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart' show PdfColor, PdfPageFormat;
 import 'package:pdf/widgets.dart' as pw;
@@ -14,6 +15,9 @@ import 'package:share_plus/share_plus.dart';
 
 import '../constants/config.dart';
 import '../models/speed_test_result.dart';
+import 'packet_loss_service.dart';
+import 'reverse_geocoding_service.dart';
+import 'yele_scoring_engine.dart';
 import '../theme/yele_theme.dart';
 
 /// IMP-11 — Export d'une mesure, façon nPerf : depuis l'écran de résultat
@@ -27,6 +31,12 @@ import '../theme/yele_theme.dart';
 /// à la feuille de partage Android (Fichiers, WhatsApp, e-mail, Drive…).
 /// L'app ne demande aucune permission : ni stockage (répertoire privé +
 /// share sheet), ni localisation (les coordonnées viennent de la mesure).
+///
+/// Revue du 07/11/2026 : les quatre formats partagent la même source de
+/// vérité ([measureSections]) et portent les catégories de l'app (Position,
+/// Connexion, Débit & Latence, Signal radio, Qualité perçue, Score Yélé) —
+/// l'Excel ne se limite plus au bloc « Détails » et le CSV reste
+/// Champ;Valeur;Unité avec une ligne de titre par catégorie.
 class ExportService {
   static const _appName = 'Yélé';
   static const _appTagline = 'Mesure de la qualité des réseaux mobiles';
@@ -34,7 +44,8 @@ class ExportService {
   // ── API publique ─────────────────────────────────────────────────────────
 
   Future<void> exportCsv(SpeedTestResult r) async {
-    final bytes = Uint8List.fromList(utf8.encode(_csv(r)));
+    final address = await _resolveAddress(r);
+    final bytes = Uint8List.fromList(utf8.encode(_csv(r, address: address)));
     await _shareFile(
       bytes,
       'Yele_mesure_${_stamp(r)}.csv',
@@ -44,6 +55,7 @@ class ExportService {
   }
 
   Future<void> exportExcel(SpeedTestResult r) async {
+    final address = await _resolveAddress(r);
     final excel = Excel.createExcel();
     final sheet = excel['Mesure'];
 
@@ -53,7 +65,8 @@ class ExportService {
       CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0),
       CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: 0),
     );
-    final brand = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0));
+    final brand =
+        sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0));
     brand.value = TextCellValue('$_appName — $_appTagline');
     brand.cellStyle = CellStyle(
       bold: true,
@@ -64,7 +77,8 @@ class ExportService {
 
     const headers = ['Champ', 'Valeur', 'Unité'];
     for (var i = 0; i < headers.length; i++) {
-      final c = sheet.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 1));
+      final c =
+          sheet.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 1));
       c.value = TextCellValue(headers[i]);
       c.cellStyle = CellStyle(
         bold: true,
@@ -72,15 +86,28 @@ class ExportService {
       );
     }
 
-    final rows = _rows(r);
-    for (var i = 0; i < rows.length; i++) {
-      for (var j = 0; j < rows[i].length; j++) {
-        sheet.cell(CellIndex.indexByColumnRow(columnIndex: j, rowIndex: i + 2))
-            .value = TextCellValue(rows[i][j]);
+    var rowIndex = 2;
+    for (final section in measureSections(r, address: address)) {
+      // Ligne de titre de catégorie (teinte de la marque).
+      final title = sheet
+          .cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIndex));
+      title.value = TextCellValue(section.title);
+      title.cellStyle = CellStyle(
+        bold: true,
+        backgroundColorHex: ExcelColor.fromHexString('FFE0F2F1'),
+      );
+      rowIndex++;
+      for (final row in section.rows) {
+        for (var j = 0; j < row.length && j < 3; j++) {
+          sheet.cell(CellIndex.indexByColumnRow(
+                  columnIndex: j, rowIndex: rowIndex))
+              .value = TextCellValue(row[j]);
+        }
+        rowIndex++;
       }
     }
     sheet.setColumnWidth(0, 34);
-    sheet.setColumnWidth(1, 42);
+    sheet.setColumnWidth(1, 44);
     sheet.setColumnWidth(2, 10);
 
     // Le package crée une feuille « Sheet1 » par défaut : on la retire pour
@@ -98,7 +125,8 @@ class ExportService {
   }
 
   Future<void> exportPdf(SpeedTestResult r) async {
-    final doc = await _buildPdf(r, a4: true);
+    final address = await _resolveAddress(r);
+    final doc = await _buildPdf(r, address: address);
     await _shareFile(
       await doc.save(),
       'Yele_mesure_${_stamp(r)}.pdf',
@@ -107,29 +135,22 @@ class ExportService {
     );
   }
 
-  /// Bytes du rapport (réservé aux tests de rendu).
-  Future<Uint8List> buildPdfBytesForTest(SpeedTestResult r) async =>
-      (await _buildPdf(r, a4: false)).save();
-
-  /// Résumé en image : on réutilise le rapport vectoriel (PDF) rasterisé en
-  /// PNG par `printing` — un seul rendu à maintenir pour les deux formats.
-  /// La rasterisation passe par la plateforme : indisponible sur le web.
-  ///
-  /// Deux corrections de rendu :
-  /// 1. le rasteriseur Android (PdfRenderer) produit une image à canal alpha :
-  ///    tout pixel non peint est transparent et s'affiche NOIR dans la plupart
-  ///    des visionneuses (cadrage noir signalé). On recompose le PNG sur fond
-  ///    blanc avec le package `image` ;
-  /// 2. on recadre l'image sur le contenu utile pour supprimer les marges
-  ///    transparentes résiduelles autour de la page.
+  /// PNG = le rapport A4 rasterisé : toutes les pages produites sont
+  /// recollées verticalement au cas où le contenu passe sur deux pages
+  /// (revue 07/11 : les six catégories ne tiennent plus dans une seule
+  /// page ; un PNG tronqué serait inacceptable).
   Future<void> exportPng(SpeedTestResult r) async {
-    final doc = await _buildPdf(r, a4: false);
+    final address = await _resolveAddress(r);
+    final doc = await _buildPdf(r, address: address);
     final pages = await Printing.raster(await doc.save(), dpi: 144).toList();
     if (pages.isEmpty) {
       throw Exception('Rasterisation impossible sur cette plateforme');
     }
-    final rawPng = await pages.first.toPng();
-    final png = await _flattenPngOnWhite(rawPng);
+    final pngs = <Uint8List>[];
+    for (final page in pages) {
+      pngs.add(await _flattenPngOnWhite(await page.toPng()));
+    }
+    final png = pngs.length == 1 ? pngs.first : _stackPngs(pngs);
     await _shareFile(
       png,
       'Yele_mesure_${_stamp(r)}.png',
@@ -138,40 +159,305 @@ class ExportService {
     );
   }
 
-  /// Aplatit un PNG (potentiellement transparent) sur fond blanc et recadre
-  /// les marges transparentes. Retourne l'image d'origine en cas d'échec du
-  /// décodage (jamais de blocage du partage pour un souci cosmétique).
-  Future<Uint8List> _flattenPngOnWhite(Uint8List pngBytes) async {
+  /// Adresse lisible pour ces coordonnées (mêmes service et cache que
+  /// l'historique) ; null si indisponible → « non disponible · GPS seul ».
+  Future<String?> _resolveAddress(SpeedTestResult r) async {
+    final lat = r.latitude;
+    final lon = r.longitude;
+    if (lat == null || lon == null) return null;
     try {
-      final decoded = img.decodePng(pngBytes);
-      if (decoded == null) return pngBytes;
-      final flattened = img.Image(
-          width: decoded.width, height: decoded.height, numChannels: 3);
-      // Composition alpha du contenu par-dessus un fond blanc opaque :
-      // tout pixel transparent reste blanc (fixe le cadrage noir).
-      flattened.clear(img.ColorRgb8(255, 255, 255));
-      for (var y = 0; y < decoded.height; y++) {
-        for (var x = 0; x < decoded.width; x++) {
-          final px = decoded.getPixel(x, y);
-          final a = px.a / 255.0;
-          if (a >= 1.0) {
-            flattened.setPixelRgb(x, y, px.r, px.g, px.b);
-          } else if (a > 0.0) {
-            flattened.setPixelRgb(
-              x,
-              y,
-              (px.r * a + 255 * (1 - a)).round(),
-              (px.g * a + 255 * (1 - a)).round(),
-              (px.b * a + 255 * (1 - a)).round(),
-            );
-          }
-          // a == 0 : reste blanc (fixe le cadrage noir).
-        }
-      }
-      return Uint8List.fromList(img.encodePng(flattened));
+      return await ReverseGeocodingService.instance.resolveAddress(lat, lon);
     } catch (_) {
-      return pngBytes;
+      return null;
     }
+  }
+
+  /// Octets du PDF de rapport (même builder que l'export) : utilisé par un
+  /// test de vérification du rendu PNG (rasterisation hors app).
+  @visibleForTesting
+  Future<List<int>> buildPdfBytesForTest(SpeedTestResult r) async =>
+      (await _buildPdf(r)).save();
+
+  // ── Sections partagées (source de vérité des 4 formats) ─────────────────
+
+  /// Une section = un titre de catégorie + des lignes Champ;Valeur;Unité.
+  /// Les règles d'affichage (libellés, conditions, masquages) sont celles de
+  /// la carte de détail de l'historique : ce qui est exporté est ce que
+  /// l'utilisateur voit. Une catégorie complètement vide ne s'affiche pas.
+  @visibleForTesting
+  static List<({String title, List<List<String>> rows})> measureSections(
+    SpeedTestResult r, {
+    String? address,
+  }) {
+    final wifi = (r.networkType ?? '').toUpperCase().contains('WIFI');
+    final sections = <({String title, List<List<String>> rows})>[];
+    final t = r.timestamp;
+    final ymd =
+        '${t.day.toString().padLeft(2, '0')}/${t.month.toString().padLeft(2, '0')}/${t.year} '
+        '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:'
+        '${t.second.toString().padLeft(2, '0')}';
+
+    // Position — Adresse (règle ISS-10 : 6 places) puis GPS/précision.
+    if ((r.latitude ?? 0) != 0) {
+      final lat = r.latitude!;
+      final lon = r.longitude!;
+      sections.add((
+        title: 'Position',
+        rows: [
+          // L'export est précédé d'une résolution (mise en cache) :
+          // l'adresse est soit connue, soit « non disponible · GPS seul ».
+          [
+            'Adresse',
+            (address ?? '').isNotEmpty ? address! : 'non disponible · GPS seul',
+            ''
+          ],
+          ['GPS', '${lat.toStringAsFixed(4)}, ${lon.toStringAsFixed(4)}', ''],
+          ['Latitude', lat.toStringAsFixed(6), '°'],
+          ['Longitude', lon.toStringAsFixed(6), '°'],
+        ],
+      ));
+    }
+
+    // Connexion — identité du lien réellement utilisé (règle B1 : FAI et
+    // SSID Wi-Fi seulement en Wi-Fi ; Technologie seulement en SIM).
+    final connexion = <List<String>>[
+      ['Date du test', ymd, ''],
+      ['Type de connexion', r.networkType ?? '—', ''],
+      if (wifi)
+        ['FAI / Opérateur', r.operator ?? '—', '']
+      else
+        [
+          'Réseau mobile',
+          (r.simOperator ?? '').isNotEmpty ? r.simOperator! : '—',
+          ''
+        ],
+      if (wifi)
+        [
+          'SSID Wi-Fi',
+          (r.wifiSsid ?? '').trim().isNotEmpty ? r.wifiSsid!.trim() : 'n.d.',
+          ''
+        ],
+      if (!wifi)
+        [
+          'Technologie',
+          (r.technology ?? '').isNotEmpty
+              ? r.technology!
+              : (r.cellularTech ?? 'n.d.'),
+          ''
+        ],
+      ['Serveur', serverHumanLabel(r.server), ''],
+      if ((r.deviceModel ?? '').isNotEmpty) ['Appareil', r.deviceModel!, ''],
+      if ((r.osVersion ?? '').isNotEmpty) ['Version OS', r.osVersion!, ''],
+    ];
+    sections.add((title: 'Connexion', rows: connexion));
+
+    // Débit & Latence — ISS-06 (min/moy/max quand connus), IMP-07 (perte),
+    // IMP-01 (données consommées).
+    final dl = r.downloadStats;
+    final ul = r.uploadStats;
+    final pi = r.pingStats;
+    sections.add((
+      title: 'Débit & Latence',
+      rows: [
+        if (dl != null)
+          [
+            'Download min / moy / max',
+            '${dl.min.toStringAsFixed(2)} / ${dl.mean.toStringAsFixed(2)} / '
+                '${dl.max.toStringAsFixed(2)} Mb/s',
+            ''
+          ]
+        else
+          ['Download', r.downloadSpeed.toStringAsFixed(2), 'Mb/s'],
+        if (ul != null)
+          [
+            'Upload min / moy / max',
+            '${ul.min.toStringAsFixed(2)} / ${ul.mean.toStringAsFixed(2)} / '
+                '${ul.max.toStringAsFixed(2)} Mb/s',
+            ''
+          ]
+        else
+          ['Upload', r.uploadSpeed.toStringAsFixed(2), 'Mb/s'],
+        if (pi != null)
+          [
+            'Latence min / moy / max',
+            '${pi.min.toStringAsFixed(0)} / ${pi.mean.toStringAsFixed(0)} / '
+                '${pi.max.toStringAsFixed(0)} ms',
+            ''
+          ]
+        else
+          ['Latence (ping)', r.ping.toStringAsFixed(0), 'ms'],
+        ['Gigue (jitter)', r.jitter.toStringAsFixed(0), 'ms'],
+        if (r.packetLoss != null)
+          ['Perte de paquets', formatPacketLoss(r.packetLoss!), ''],
+        if ((r.dataUsedKiB ?? -1) >= 0)
+          [
+            'Données consommées',
+            r.dataUsedKiB! >= 1024
+                ? (r.dataUsedKiB! / 1024).toStringAsFixed(1)
+                : r.dataUsedKiB!.toString(),
+            r.dataUsedKiB! >= 1024 ? 'Mo' : 'Ko',
+          ],
+      ],
+    ));
+
+    // Signal radio — mêmes métriques et paliers que l'historique
+    // (RSRP/RSRQ en cellulaire, RSSI en Wi-Fi, repli générique).
+    final signal = _signalRows(r);
+    if (signal.isNotEmpty) sections.add((title: 'Signal radio', rows: signal));
+
+    // Qualité perçue — streaming (agrégat + détails + paliers), navigation,
+    // QoE si l'utilisateur l'a saisie.
+    final perceived = <List<String>>[
+      if (r.hasStreamingTest) ...[
+        [
+          'Streaming',
+          '${r.streamingMaxResolution ?? '—'} · '
+              '${(r.streamingScore ?? 0).toStringAsFixed(0)}/100',
+          ''
+        ],
+        ['Démarrage vidéo', '${r.streamingStartupMs ?? 0}', 'ms'],
+        ['Interruptions (rebuffering)', '${r.streamingRebufferCount ?? 0}', ''],
+        [
+          'Part du temps en tampon',
+          ((r.streamingRebufferRatio ?? 0) * 100).toStringAsFixed(1),
+          '%'
+        ],
+        for (final q in r.streamingQualities)
+          [
+            'Streaming ${q.label}',
+            q.reached
+                ? '${q.performanceRate.toStringAsFixed(0)} % · '
+                    '${q.initialLoadingSec.toStringAsFixed(1)} s'
+                : '—',
+            ''
+          ],
+      ],
+      if (r.hasBrowsingTest) ...[
+        [
+          'Navigation',
+          '${((r.browsingAvgLoadMs ?? 0) / 1000).toStringAsFixed(1)} s · '
+              '${(r.browsingScore ?? 0).toStringAsFixed(0)}/100',
+          ''
+        ],
+        [
+          'Taux de réussite',
+          '${((r.browsingSuccessRate ?? 0) * 100).toStringAsFixed(0)} %',
+          ''
+        ],
+        ['Pages testées', (r.browsingPagesTested ?? 0).toString(), ''],
+      ],
+      if (r.qoeRating != null && r.qoeRating! > 0) ...[
+        ['Évaluation QoE', '${r.qoeRating}/5', ''],
+        if ((r.qoeUsage ?? '').isNotEmpty) ['Usage principal', r.qoeUsage!, ''],
+        if ((r.qoeSatisfaction ?? '').isNotEmpty)
+          ['Commentaire', r.qoeSatisfaction!, ''],
+      ],
+    ];
+    if (perceived.isNotEmpty) {
+      sections.add((title: 'Qualité perçue', rows: perceived));
+    }
+
+    // Score Yélé — IMP-05/IMP-12 : référentiel, score ouvert (+ mention),
+    // indice de lecture, composantes. Anciennes mesures sans scoring :
+    // la section ne s'affiche pas (aucune rétro-attribution).
+    if (r.scoringVersion != null) {
+      final rows = <List<String>>[['Référentiel', r.scoringVersion!, '']];
+      final global = r.scoreGlobal;
+      String pts(double v) => v.toStringAsFixed(0);
+      if (global != null) {
+        rows.add([
+          'Score ouvert',
+          '${pts(global)} pts · ${YeleScoringEngine.classify(global).label}',
+          ''
+        ]);
+        final on100 = r.scoreGlobalOn100;
+        if (on100 != null) {
+          rows.add(
+              ['Indice (lecture)', '${on100.toStringAsFixed(0)}/100', '']);
+        }
+      } else {
+        final sub = r.scoreMeasuredSubtotal;
+        rows.add([
+          'Score ouvert',
+          sub == null
+              ? 'non mesuré'
+              : 'incomplet · ${pts(sub)} pts mesurés '
+                  '(composantes absentes exclues)',
+          ''
+        ]);
+      }
+      if (r.scoreDownload != null) {
+        rows.add(['Download', '${pts(r.scoreDownload!)} pts', '']);
+      }
+      if (r.scoreUpload != null) {
+        rows.add(['Upload', '${pts(r.scoreUpload!)} pts', '']);
+      }
+      if (r.scorePingJitter != null) {
+        rows.add(['Latence', '${pts(r.scorePingJitter!)} pts', '']);
+      }
+      if (r.scoreBrowsing != null) {
+        rows.add(['Navigation', '${pts(r.scoreBrowsing!)} pts', '']);
+      }
+      if (r.scoreStreaming != null) {
+        rows.add(['Streaming', '${pts(r.scoreStreaming!)} pts', '']);
+      }
+      sections.add((title: 'Score Yélé', rows: rows));
+    }
+
+    return sections;
+  }
+
+  /// Lignes « Signal radio » : copie conforme de la carte de détail
+  /// (history_screen._signalLines) — puissance avec palier, qualité RSRQ,
+  /// repli de la mesure générique si aucune métrique typée.
+  static List<List<String>> _signalRows(SpeedTestResult r) {
+    String qualityLabel(int dbm, {required String kind}) {
+      final t = switch (kind) {
+        'rsrq' => [-8, -10, -13],
+        'rssi' => [-65, -75, -85],
+        _ => [-80, -95, -105],
+      };
+      if (dbm >= t[0]) return 'Excellent';
+      if (dbm >= t[1]) return 'Bon';
+      if (dbm >= t[2]) return 'Moyen';
+      return 'Faible';
+    }
+
+    final rows = <List<String>>[];
+    if ((r.signalRsrp ?? 0) != 0) {
+      rows.add([
+        'Puissance du Signal',
+        'RSRP ${r.signalRsrp} dBm '
+            '(${qualityLabel(r.signalRsrp!, kind: 'rsrp')})',
+        ''
+      ]);
+    }
+    if ((r.signalNrRsrp ?? 0) != 0) {
+      rows.add(['Puissance du Signal', 'NR RSRP ${r.signalNrRsrp} dBm', '']);
+    }
+    if ((r.wifiRssi ?? 0) != 0) {
+      rows.add([
+        'Puissance du Signal',
+        'RSSI ${r.wifiRssi} dBm '
+            '(${qualityLabel(r.wifiRssi!, kind: 'rssi')})',
+        ''
+      ]);
+    }
+    if ((r.signalRsrq ?? 0) != 0) {
+      rows.add([
+        'Qualité du Signal',
+        'RSRQ ${r.signalRsrq} dB '
+            '(${qualityLabel(r.signalRsrq!, kind: 'rsrq')})',
+        ''
+      ]);
+    }
+    if ((r.signalNrRsrq ?? 0) != 0) {
+      rows.add(['Qualité du Signal', 'NR RSRQ ${r.signalNrRsrq} dB', '']);
+    }
+    if (rows.isEmpty && (r.signalDbm ?? 0) != 0) {
+      rows.add(['Puissance du Signal', '${r.signalDbm} dBm', '']);
+    }
+    return rows;
   }
 
   // ── Rapport PDF (utilisé par exportPdf ET exportPng) ─────────────────────
@@ -207,30 +493,28 @@ class ExportService {
       fontBold: f,
       fontSize: size,
       color: color,
-      fontWeight: isBold && f != null ? pw.FontWeight.bold : pw.FontWeight.normal,
+      fontWeight:
+          isBold && f != null ? pw.FontWeight.bold : pw.FontWeight.normal,
     );
   }
 
-  Future<pw.Document> _buildPdf(SpeedTestResult r, {required bool a4}) async {
+  Future<pw.Document> _buildPdf(SpeedTestResult r, {String? address}) async {
     final pdf = pw.Document();
     final logo = await _logo();
     final regular = await _embeddedFont();
     final bold = await _embeddedFont(bold: true) ?? regular;
     final quality = _qualityLabel(r.downloadSpeed);
-    final pageFormat =
-        a4 ? PdfPageFormat.a4 : const PdfPageFormat(480, 600);
-    final double titleSize = a4 ? 18 : 15;
-    final double tileValue = a4 ? 17 : 14;
-    final double bodySize = a4 ? 9.5 : 8;
+    final double tileValue = 17;
+    final double bodySize = 9.5;
 
     pdf.addPage(
       pw.Page(
         // Fond blanc peint explicitement : sans lui, la rasterisation PNG
         // (PdfRenderer Android) produit une image à fond noir. Ce fond est
-        // aussi présent dans le PDF A4, sans effet visible là-bas.
+        // aussi présent dans le PDF, sans effet visible là-bas.
         pageTheme: pw.PageTheme(
-          pageFormat: pageFormat,
-          margin: pw.EdgeInsets.all(a4 ? 40 : 18),
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(40),
           buildBackground: (context) =>
               pw.Container(color: PdfColor.fromInt(0xFFFFFFFF)),
         ),
@@ -241,106 +525,96 @@ class ExportService {
             pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.center,
               children: [
-                if (logo != null) pw.Image(pw.MemoryImage(logo), width: a4 ? 40 : 26),
+                if (logo != null) pw.Image(pw.MemoryImage(logo), width: 40),
                 if (logo != null) pw.SizedBox(width: 10),
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
                     pw.Text(_appName,
-                        style: _ts(regular, bold, a4 ? 22 : 16,
-                            _hex(YeleColors.primary),
+                        style: _ts(regular, bold, 22, _hex(YeleColors.primary),
                             isBold: true)),
                     pw.Text(_appTagline,
-                        style: _ts(
-                            regular, bold, a4 ? 8.5 : 6.5, _hex(YeleColors.muted))),
+                        style:
+                            _ts(regular, bold, 8.5, _hex(YeleColors.muted))),
                   ],
                 ),
                 pw.Spacer(),
-                if (a4)
-                  pw.Container(
-                    padding: const pw.EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 6),
-                    decoration: pw.BoxDecoration(
-                      color: _hex(YeleColors.panel),
-                      borderRadius:
-                          const pw.BorderRadius.all(pw.Radius.circular(6)),
-                    ),
-                    child: pw.Text(_dateLong(r.timestamp),
-                        style: _ts(regular, bold, 9, _hex(YeleColors.ink))),
+                pw.Container(
+                  padding: const pw.EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 6),
+                  decoration: pw.BoxDecoration(
+                    color: _hex(YeleColors.panel),
+                    borderRadius:
+                        const pw.BorderRadius.all(pw.Radius.circular(6)),
                   ),
+                  child: pw.Text(_dateLong(r.timestamp),
+                      style: _ts(regular, bold, 9, _hex(YeleColors.ink))),
+                ),
               ],
             ),
             pw.SizedBox(height: 6),
-            pw.Container(height: a4 ? 3 : 2, color: _hex(YeleColors.primary)),
-            pw.SizedBox(height: a4 ? 16 : 10),
+            pw.Container(height: 3, color: _hex(YeleColors.primary)),
+            pw.SizedBox(height: 16),
 
             // ── Titre + badge qualité ──
             pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.center,
               children: [
                 pw.Text('Rapport de mesure',
-                    style: _ts(regular, bold, titleSize, _hex(YeleColors.ink),
+                    style: _ts(
+                        regular, bold, 18, _hex(YeleColors.ink),
                         isBold: true)),
                 pw.SizedBox(width: 10),
+                // Badge solide + texte blanc : contraste garanti quel que
+                // soit le palier (revue 07/11 — le texte se fondait dans
+                // une pastille teintée).
                 pw.Container(
                   padding: const pw.EdgeInsets.symmetric(
                       horizontal: 8, vertical: 4),
                   decoration: pw.BoxDecoration(
-                    // 15 % d'opacité : PdfColor n'a pas de withValues,
-                    // on compose à la main sur les 8 bits alpha.
-                    color: _alpha(quality.color, 0.15),
+                    color: quality.color,
                     borderRadius:
                         const pw.BorderRadius.all(pw.Radius.circular(4)),
                   ),
                   child: pw.Text('Qualité : ${quality.label}',
-                      style: _ts(regular, bold, bodySize, quality.color,
+                      style: _ts(regular, bold, bodySize,
+                          PdfColor.fromInt(0xFFFFFFFF),
                           isBold: true)),
                 ),
               ],
             ),
-            pw.SizedBox(height: a4 ? 14 : 8),
+            pw.SizedBox(height: 14),
 
             // ── Tuiles débits / latence ──
             pw.Row(
               children: [
                 _tile('Download', r.downloadSpeed.toStringAsFixed(2), 'Mb/s',
                     tileValue, regular, bold),
-                pw.SizedBox(width: a4 ? 10 : 6),
+                pw.SizedBox(width: 10),
                 _tile('Upload', r.uploadSpeed.toStringAsFixed(2), 'Mb/s',
                     tileValue, regular, bold),
-                pw.SizedBox(width: a4 ? 10 : 6),
+                pw.SizedBox(width: 10),
                 _tile('Latence', r.ping.toStringAsFixed(0), 'ms', tileValue,
                     regular, bold),
               ],
             ),
             pw.SizedBox(height: 4),
             pw.Text('Gigue : ${r.jitter.toStringAsFixed(0)} ms',
-                style: _ts(
-                    regular, bold, bodySize, _hex(YeleColors.muted))),
-            pw.SizedBox(height: a4 ? 14 : 8),
+                style: _ts(regular, bold, bodySize, _hex(YeleColors.muted))),
+            pw.SizedBox(height: 14),
 
-            // ── Sections ──
-            _pdfSection('Détails de la mesure', _rows(r), bodySize, regular,
-                bold, labelWidth: a4 ? 150 : 130),
-            if (r.hasStreamingTest) ...[
-              pw.SizedBox(height: a4 ? 12 : 8),
-              _pdfSection('Test de streaming vidéo', _streamingRows(r),
-                  bodySize, regular, bold,
-                  labelWidth: a4 ? 150 : 130),
+            // ── Sections (catégories de l'app — source unique
+            //    [measureSections], 07/11/2026) ──
+            for (final section in measureSections(r, address: address)) ...[
+              _pdfSection(section.title, section.rows, bodySize, regular, bold),
+              pw.SizedBox(height: 12),
             ],
-            if (r.hasBrowsingTest) ...[
-              pw.SizedBox(height: a4 ? 12 : 8),
-              _pdfSection('Test de navigation web', _browsingRows(r), bodySize,
-                  regular, bold, labelWidth: a4 ? 150 : 130),
-            ],
-            if (a4) ...[
-              pw.Spacer(),
-              pw.Divider(color: _hex(YeleColors.line)),
-              pw.Text(
-                'Généré par l\'application $_appName le ${_dateLong(DateTime.now())} — Serveur de test : ${serverHumanLabel(r.server)}.',
-                style: _ts(regular, bold, 7.5, _hex(YeleColors.muted)),
-              ),
-            ],
+            pw.Spacer(),
+            pw.Divider(color: _hex(YeleColors.line)),
+            pw.Text(
+              'Généré par l\'application $_appName le ${_dateLong(DateTime.now())} — Serveur de test : ${serverHumanLabel(r.server)}.',
+              style: _ts(regular, bold, 7.5, _hex(YeleColors.muted)),
+            ),
           ],
         ),
       ),
@@ -414,114 +688,15 @@ class ExportService {
                           isBold: true),
                     ),
                   ),
-                  if (row.length > 2 && row[2].isNotEmpty)
-                    pw.SizedBox(
-                      width: 30,
-                      child: pw.Text(row[2],
-                          style: _ts(
-                              regular, bold, fontSize, _hex(YeleColors.muted))),
-                    ),
+                  if (row.length > 2)
+                    pw.Text(row[2],
+                        style: _ts(
+                            regular, bold, fontSize, _hex(YeleColors.muted))),
                 ],
               ),
             )),
       ],
     );
-  }
-
-  // ── Données de la mesure ─────────────────────────────────────────────────
-
-  /// Lignes « Champ / Valeur / Unité » communes aux quatre formats
-  /// (une seule source de vérité : CSV, Excel, PDF et PNG restent cohérents).
-  List<List<String>> _rows(SpeedTestResult r) {
-    final t = r.timestamp;
-    final ymd =
-        '${t.day.toString().padLeft(2, '0')}/${t.month.toString().padLeft(2, '0')}/${t.year} '
-        '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}:${t.second.toString().padLeft(2, '0')}';
-
-    return [
-      ['Date du test', ymd, ''],
-      ['Type de connexion', r.networkType ?? '—', ''],
-      ['Réseau mobile', _mobileLabel(r), ''],
-      ['FAI / Opérateur', r.operator ?? '—', ''],
-      ['Serveur', serverHumanLabel(r.server), ''],
-      ['Localisation', r.location ?? '—', ''],
-      if ((r.latitude ?? 0) != 0) ...[
-        ['Latitude', r.latitude!.toStringAsFixed(6), '°'],
-        ['Longitude', r.longitude!.toStringAsFixed(6), '°'],
-      ],
-      ['Download', r.downloadSpeed.toStringAsFixed(2), 'Mb/s'],
-      ['Upload', r.uploadSpeed.toStringAsFixed(2), 'Mb/s'],
-      ['Latence (ping)', r.ping.toStringAsFixed(0), 'ms'],
-      ['Gigue (jitter)', r.jitter.toStringAsFixed(0), 'ms'],
-      // IMP-01 : données consommées par le test (masqué si non mesuré).
-      if ((r.dataUsedKiB ?? -1) >= 0)
-        [
-          'Données consommées',
-          r.dataUsedKiB! >= 1024
-              ? (r.dataUsedKiB! / 1024).toStringAsFixed(1)
-              : r.dataUsedKiB!.toString(),
-          r.dataUsedKiB! >= 1024 ? 'Mo' : 'Ko',
-        ],
-      if (r.qoeRating != null && r.qoeRating! > 0)
-        ['Évaluation QoE', '${r.qoeRating}/5', ''],
-      if ((r.qoeUsage ?? '').isNotEmpty) ['Usage principal', r.qoeUsage!, ''],
-      if ((r.qoeSatisfaction ?? '').isNotEmpty)
-        ['Commentaire', r.qoeSatisfaction!, ''],
-      if ((r.deviceModel ?? '').isNotEmpty) ['Appareil', r.deviceModel!, ''],
-      if ((r.osVersion ?? '').isNotEmpty) ['Version OS', r.osVersion!, ''],
-    ];
-  }
-
-  List<List<String>> _streamingRows(SpeedTestResult r) {
-    final rows = <List<String>>[
-      ['Score streaming', (r.streamingScore ?? 0).toStringAsFixed(0), '/100'],
-      ['Résolution max soutenue', r.streamingMaxResolution ?? '—', ''],
-      ['Démarrage vidéo', '${r.streamingStartupMs ?? 0}', 'ms'],
-      ['Interruptions (rebuffering)', '${r.streamingRebufferCount ?? 0}', ''],
-      [
-        'Part du temps en tampon',
-        ((r.streamingRebufferRatio ?? 0) * 100).toStringAsFixed(1),
-        '%'
-      ],
-    ];
-    // Détail par qualité testée (720p/1080p/2160p), aligné sur le tableau
-    // de l'écran de résultat : taux de performance et chargement initial.
-    for (final q in r.streamingQualities) {
-      rows.add([
-        'Streaming ${q.label}',
-        q.reached
-            ? '${q.performanceRate.toStringAsFixed(0)} % · ${q.initialLoadingSec.toStringAsFixed(1)} s'
-            : '—',
-        ''
-      ]);
-    }
-    return rows;
-  }
-
-  List<List<String>> _browsingRows(SpeedTestResult r) {
-    return [
-      ['Score navigation', (r.browsingScore ?? 0).toStringAsFixed(0), '/100'],
-      [
-        'Temps de chargement moyen',
-        ((r.browsingAvgLoadMs ?? 0) / 1000).toStringAsFixed(1),
-        's'
-      ],
-      [
-        'Taux de réussite',
-        '${((r.browsingSuccessRate ?? 0) * 100).toStringAsFixed(0)} %',
-        ''
-      ],
-      ['Pages testées', (r.browsingPagesTested ?? 0).toString(), ''],
-    ];
-  }
-
-  /// Règle produit (alignée sur score_screen / history_screen) :
-  /// uniquement le nom de l'opérateur, « — » en Wi-Fi.
-  String _mobileLabel(SpeedTestResult r) {
-    final isWifi = (r.networkType ?? '').toUpperCase().contains('WIFI');
-    if (isWifi) return '—';
-    final sim = r.simOperator;
-    return (sim != null && sim.isNotEmpty) ? sim : '—';
   }
 
   /// Mêmes seuils que l'écran de résultat (score_screen.dart) : cohérence
@@ -554,30 +729,20 @@ class ExportService {
 
   PdfColor _hex(Color c) => PdfColor.fromInt(c.toARGB32());
 
-  /// Même teinte avec une opacité donnée (0–1), car PdfColor n'expose pas
-  /// de méthode `withValues` comme Flutter.
-  PdfColor _alpha(PdfColor c, double opacity) => PdfColor(
-        c.red,
-        c.green,
-        c.blue,
-        c.alpha * opacity,
-      );
-
   // ── CSV ──────────────────────────────────────────────────────────────────
 
-  /// CSV d'une seule mesure (en-tête + 1 bloc clé/valeur), séparateur « ; »
-  /// (Excel FR), échappement RFC 4180 et BOM UTF-8 pour les accents.
-  String _csv(SpeedTestResult r) {
-    final rows = [
-      const ['Champ', 'Valeur', 'Unité'],
-      ..._rows(r),
-      if (r.hasStreamingTest) ..._streamingRows(r),
-      if (r.hasBrowsingTest) ..._browsingRows(r),
-    ];
+  /// CSV d'une seule mesure : BOM UTF-8, séparateur « ; » (Excel FR),
+  /// échappement RFC 4180, une ligne de titre « # Catégorie » par section,
+  /// puis les lignes Champ;Valeur;Unité de cette catégorie.
+  String _csv(SpeedTestResult r, {String? address}) {
     final buf = StringBuffer()
-      ..writeln('\uFEFF${_appName.replaceAll(';', ',')};${_appTagline.replaceAll(';', ',')}');
-    for (final row in rows) {
-      buf.writeln(_csvLine(row));
+      ..writeln(
+          '\uFEFF${_appName.replaceAll(';', ',')};${_appTagline.replaceAll(';', ',')}');
+    for (final section in measureSections(r, address: address)) {
+      buf.writeln(_csvLine(['## ${section.title}']));
+      for (final row in section.rows) {
+        buf.writeln(_csvLine(row));
+      }
     }
     return buf.toString();
   }
@@ -615,5 +780,74 @@ class ExportService {
         text: '$_appName — $subject',
       ),
     );
+  }
+
+  /// Aplatit un PNG (potentiellement transparent) sur fond blanc et recadre
+  /// les marges transparentes. Retourne l'image d'origine en cas d'échec du
+  /// décodage (jamais de blocage du partage pour un souci cosmétique).
+  Future<Uint8List> _flattenPngOnWhite(Uint8List pngBytes) async {
+    try {
+      final decoded = img.decodePng(pngBytes);
+      if (decoded == null) return pngBytes;
+      final flattened = img.Image(
+          width: decoded.width, height: decoded.height, numChannels: 3);
+      // Composition alpha du contenu par-dessus un fond blanc opaque :
+      // tout pixel transparent reste blanc (fixe le cadrage noir).
+      flattened.clear(img.ColorRgb8(255, 255, 255));
+      for (var y = 0; y < decoded.height; y++) {
+        for (var x = 0; x < decoded.width; x++) {
+          final px = decoded.getPixel(x, y);
+          final a = px.a / 255.0;
+          if (a >= 1.0) {
+            flattened.setPixelRgb(x, y, px.r, px.g, px.b);
+          } else if (a > 0.0) {
+            flattened.setPixelRgb(
+              x,
+              y,
+              (px.r * a + 255 * (1 - a)).round(),
+              (px.g * a + 255 * (1 - a)).round(),
+              (px.b * a + 255 * (1 - a)).round(),
+            );
+          }
+          // a == 0 : reste blanc (fixe le cadrage noir).
+        }
+      }
+      return Uint8List.fromList(img.encodePng(flattened));
+    } catch (_) {
+      return pngBytes;
+    }
+  }
+
+  /// Recolle verticalement des PNG de pages rasterisées (rapport qui
+  /// dépasse une page : le résumé reste lisible d'un seul tenant).
+  Uint8List _stackPngs(List<Uint8List> pngs) {
+    try {
+      final decoded =
+          pngs.map((b) => img.decodePng(b)).whereType<img.Image>().toList();
+      if (decoded.isEmpty) return pngs.first;
+      final width =
+          decoded.map((d) => d.width).reduce((a, b) => a > b ? a : b);
+      final totalHeight = decoded.fold<int>(0, (sum, d) => sum + d.height);
+      final stacked = img.Image(width: width, height: totalHeight);
+      stacked.clear(img.ColorRgb8(255, 255, 255));
+      var yOffset = 0;
+      for (final page in decoded) {
+        final offsetX = (width - page.width) ~/ 2;
+        for (var y = 0; y < page.height; y++) {
+          for (var x = 0; x < page.width; x++) {
+            final px = page.getPixel(x, y);
+            if (px.a >= 255) {
+              stacked.setPixelRgb(
+                  x + offsetX, y + yOffset, px.r, px.g, px.b);
+            }
+          }
+        }
+        yOffset += page.height;
+      }
+      return Uint8List.fromList(img.encodePng(stacked));
+    } catch (_) {
+      // Dépassement impossible à recoller : on livre la 1ʳᵉ page.
+      return pngs.first;
+    }
   }
 }

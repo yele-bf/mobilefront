@@ -508,20 +508,23 @@ class ExportService {
     final double bodySize = 9.5;
 
     pdf.addPage(
-      pw.Page(
+      pw.MultiPage(
         // Fond blanc peint explicitement : sans lui, la rasterisation PNG
         // (PdfRenderer Android) produit une image à fond noir. Ce fond est
         // aussi présent dans le PDF, sans effet visible là-bas.
         pageTheme: pw.PageTheme(
           pageFormat: PdfPageFormat.a4,
-          margin: const pw.EdgeInsets.all(40),
+          margin: const pw.EdgeInsets.fromLTRB(40, 30, 40, 30),
           buildBackground: (context) =>
               pw.Container(color: PdfColor.fromInt(0xFFFFFFFF)),
         ),
-        build: (context) => pw.Column(
+        // Bandeau brandé en haut de CHAQUE page : le rapport passe sur
+        // plusieurs pages depuis la revue du 07/11 (6 catégories) — revue
+        // suivante : sans MultiPage, tout ce qui dépassait une page était
+        // silencieusement coupé (Qualité perçue et Score Yélé absents).
+        header: (context) => pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            // ── En-tête brandé ──
             pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.center,
               children: [
@@ -539,84 +542,100 @@ class ExportService {
                   ],
                 ),
                 pw.Spacer(),
-                pw.Container(
-                  padding: const pw.EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 6),
-                  decoration: pw.BoxDecoration(
-                    color: _hex(YeleColors.panel),
-                    borderRadius:
-                        const pw.BorderRadius.all(pw.Radius.circular(6)),
+                if (context.pageNumber == 1)
+                  pw.Container(
+                    padding: const pw.EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 6),
+                    decoration: pw.BoxDecoration(
+                      color: _hex(YeleColors.panel),
+                      borderRadius:
+                          const pw.BorderRadius.all(pw.Radius.circular(6)),
+                    ),
+                    child: pw.Text(_dateLong(r.timestamp),
+                        style: _ts(regular, bold, 9, _hex(YeleColors.ink))),
                   ),
-                  child: pw.Text(_dateLong(r.timestamp),
-                      style: _ts(regular, bold, 9, _hex(YeleColors.ink))),
-                ),
-              ],
-            ),
-            pw.SizedBox(height: 6),
-            pw.Container(height: 3, color: _hex(YeleColors.primary)),
-            pw.SizedBox(height: 16),
-
-            // ── Titre + badge qualité ──
-            pw.Row(
-              crossAxisAlignment: pw.CrossAxisAlignment.center,
-              children: [
-                pw.Text('Rapport de mesure',
-                    style: _ts(
-                        regular, bold, 18, _hex(YeleColors.ink),
-                        isBold: true)),
-                pw.SizedBox(width: 10),
-                // Badge solide + texte blanc : contraste garanti quel que
-                // soit le palier (revue 07/11 — le texte se fondait dans
-                // une pastille teintée).
-                pw.Container(
-                  padding: const pw.EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 4),
-                  decoration: pw.BoxDecoration(
-                    color: quality.color,
-                    borderRadius:
-                        const pw.BorderRadius.all(pw.Radius.circular(4)),
-                  ),
-                  child: pw.Text('Qualité : ${quality.label}',
-                      style: _ts(regular, bold, bodySize,
-                          PdfColor.fromInt(0xFFFFFFFF),
-                          isBold: true)),
-                ),
-              ],
-            ),
-            pw.SizedBox(height: 14),
-
-            // ── Tuiles débits / latence ──
-            pw.Row(
-              children: [
-                _tile('Download', r.downloadSpeed.toStringAsFixed(2), 'Mb/s',
-                    tileValue, regular, bold),
-                pw.SizedBox(width: 10),
-                _tile('Upload', r.uploadSpeed.toStringAsFixed(2), 'Mb/s',
-                    tileValue, regular, bold),
-                pw.SizedBox(width: 10),
-                _tile('Latence', r.ping.toStringAsFixed(0), 'ms', tileValue,
-                    regular, bold),
               ],
             ),
             pw.SizedBox(height: 4),
-            pw.Text('Gigue : ${r.jitter.toStringAsFixed(0)} ms',
-                style: _ts(regular, bold, bodySize, _hex(YeleColors.muted))),
-            pw.SizedBox(height: 14),
-
-            // ── Sections (catégories de l'app — source unique
-            //    [measureSections], 07/11/2026) ──
-            for (final section in measureSections(r, address: address)) ...[
-              _pdfSection(section.title, section.rows, bodySize, regular, bold),
-              pw.SizedBox(height: 12),
-            ],
-            pw.Spacer(),
-            pw.Divider(color: _hex(YeleColors.line)),
-            pw.Text(
-              'Généré par l\'application $_appName le ${_dateLong(DateTime.now())} — Serveur de test : ${serverHumanLabel(r.server)}.',
-              style: _ts(regular, bold, 7.5, _hex(YeleColors.muted)),
-            ),
+            pw.Container(height: 3, color: _hex(YeleColors.primary)),
+            pw.SizedBox(height: context.pageNumber == 1 ? 14 : 8),
           ],
         ),
+        // Pied de page sur chaque page, avec pagination.
+        footer: (context) => pw.Padding(
+          padding: const pw.EdgeInsets.only(top: 6),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Divider(color: _hex(YeleColors.line)),
+              pw.Text(
+                'Généré par l\'application $_appName le ${_dateLong(DateTime.now())} — '
+                'Serveur de test : ${serverHumanLabel(r.server)} — '
+                'Page ${context.page} / ${context.pagesCount}',
+                style: _ts(regular, bold, 7.5, _hex(YeleColors.muted)),
+              ),
+            ],
+          ),
+        ),
+        build: (context) => [
+          // ── Titre + badge qualité ──
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
+            children: [
+              pw.Text('Rapport de mesure',
+                  style: _ts(
+                      regular, bold, 18, _hex(YeleColors.ink), isBold: true)),
+              pw.SizedBox(width: 10),
+              // Badge solide + texte blanc : contraste garanti quel que
+              // soit le palier (revue 07/11 — le texte se fondait dans
+              // une pastille teintée).
+              pw.Container(
+                padding: const pw.EdgeInsets.symmetric(
+                    horizontal: 8, vertical: 4),
+                decoration: pw.BoxDecoration(
+                  color: quality.color,
+                  borderRadius:
+                      const pw.BorderRadius.all(pw.Radius.circular(4)),
+                ),
+                child: pw.Text('Qualité : ${quality.label}',
+                    style: _ts(regular, bold, bodySize,
+                        PdfColor.fromInt(0xFFFFFFFF), isBold: true)),
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 14),
+
+          // ── Tuiles débits / latence ──
+          pw.Row(
+            children: [
+              _tile('Download', r.downloadSpeed.toStringAsFixed(2), 'Mb/s',
+                  tileValue, regular, bold),
+              pw.SizedBox(width: 10),
+              _tile('Upload', r.uploadSpeed.toStringAsFixed(2), 'Mb/s',
+                  tileValue, regular, bold),
+              pw.SizedBox(width: 10),
+              _tile('Latence', r.ping.toStringAsFixed(0), 'ms', tileValue,
+                  regular, bold),
+            ],
+          ),
+          pw.SizedBox(height: 4),
+          pw.Text('Gigue : ${r.jitter.toStringAsFixed(0)} ms',
+              style: _ts(regular, bold, bodySize, _hex(YeleColors.muted))),
+          pw.SizedBox(height: 14),
+
+          // ── Sections (catégories de l'app — source unique
+          //    [measureSections], 07/11/2026) ──
+          for (final section in measureSections(r, address: address)) ...[
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                _pdfSection(
+                    section.title, section.rows, bodySize, regular, bold),
+                pw.SizedBox(height: 12),
+              ],
+            ),
+          ],
+        ],
       ),
     );
     return pdf;
@@ -731,17 +750,61 @@ class ExportService {
 
   // ── CSV ──────────────────────────────────────────────────────────────────
 
+  /// Table de transcodage FR minimal : le CSV est livré sans accents car
+  /// certains lecteurs que l'utilisateur cible (Android, tableurs, carnet)
+  /// affichent mal l'UTF-8 — la revue du 07/11 a validé ce compromis
+  /// (l'Excel, le PDF et le PNG conservent les accents).
+  static const _asciiMap = {
+    'à': 'a', 'â': 'a', 'ä': 'a', 'á': 'a', 'ã': 'a',
+    'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+    'î': 'i', 'ï': 'i', 'í': 'i',
+    'ô': 'o', 'ö': 'o', 'ó': 'o', 'õ': 'o',
+    'ù': 'u', 'û': 'u', 'ü': 'u', 'ú': 'u',
+    'ç': 'c', 'ÿ': 'y', 'ñ': 'n',
+    'À': 'A', 'Â': 'A', 'Ä': 'A',
+    'É': 'E', 'È': 'E', 'Ê': 'E', 'Ë': 'E',
+    'Î': 'I', 'Ï': 'I',
+    'Ô': 'O', 'Ö': 'O',
+    'Ù': 'U', 'Û': 'U', 'Ü': 'U',
+    'Ç': 'C', 'Œ': 'OE', 'œ': 'oe', 'Ñ': 'N',
+    // Symboles typographiques qui posent le même problème d'affichage.
+    '°': 'deg', '·': '-', '—': '-', '–': '-', '…': '...', '’': "'",
+    '\u00a0': ' ',
+  };
+
+  /// Plier un texte vers l'ASCII 7 bits (CSV uniquement). Tout caractère
+  /// non couvert non-ASCII est retiré plutôt que corrompu.
+  @visibleForTesting
+  static String asciiFold(String s) {
+    final buf = StringBuffer();
+    for (final ch in s.runes) {
+      final c = String.fromCharCode(ch);
+      if (_asciiMap.containsKey(c)) {
+        buf.write(_asciiMap[c]);
+      } else if (ch < 128) {
+        buf.write(c);
+      }
+      // Sinon : caractère non géré → retiré (jamais de mojibake).
+    }
+    return buf.toString();
+  }
+
   /// CSV d'une seule mesure : BOM UTF-8, séparateur « ; » (Excel FR),
   /// échappement RFC 4180, une ligne de titre « # Catégorie » par section,
-  /// puis les lignes Champ;Valeur;Unité de cette catégorie.
+  /// puis les lignes Champ;Valeur;Unité de cette catégorie. Texte plié
+  /// ASCII (sans accents, cf. [asciiFold]).
   String _csv(SpeedTestResult r, {String? address}) {
     final buf = StringBuffer()
       ..writeln(
-          '\uFEFF${_appName.replaceAll(';', ',')};${_appTagline.replaceAll(';', ',')}');
+          '${asciiFold(_appName)};${asciiFold(_appTagline)}');
     for (final section in measureSections(r, address: address)) {
-      buf.writeln(_csvLine(['## ${section.title}']));
+      buf.writeln(_csvLine(['## ${asciiFold(section.title)}']));
       for (final row in section.rows) {
-        buf.writeln(_csvLine(row));
+        buf.writeln(_csvLine([
+          asciiFold(row[0]),
+          asciiFold(row.length > 1 ? row[1] : ''),
+          asciiFold(row.length > 2 ? row[2] : ''),
+        ]));
       }
     }
     return buf.toString();
@@ -828,21 +891,16 @@ class ExportService {
       final width =
           decoded.map((d) => d.width).reduce((a, b) => a > b ? a : b);
       final totalHeight = decoded.fold<int>(0, (sum, d) => sum + d.height);
-      final stacked = img.Image(width: width, height: totalHeight);
+      final stacked = img.Image(
+          width: width, height: totalHeight, numChannels: 3);
       stacked.clear(img.ColorRgb8(255, 255, 255));
-      var yOffset = 0;
+      var y = 0;
       for (final page in decoded) {
-        final offsetX = (width - page.width) ~/ 2;
-        for (var y = 0; y < page.height; y++) {
-          for (var x = 0; x < page.width; x++) {
-            final px = page.getPixel(x, y);
-            if (px.a >= 255) {
-              stacked.setPixelRgb(
-                  x + offsetX, y + yOffset, px.r, px.g, px.b);
-            }
-          }
-        }
-        yOffset += page.height;
+        // Composite optimisé (flatten au préalable → fond opaque) : la boucle
+        // pixel à pixel est bien trop lente en mode debug sur deux pages A4.
+        img.compositeImage(stacked, page,
+            dstX: (width - page.width) ~/ 2, dstY: y);
+        y += page.height;
       }
       return Uint8List.fromList(img.encodePng(stacked));
     } catch (_) {

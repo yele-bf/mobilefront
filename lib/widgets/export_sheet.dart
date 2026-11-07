@@ -96,7 +96,7 @@ class _ExportSheetState extends State<_ExportSheet> {
               icon: Icons.picture_as_pdf_outlined,
               color: YeleColors.danger,
               title: 'PDF — rapport complet',
-              subtitle: 'Rapport brandé Yélé, une page',
+              subtitle: 'Rapport brandé Yélé, toutes les catégories',
               label: 'PDF',
               onTap: () => _run('PDF', () => _export.exportPdf(widget.result)),
             ),

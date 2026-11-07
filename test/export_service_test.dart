@@ -168,6 +168,39 @@ void main() {
     });
   });
 
+  group('ASCII du CSV (revue 07/11 : lecteur du propriétaire, sans accents)', () {
+    test('asciiFold plie les accents et symboles FR', () {
+      expect(ExportService.asciiFold('Qualité perçue'), 'Qualite percue');
+      expect(ExportService.asciiFold('Données consommées'), 'Donnees consommees');
+      expect(ExportService.asciiFold('Référentiel'), 'Referentiel');
+      expect(ExportService.asciiFold('Évaluation QoE'), 'Evaluation QoE');
+      expect(ExportService.asciiFold('12.3702, -1.4789'), '12.3702, -1.4789');
+      expect(ExportService.asciiFold('Latence (ping)'), 'Latence (ping)');
+      // Symboles définis dans la table de pliage.
+      expect(ExportService.asciiFold('Francfort, Allemagne — x'), 'Francfort, Allemagne - x');
+      expect(ExportService.asciiFold('90/100 · 2.0 s'), '90/100 - 2.0 s');
+      expect(ExportService.asciiFold('Latitude °'), 'Latitude deg');
+      // Caractère hors table : retiré, jamais corrompu.
+      expect(ExportService.asciiFold('a\u00e9b\u4e2dc'), 'aeb c'.replaceAll(' ', ''));
+    });
+
+    test('aucune ligne CSV ne contient de caractère non-ASCII', () {
+      // On vérifie le pliage sur la mesure complète en passant par les
+      // sections + asciiFold, qui est la base de la fabrication du CSV.
+      final sections = ExportService.measureSections(_rich());
+      for (final s in sections) {
+        for (final field in [s.title, ...s.rows.expand((r) => r)]) {
+          final folded = ExportService.asciiFold(field);
+          expect(
+            folded.runes.any((r) => r > 127),
+            isFalse,
+            reason: 'Champ non plié : "$field" → "$folded"',
+          );
+        }
+      }
+    });
+  });
+
   group('measureSections — mesure héritée (sans scoring, sans signal)', () {
     test('pas de section Score Yélé, débits simples, adresse conservée', () {
       final legacy = SpeedTestResult(

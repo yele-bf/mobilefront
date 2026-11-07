@@ -81,6 +81,10 @@ flutter:
 
   assets:
     - assets/logo/yele_logo.png
+    # Base quartiers (ISS-10) : extraction OSM/Overpass 07/11/2026 +
+    # entrées manuelles « seeded », utilisée par le géocodage inversé pour
+    # compléter le composant Quartier quand OSM n'en fournit pas.
+    - lib/assets/quartiers_bf.json
 
   # Police embarquée pour les exports PDF/PNG : la police par défaut du
   # package pdf (Helvetica, non embarquée) ne couvre pas tous les caractères

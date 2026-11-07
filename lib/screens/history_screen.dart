@@ -427,10 +427,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  /// Ligne(s) « Coord. » : adresse lisible (géocodage inversé Nominatim) avec
-  /// les coordonnées brutes en sous-texte. Tant que la résolution est en
-  /// cours, un indicateur discret s'affiche ; en cas d'échec ou d'absence
-  /// d'adresse OSM, on retombe sur les seules coordonnées.
+  /// Ligne « Adresse » (structure validee le 06/11/2026 : Rue, Quartier,
+  /// Ville, Province, Region, Pays) et ligne « GPS ». Tant que la resolution
+  /// est en cours, « Adresse : recherche… » est affichee a cote des
+  /// coordonnees ; en cas d'echec ou d'absence d'adresse OSM, « non
+  /// disponible · GPS seul ».
   List<Widget> _coordBlock(
       SpeedTestResult r, Widget Function(String k, String v) line) {
     final key = ReverseGeocodingService.cacheKeyFor(r.latitude!, r.longitude!);
@@ -438,16 +439,22 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final coords =
         '${r.latitude!.toStringAsFixed(4)}, ${r.longitude!.toStringAsFixed(4)}';
     if (address == null) {
-      // Résolution en cours.
-      return [line('Coord.', '$coords — résolution…')];
+      // Resolution en cours.
+      return [
+        line('Adresse', 'recherche…'),
+        line('GPS', coords),
+      ];
     }
     if (address.isEmpty) {
-      // Aucune adresse OSM connue à ces coordonnées.
-      return [line('Coord.', coords)];
+      // Aucune adresse OSM connue a ces coordonnees (ou hors Burkina).
+      return [
+        line('Adresse', 'non disponible · GPS seul'),
+        line('GPS', coords),
+      ];
     }
     return [
-      line('Coord. (adresse)', address),
-      line('Coordonnées', coords),
+      line('Adresse', address),
+      line('GPS', coords),
     ];
   }
 

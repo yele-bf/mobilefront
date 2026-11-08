@@ -44,6 +44,11 @@ class _SettingsScreenState extends State<SettingsScreen>
   CollectStatus _status = CollectStatus.unavailable;
   bool _busy = false;
 
+  /// Revue bêta du 08/11/2026 : la section « Collecte de couverture » est
+  /// masquée (la carte vivra des tests actifs). Passer à true pour la
+  /// restaurer — toute la section est conservée ci-dessous.
+  static const _collectEnabled = false;
+
   // ISS-12 — Autorisations du téléphone.
   final _perms = PermissionService();
   Map<YelePermission, PermissionState> _permStates = {};
@@ -52,10 +57,8 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   // ISS-12 — Réglages généraux fonctionnels et persistants (Hive).
   final _settings = SettingsService();
-  AppLanguage _language = AppLanguage.system;
   DefaultTest _defaultTest = DefaultTest.full;
   SpeedUnit _speedUnit = SpeedUnit.auto;
-  AppStyle _appStyle = AppStyle.green;
 
   @override
   void initState() {
@@ -64,9 +67,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     _loadSettings();
     _refreshStatus();
     _refreshPermissions();
-    // ISS-12 : la langue peut être changée depuis cet écran même — on
-    // rafraîchit les libellés dès que le notificateur la change.
-    SettingsService.languageNotifier.addListener(_onLanguageChanged);
     _loadConsumptionSettings();
     // Reste synchronisé si le réglage change ailleurs (resynchro du débit
     // temps réel au retour au premier plan, par exemple).
@@ -74,23 +74,16 @@ class _SettingsScreenState extends State<SettingsScreen>
     SettingsService.realtimeSpeedNotifier.addListener(_onConsChanged);
   }
 
-  void _onLanguageChanged() {
-    if (mounted) setState(() {});
-  }
-
   void _loadSettings() {
     setState(() {
-      _language = _settings.language;
       _defaultTest = _settings.defaultTest;
       _speedUnit = _settings.speedUnit;
-      _appStyle = _settings.appStyle;
     });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    SettingsService.languageNotifier.removeListener(_onLanguageChanged);
     SettingsService.monthlyLimitGbNotifier.removeListener(_onConsChanged);
     SettingsService.realtimeSpeedNotifier.removeListener(_onConsChanged);
     super.dispose();
@@ -155,11 +148,9 @@ class _SettingsScreenState extends State<SettingsScreen>
         child: ListView(
           children: [
             _section(AppLocale.t('Général', 'General')),
-            _choiceItem(
-              AppLocale.t('Langue', 'Language'),
-              _languageLabel(_language),
-              _pickLanguage,
-            ),
+            // Revue bêta du 08/11/2026 : « Langue » et « Style de fond »
+            // sont masqués — l'app reste en français, fond blanc (voir
+            // SettingsService.initialize).
             _choiceItem(
               AppLocale.t(
                 'Test par défaut au démarrage',
@@ -172,11 +163,6 @@ class _SettingsScreenState extends State<SettingsScreen>
               AppLocale.t('Unité de débit', 'Speed unit'),
               _speedUnitLabel(_speedUnit),
               _pickSpeedUnit,
-            ),
-            _choiceItem(
-              AppLocale.t('Style de fond', 'Background style'),
-              _appStyleLabel(_appStyle),
-              _pickAppStyle,
             ),
             _toggle(
               AppLocale.t('Utiliser le GPS', 'Use GPS'),
@@ -211,7 +197,7 @@ class _SettingsScreenState extends State<SettingsScreen>
               (v) => _setRealtimeSpeed(v),
             ),
             ..._permissionsSection(),
-            if (_collect.isSupported) ..._collectSection(),
+            if (_collectEnabled && _collect.isSupported) ..._collectSection(),
             _supportSection(),
             SizedBox(height: 24),
           ],
@@ -1050,20 +1036,9 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   // ── Réglages généraux (ISS-12) ────────────────────────────────────────────
 
-  String _languageLabel(AppLanguage v) {
-    switch (v) {
-      case AppLanguage.system:
-        return AppLocale.t(
-          'Auto (langue du téléphone)',
-          'Auto (device language)',
-        );
-      case AppLanguage.fr:
-        return 'Français';
-      case AppLanguage.en:
-        return 'English';
-    }
-  }
-
+  // Revue bêta du 08/11/2026 : les choix « Langue » et « Style de fond »
+  // sont masqués (app figée en français / fond blanc) — _languageLabel,
+  // _appStyleLabel, _pickLanguage et _pickAppStyle retirés d'ici.
   String _defaultTestLabel(DefaultTest v) {
     switch (v) {
       case DefaultTest.full:
@@ -1085,15 +1060,6 @@ class _SettingsScreenState extends State<SettingsScreen>
         return 'Mb/s';
       case SpeedUnit.kbps:
         return 'Kb/s';
-    }
-  }
-
-  String _appStyleLabel(AppStyle v) {
-    switch (v) {
-      case AppStyle.green:
-        return AppLocale.t('Blanc', 'White');
-      case AppStyle.dark:
-        return AppLocale.t('Sombre', 'Dark');
     }
   }
 
@@ -1143,13 +1109,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     _loadSettings();
   }
 
-  Future<void> _pickLanguage() => _pick<AppLanguage>(
-    title: AppLocale.t('Langue', 'Language'),
-    current: _language,
-    choices: [for (final v in AppLanguage.values) (v, _languageLabel(v))],
-    onPick: (v) => _settings.language = v,
-  );
-
   Future<void> _pickDefaultTest() => _pick<DefaultTest>(
     title: AppLocale.t(
       'Test par défaut au démarrage',
@@ -1175,13 +1134,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     current: _speedUnit,
     choices: [for (final v in SpeedUnit.values) (v, _speedUnitLabel(v))],
     onPick: (v) => _settings.speedUnit = v,
-  );
-
-  Future<void> _pickAppStyle() => _pick<AppStyle>(
-    title: AppLocale.t('Style de fond', 'Background style'),
-    current: _appStyle,
-    choices: [for (final v in AppStyle.values) (v, _appStyleLabel(v))],
-    onPick: (v) => _settings.appStyle = v,
   );
 
   // ── Assistance (FAQ + Contactez-nous) ────────────────────────────────────

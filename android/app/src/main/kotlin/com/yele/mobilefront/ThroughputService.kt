@@ -376,11 +376,10 @@ class ThroughputService : Service() {
         else -> "$bytes o"
     }
 
-    /// Pastille de débit dans la barre d'état : une bitmap « 123 Kb/s »
-    /// dessinée à la volée remplace l'icône système (qui était une flèche de
-    /// téléchargement sans signification). La bitmap est affichée telle
-    /// quelle (pas de teinte monochrome) : le compteur reste lisible même
-    /// notification repliée.
+    /// Pastille de débit dans la barre d'état, style « Internet Speed Meter
+    /// Lite » (revue IMP-08 du 08/11) : le nombre en haut, l'unité (Kb/s /
+    /// Mb/s) en dessous, blanc gras — même allure que l'application de
+    /// référence, au lieu d'un « 0 Kb/s » compressé sur une seule ligne.
     private fun speedIcon(downKbps: Long): android.graphics.drawable.Icon? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return null
         val density = resources.displayMetrics.density
@@ -391,27 +390,45 @@ class ThroughputService : Service() {
             if (id != 0) resources.getDimensionPixelSize(id)
             else (24 * density).toInt()
         }.coerceAtLeast(1)
+
+        val label = fmt(downKbps)
+        val sep = label.indexOf(' ')
+        val number = if (sep > 0) label.substring(0, sep) else label
+        val unit = if (sep > 0) label.substring(sep + 1) else ""
+
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-        // On règle la taille de police pour que la HAUTEUR RÉELLE DES CHIFFRES
-        // (cap height, mesurée sur « 0 ») remplisse TOUTE la hauteur de la
-        // zone d'icône — même taille apparente que l'horloge. Un simple
-        // textSize = h laissait ~30 % de blanc (ascendantes/descendantes de
-        // la police), d'où une pastille visuellement minuscule.
         paint.textSize = 100f
         val probe = android.graphics.Rect()
         paint.getTextBounds("0", 0, 1, probe)
-        paint.textSize = 100f * hPx / probe.height().coerceAtLeast(1)
-        val label = fmt(downKbps)
-        val w = paint.measureText(label).toInt() + 2
+        // Le nombre occupe ~62 % de la hauteur du slot (comme les chiffres
+        // de l'horloge) ; l'unité prend le tiers restant en dessous.
+        val numCap = hPx * 0.62f
+        paint.textSize = 100f * numCap / probe.height().coerceAtLeast(1)
+        val unitPaint = Paint(paint)
+        unitPaint.textSize = paint.textSize * 0.45f
+
+        val w =
+            maxOf(paint.measureText(number), unitPaint.measureText(unit))
+                .toInt().coerceAtLeast(1) + 2
         val bmp = Bitmap.createBitmap(w, hPx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
-        paint.getTextBounds("0", 0, 1, probe)
-        // Ligne de base calée pour que les chiffres couvrent exactement
-        // 0..hPx verticalement, sans marge.
-        canvas.drawText(label, 1f, -probe.top.toFloat(), paint)
+
+        if (unit.isEmpty()) {
+            // Pas d'unité séparable : le nombre rempli toute la hauteur du
+            // slot (même calage cap-height que l'ancienne pastille).
+            paint.textSize = 100f * hPx / probe.height().coerceAtLeast(1)
+            paint.getTextBounds(number, 0, number.length, probe)
+            canvas.drawText(number, 1f, -probe.top.toFloat(), paint)
+        } else {
+            paint.getTextBounds(number, 0, number.length, probe)
+            canvas.drawText(number, 1f, -probe.top.toFloat(), paint)
+            val uRect = android.graphics.Rect()
+            unitPaint.getTextBounds(unit, 0, unit.length, uRect)
+            canvas.drawText(unit, 1f, (hPx - uRect.bottom).toFloat(), unitPaint)
+        }
         return android.graphics.drawable.Icon.createWithBitmap(bmp)
     }
 

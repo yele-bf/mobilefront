@@ -132,6 +132,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Imp08 v3 — Remise à zéro explicite de la limite (revue
+                  // du 08/11) : une ligne dédiée, en tête du sélecteur.
+                  InkWell(
+                    onTap: () => Navigator.of(ctx).pop(0.0),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 10,
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.restart_alt,
+                            size: 18,
+                            color: YeleColors.primary,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              "Réinitialiser la limite (supprimer l'alerte)",
+                              style: TextStyle(
+                                fontSize: 14.5,
+                                color: YeleColors.ink,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
                   for (final go in const [
                     0.0,
                     1.0,

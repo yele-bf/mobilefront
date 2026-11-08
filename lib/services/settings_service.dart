@@ -36,27 +36,43 @@ class SettingsService {
 
   /// Notificateurs mis à jour à chaque écriture — consommés par les écrans
   /// pour se rafraîchir en direct.
-  static final ValueNotifier<AppLanguage> languageNotifier =
-      ValueNotifier(AppLanguage.system);
-  static final ValueNotifier<DefaultTest> defaultTestNotifier =
-      ValueNotifier(DefaultTest.full);
-  static final ValueNotifier<SpeedUnit> speedUnitNotifier =
-      ValueNotifier(SpeedUnit.auto);
-  static final ValueNotifier<AppStyle> appStyleNotifier =
-      ValueNotifier(AppStyle.green);
+  static final ValueNotifier<AppLanguage> languageNotifier = ValueNotifier(
+    AppLanguage.system,
+  );
+  static final ValueNotifier<DefaultTest> defaultTestNotifier = ValueNotifier(
+    DefaultTest.full,
+  );
+  static final ValueNotifier<SpeedUnit> speedUnitNotifier = ValueNotifier(
+    SpeedUnit.auto,
+  );
+  static final ValueNotifier<AppStyle> appStyleNotifier = ValueNotifier(
+    AppStyle.green,
+  );
 
   static Future<void> initialize() async {
     if (_box?.isOpen ?? false) return;
     _box = await Hive.openBox(boxName);
     // Recharger les notificateurs depuis le stockage à l'ouverture.
     languageNotifier.value = _readEnum(
-        'language', AppLanguage.values, AppLanguage.system);
+      'language',
+      AppLanguage.values,
+      AppLanguage.system,
+    );
     defaultTestNotifier.value = _readEnum(
-        'defaultTest', DefaultTest.values, DefaultTest.full);
-    speedUnitNotifier.value =
-        _readEnum('speedUnit', SpeedUnit.values, SpeedUnit.auto);
-    appStyleNotifier.value =
-        _readEnum('appStyle', AppStyle.values, AppStyle.green);
+      'defaultTest',
+      DefaultTest.values,
+      DefaultTest.full,
+    );
+    speedUnitNotifier.value = _readEnum(
+      'speedUnit',
+      SpeedUnit.values,
+      SpeedUnit.auto,
+    );
+    appStyleNotifier.value = _readEnum(
+      'appStyle',
+      AppStyle.values,
+      AppStyle.green,
+    );
   }
 
   static T _readEnum<T extends Enum>(String key, List<T> values, T fallback) {
@@ -72,7 +88,8 @@ class SettingsService {
     final box = _box;
     if (box == null || !box.isOpen) {
       throw StateError(
-          'SettingsService doit être initialisé avant utilisation');
+        'SettingsService doit être initialisé avant utilisation',
+      );
     }
     return box;
   }
@@ -151,18 +168,15 @@ class SettingsService {
   // ── Suivi de consommation ───────────────────────────────────────────────
 
   /// Seuil mensuel de consommation (Go), 0 = pas d'alerte.
-  static final ValueNotifier<double> monthlyLimitGbNotifier =
-      ValueNotifier(0);
+  static final ValueNotifier<double> monthlyLimitGbNotifier = ValueNotifier(0);
 
   /// Débit temps réel dans la barre d'état — désactivé par défaut : c'est le
   /// seul élément de l'app qui consomme des ressources en continu (batterie).
-  static final ValueNotifier<bool> realtimeSpeedNotifier =
-      ValueNotifier(false);
+  static final ValueNotifier<bool> realtimeSpeedNotifier = ValueNotifier(false);
 
   static const _kMonthlyLimitGb = 'monthlyLimitGb';
 
-  double get monthlyLimitGb =>
-      _b.get(_kMonthlyLimitGb) as double? ?? 0;
+  double get monthlyLimitGb => _b.get(_kMonthlyLimitGb) as double? ?? 0;
 
   set monthlyLimitGb(double gb) {
     _set(_kMonthlyLimitGb, gb);
@@ -171,8 +185,7 @@ class SettingsService {
 
   static const _kRealtimeSpeed = 'realtimeSpeed';
 
-  bool get realtimeSpeed =>
-      _b.get(_kRealtimeSpeed) as bool? ?? false;
+  bool get realtimeSpeed => _b.get(_kRealtimeSpeed) as bool? ?? false;
 
   set realtimeSpeed(bool v) {
     _set(_kRealtimeSpeed, v);

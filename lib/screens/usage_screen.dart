@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../services/settings_service.dart';
-import '../services/usage_tracker_service.dart' show DayUsage, UsageTrackerService, formatBytes, formatGb;
+import '../services/usage_tracker_service.dart'
+    show DayUsage, DeviceTraffic, UsageTrackerService, formatBytes, formatGb;
 import '../theme/yele_theme.dart';
 import '../widgets/yele_scaffold.dart';
 
@@ -22,12 +23,23 @@ class _UsageScreenState extends State<UsageScreen> {
   /// IMP-01b — Jour touché sur le graphique (index dans la série, null = aucun).
   int? _selectedDay;
 
+  /// IMP-08 v2 — Photographie du trafic de l'appareil (toutes applications)
+  /// depuis le démarrage. null tant que non lu ou indisponible : le panneau
+  /// est masqué.
+  DeviceTraffic? _deviceTraffic;
+
   @override
   void initState() {
     super.initState();
     SettingsService.monthlyLimitGbNotifier.addListener(_refresh);
     UsageTrackerService.monthlyUsageChanged.addListener(_refresh);
     UsageTrackerService.limitExceededNotifier.addListener(_refresh);
+    _loadDeviceTraffic();
+  }
+
+  void _loadDeviceTraffic() async {
+    final dt = await UsageTrackerService.instance.deviceTrafficSinceBoot();
+    if (mounted) setState(() => _deviceTraffic = dt);
   }
 
   @override
@@ -78,6 +90,7 @@ class _UsageScreenState extends State<UsageScreen> {
         children: [
           _summaryCards(today, week, month),
           _mobileWifiSplit(month),
+          if (_deviceTraffic != null) _devicePanel(_deviceTraffic!),
           if (limitGb > 0) _limitGauge(month, limitGb),
           if (UsageTrackerService.limitExceeded && limitGb > 0) _limitBanner(),
           _chart(series),
@@ -114,10 +127,11 @@ class _UsageScreenState extends State<UsageScreen> {
               'Seuil mensuel dépassé : pensez à réduire votre consommation '
               'de données mobiles.',
               style: const TextStyle(
-                  fontSize: 13,
-                  color: YeleColors.danger,
-                  fontWeight: FontWeight.w600,
-                  height: 1.3),
+                fontSize: 13,
+                color: YeleColors.danger,
+                fontWeight: FontWeight.w600,
+                height: 1.3,
+              ),
             ),
           ),
         ],
@@ -144,25 +158,35 @@ class _UsageScreenState extends State<UsageScreen> {
           ),
           child: Column(
             children: [
-              Text(label,
-                  style: TextStyle(
-                      fontSize: 12.5, color: YeleColors.surface.muted)),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: YeleColors.surface.muted,
+                ),
+              ),
               const SizedBox(height: 6),
-              Text(formatBytes(u.total),
-                  style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: YeleColors.surface.ink)),
+              Text(
+                formatBytes(u.total),
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: YeleColors.surface.ink,
+                ),
+              ),
               const SizedBox(height: 4),
               // IMP-01b — La carte active « Ce mois » garde un fond teinté
               // (primary à 8 %) ; le texte doit rester lisible dessus dans les
               // deux thèmes : libellé en encre pleine au lieu du muted, qui
               // disparaissait sur le fond sombre de la carte sélectionnée.
-              Text('${formatBytes(u.mobile)} mobile',
-                  style: TextStyle(
-                      fontSize: 11.5,
-                      fontWeight: highlight ? FontWeight.w600 : FontWeight.w400,
-                      color: YeleColors.primary)),
+              Text(
+                '${formatBytes(u.mobile)} mobile',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: highlight ? FontWeight.w600 : FontWeight.w400,
+                  color: YeleColors.primary,
+                ),
+              ),
             ],
           ),
         ),
@@ -197,14 +221,22 @@ class _UsageScreenState extends State<UsageScreen> {
                 Container(
                   width: 10,
                   height: 10,
-                  decoration:
-                      BoxDecoration(color: color, shape: BoxShape.circle),
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
                 ),
                 const SizedBox(width: 8),
-                Expanded(child: Text(label, style: const TextStyle(fontSize: 14))),
-                Text('${formatBytes(bytes)}  (${(frac * 100).toStringAsFixed(0)} %)',
-                    style: TextStyle(
-                        fontSize: 13.5, color: YeleColors.surface.muted)),
+                Expanded(
+                  child: Text(label, style: const TextStyle(fontSize: 14)),
+                ),
+                Text(
+                  '${formatBytes(bytes)}  (${(frac * 100).toStringAsFixed(0)} %)',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    color: YeleColors.surface.muted,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 5),
@@ -226,9 +258,62 @@ class _UsageScreenState extends State<UsageScreen> {
       'Répartition — mois en cours',
       Column(
         children: [
-          row('Données mobiles (compte pour le forfait)', month.mobile,
-              YeleColors.primary),
+          row(
+            'Données mobiles (compte pour le forfait)',
+            month.mobile,
+            YeleColors.primary,
+          ),
           row('Wi-Fi', month.wifi, const Color(0xFF6B7A90)),
+        ],
+      ),
+    );
+  }
+
+  // ── IMP-08 v2 — Trafic de l'appareil (toutes applications) ────────────────
+
+  /// Panneau « hors app » : trafic de l'appareil depuis le démarrage, part
+  /// de l'app sur la même période, et la différence (autres applications).
+  /// La période native est explicitée dans le panneau — elle n'est pas le
+  /// mois en cours (Android ne tient pas d'historique par application).
+  Widget _devicePanel(DeviceTraffic dt) {
+    Widget row(String label, String value) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          children: [
+            Expanded(child: Text(label, style: const TextStyle(fontSize: 14))),
+            Text(
+              value,
+              style: TextStyle(fontSize: 13.5, color: YeleColors.surface.muted),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return _panel(
+      'Trafic de l\'appareil — depuis le démarrage du téléphone',
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          row('App Yélé, depuis ce démarrage', formatBytes(dt.appTotal)),
+          row(
+            'Autres applications, depuis ce démarrage',
+            formatBytes(dt.otherTotal),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Les compteurs Android repartent de zéro à chaque redémarrage du '
+            'téléphone : ces volumes ne sont pas directement comparables au '
+            'mois affiché ci-dessus. Ils donnent l\'ordre de grandeur de ce '
+            "que consomment vos autres applications pendant la même période "
+            'que l\'app Yélé.',
+            style: TextStyle(
+              fontSize: 12,
+              color: YeleColors.surface.muted,
+              height: 1.35,
+            ),
+          ),
         ],
       ),
     );
@@ -238,7 +323,9 @@ class _UsageScreenState extends State<UsageScreen> {
 
   Widget _limitGauge(DayUsage month, double limitGb) {
     final limitBytes = (limitGb * 1024 * 1024 * 1024).round();
-    final frac = limitBytes > 0 ? (month.total / limitBytes).clamp(0.0, 1.0) : 0.0;
+    final frac = limitBytes > 0
+        ? (month.total / limitBytes).clamp(0.0, 1.0)
+        : 0.0;
     final over = month.total > limitBytes;
     final color = over ? YeleColors.danger : YeleColors.primary;
 
@@ -261,10 +348,11 @@ class _UsageScreenState extends State<UsageScreen> {
             over
                 ? 'Seuil dépassé : ${formatBytes(month.total)} pour ${formatGb(limitGb)} Go autorisés.'
                 : '${formatBytes(month.total)} sur ${formatGb(limitGb)} Go '
-                    '(${(frac * 100).toStringAsFixed(0)} %)',
+                      '(${(frac * 100).toStringAsFixed(0)} %)',
             style: TextStyle(
-                fontSize: 13,
-                color: over ? YeleColors.danger : YeleColors.surface.muted),
+              fontSize: 13,
+              color: over ? YeleColors.danger : YeleColors.surface.muted,
+            ),
           ),
         ],
       ),
@@ -274,8 +362,7 @@ class _UsageScreenState extends State<UsageScreen> {
   // ── Graphique journalier du mois ──────────────────────────────────────────
 
   Widget _chart(List<DayUsage> series) {
-    final maxBytes =
-        series.fold<int>(0, (m, d) => d.total > m ? d.total : m);
+    final maxBytes = series.fold<int>(0, (m, d) => d.total > m ? d.total : m);
 
     return _panel(
       'Évolution jour par jour — mois en cours',
@@ -299,16 +386,23 @@ class _UsageScreenState extends State<UsageScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      _dayTooltipLabel(series[_selectedDay!],
-                          _selectedDay! + 1),
+                      _dayTooltipLabel(
+                        series[_selectedDay!],
+                        _selectedDay! + 1,
+                      ),
                       style: TextStyle(
-                          fontSize: 12.5, color: YeleColors.surface.ink),
+                        fontSize: 12.5,
+                        color: YeleColors.surface.ink,
+                      ),
                     ),
                   ),
                   GestureDetector(
                     onTap: () => setState(() => _selectedDay = null),
-                    child: Icon(Icons.close,
-                        size: 16, color: YeleColors.surface.muted),
+                    child: Icon(
+                      Icons.close,
+                      size: 16,
+                      color: YeleColors.surface.muted,
+                    ),
                   ),
                 ],
               ),
@@ -317,18 +411,20 @@ class _UsageScreenState extends State<UsageScreen> {
             height: 170,
             child: series.every((d) => d.total == 0)
                 ? Center(
-                    child: Text('Aucun transfert ce mois-ci',
-                        style: TextStyle(
-                            fontSize: 13, color: YeleColors.surface.muted)))
+                    child: Text(
+                      'Aucun transfert ce mois-ci',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: YeleColors.surface.muted,
+                      ),
+                    ),
+                  )
                 : Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       // IMP-01b — Échelle Y : 3 graduations formatées pour
                       // donner du sens aux hauteurs de barres.
-                      SizedBox(
-                        width: 46,
-                        child: _YAxisLabels(maxBytes),
-                      ),
+                      SizedBox(width: 46, child: _YAxisLabels(maxBytes)),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Column(
@@ -338,14 +434,14 @@ class _UsageScreenState extends State<UsageScreen> {
                                 builder: (context, constraints) {
                                   final selected =
                                       (_selectedDay != null &&
-                                              _selectedDay! < series.length)
-                                          ? _selectedDay
-                                          : null;
+                                          _selectedDay! < series.length)
+                                      ? _selectedDay
+                                      : null;
                                   return GestureDetector(
                                     behavior: HitTestBehavior.opaque,
                                     onTapUp: (details) {
-                                      final slot = constraints.maxWidth /
-                                          series.length;
+                                      final slot =
+                                          constraints.maxWidth / series.length;
                                       final idx =
                                           (details.localPosition.dx / slot)
                                               .floor()
@@ -353,10 +449,15 @@ class _UsageScreenState extends State<UsageScreen> {
                                       setState(() => _selectedDay = idx);
                                     },
                                     child: CustomPaint(
-                                      size: Size(constraints.maxWidth,
-                                          constraints.maxHeight),
-                                      painter: _BarChartPainter(series,
-                                          maxBytes, selected),
+                                      size: Size(
+                                        constraints.maxWidth,
+                                        constraints.maxHeight,
+                                      ),
+                                      painter: _BarChartPainter(
+                                        series,
+                                        maxBytes,
+                                        selected,
+                                      ),
                                     ),
                                   );
                                 },
@@ -369,14 +470,20 @@ class _UsageScreenState extends State<UsageScreen> {
                                 mainAxisAlignment:
                                     MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Text('1',
-                                      style: TextStyle(
-                                          fontSize: 10,
-                                          color: YeleColors.surface.muted)),
-                                  Text('${series.length}',
-                                      style: TextStyle(
-                                          fontSize: 10,
-                                          color: YeleColors.surface.muted)),
+                                  Text(
+                                    '1',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: YeleColors.surface.muted,
+                                    ),
+                                  ),
+                                  Text(
+                                    '${series.length}',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: YeleColors.surface.muted,
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
@@ -394,8 +501,18 @@ class _UsageScreenState extends State<UsageScreen> {
   /// Libellé du tooltip d'un jour : « 12 sept : 45 Mo (38 Mo mobile) ».
   String _dayTooltipLabel(DayUsage u, int dayNumber) {
     const months = [
-      'janv', 'févr', 'mars', 'avr', 'mai', 'juin',
-      'juil', 'août', 'sept', 'oct', 'nov', 'déc',
+      'janv',
+      'févr',
+      'mars',
+      'avr',
+      'mai',
+      'juin',
+      'juil',
+      'août',
+      'sept',
+      'oct',
+      'nov',
+      'déc',
     ];
     final now = DateTime.now();
     final date = '$dayNumber ${months[now.month - 1]}';
@@ -419,11 +536,14 @@ class _UsageScreenState extends State<UsageScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: Text(title,
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: YeleColors.surface.ink)),
+            child: Text(
+              title,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: YeleColors.surface.ink,
+              ),
+            ),
           ),
           child,
         ],
@@ -488,7 +608,8 @@ class _BarChartPainter extends CustomPainter {
     final slot = size.width / n;
     final barWidth = (slot * 0.6).clamp(1.5, 14.0);
     final mobilePaint = Paint()..color = YeleColors.primary;
-    final wifiPaint = Paint()..color = YeleColors.primary.withValues(alpha: .25);
+    final wifiPaint = Paint()
+      ..color = YeleColors.primary.withValues(alpha: .25);
 
     for (var i = 0; i < n; i++) {
       final u = series[i];
@@ -503,12 +624,15 @@ class _BarChartPainter extends CustomPainter {
           : wifiPaint.color;
       if (hw > 0) {
         canvas.drawRect(
-            Rect.fromLTWH(x, size.height - hw, barWidth, hw),
-            Paint()..color = wifi);
+          Rect.fromLTWH(x, size.height - hw, barWidth, hw),
+          Paint()..color = wifi,
+        );
       }
       if (hm > 0) {
         canvas.drawRect(
-            Rect.fromLTWH(x, size.height - h, barWidth, hm), mobilePaint);
+          Rect.fromLTWH(x, size.height - h, barWidth, hm),
+          mobilePaint,
+        );
       }
     }
   }

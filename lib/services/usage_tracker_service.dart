@@ -35,7 +35,8 @@ class UsageTrackerService {
   static const pollInterval = Duration(seconds: 30);
 
   static UsageTrackerService? _instance;
-  static UsageTrackerService get instance => _instance ??= UsageTrackerService();
+  static UsageTrackerService get instance =>
+      _instance ??= UsageTrackerService();
 
   Timer? _timer;
   bool _initialized = false;
@@ -56,6 +57,13 @@ class UsageTrackerService {
     } catch (e) {
       // Sans stockage local, le suivi se limite à la session courante.
       Logger().e('Ouverture de la box dataUsage impossible: $e');
+    }
+    // Un changement de seuil (Réglages) déclenche immédiatement la
+    // re-vérification : la notification du dépassement ne dépend plus d'un
+    // échantillon de trafic ultérieur.
+    if (!_limitListenerAdded) {
+      _limitListenerAdded = true;
+      SettingsService.monthlyLimitGbNotifier.addListener(_onLimitChanged);
     }
   }
 
@@ -107,8 +115,9 @@ class UsageTrackerService {
   Future<void> collectBackgroundUsage() async {
     if (kIsWeb || !Platform.isAndroid) return;
     try {
-      final bytes = await MethodChannel('com.yele/telephony')
-          .invokeMethod<int>('takeBackgroundUsage');
+      final bytes = await MethodChannel(
+        'com.yele/telephony',
+      ).invokeMethod<int>('takeBackgroundUsage');
       if (bytes == null || bytes <= 0) return;
       await _addBytes(bytes, 0); // mobile = 0 → compté en Wi-Fi (indicatif)
       logger.i('Trafic de collecte arrière-plan réintégré: $bytes o');
@@ -186,16 +195,44 @@ class UsageTrackerService {
       await _b.put(key, day);
       monthlyUsageChanged.value = monthlyTotalBytes;
       await _checkMonthlyLimit();
+      // IMP-08 v2 — Tient la notification « débit temps réel » alignée sur
+      // la box (total + répartition mobile/Wi-Fi) dès qu'un échantillon
+      // change : sans resynchronisation, la pastille affichait la valeur
+      // du démarrage du service, figée pendant toute la session.
+      _resyncThroughput();
     } catch (e) {
       logger.w('Écriture de la consommation impossible: $e');
+    }
+  }
+
+  /// Pousse les volumes du mois vers le service natif de débit temps réel.
+  /// Sans effet si le service ne tourne pas (le handler natif est sans
+  /// objet quand `ThroughputService.active == null`). Silencieux hors
+  /// Android et dans les tests.
+  Future<void> _resyncThroughput() async {
+    if (kIsWeb || !Platform.isAndroid) return;
+    try {
+      final m = currentMonth();
+      await MethodChannel(
+        'com.yele/telephony',
+      ).invokeMethod('resyncThroughputUsage', {
+        'usageBytes': m.total,
+        'mobileBytes': m.mobile < 0 ? 0 : m.mobile,
+        'wifiBytes': m.wifi < 0 ? 0 : m.wifi,
+      });
+    } on MissingPluginException {
+      // Tests / canal absent : rien à faire.
+    } catch (_) {
+      // Service arrêté : pas grave.
     }
   }
 
   /// Relevé des compteurs natifs. null si l'appareil ne les tient pas.
   Future<_Snapshot?> _readSnapshot() async {
     try {
-      final info = await MethodChannel('com.yele/telephony')
-          .invokeMapMethod<String, dynamic>('getUsageSnapshot');
+      final info = await MethodChannel(
+        'com.yele/telephony',
+      ).invokeMapMethod<String, dynamic>('getUsageSnapshot');
       if (info == null) return null;
       return _Snapshot(
         totalRx: (info['totalRx'] as num?)?.toInt() ?? -1,
@@ -235,8 +272,11 @@ class UsageTrackerService {
   DayUsage currentWeek() {
     final now = DateTime.now();
     // Semaine débutant lundi (convention française).
-    final monday = DateTime(now.year, now.month, now.day)
-        .subtract(Duration(days: now.weekday - 1));
+    final monday = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(Duration(days: now.weekday - 1));
     var t = 0, m = 0, w = 0;
     for (var d = monday; !d.isAfter(now); d = d.add(const Duration(days: 1))) {
       final u = _readDay(d);
@@ -250,9 +290,11 @@ class UsageTrackerService {
   DayUsage currentMonth() {
     final now = DateTime.now();
     var t = 0, m = 0, w = 0;
-    for (var d = DateTime(now.year, now.month, 1);
-        !d.isAfter(now);
-        d = d.add(const Duration(days: 1))) {
+    for (
+      var d = DateTime(now.year, now.month, 1);
+      !d.isAfter(now);
+      d = d.add(const Duration(days: 1))
+    ) {
       final u = _readDay(d);
       t += u.total;
       m += u.mobile;
@@ -263,6 +305,38 @@ class UsageTrackerService {
 
   int get monthlyTotalBytes => currentMonth().total;
 
+  // ── IMP-08 v2 — Trafic de l'appareil (toutes applications) ───────────────
+
+  /// Trafic de l'appareil depuis le dernier démarrage du téléphone :
+  /// total (toutes applications) et part de l'app. La part « hors app »
+  /// est la différence. Android ne tient pas d'historique par application
+  /// dans ses API publiques : cette valeur est une photographie « depuis
+  /// le démarrage », comparable uniquement entre elle même période.
+  /// null si l'appareil ne tient pas ces compteurs (canal absent : web,
+  /// tests).
+  Future<DeviceTraffic?> deviceTrafficSinceBoot() async {
+    if (kIsWeb || !Platform.isAndroid) return null;
+    try {
+      final info = await MethodChannel(
+        'com.yele/telephony',
+      ).invokeMapMethod<String, dynamic>('getDeviceTraffic');
+      if (info == null) return null;
+      final deviceRx = (info['deviceRx'] as num?)?.toInt() ?? -1;
+      final deviceTx = (info['deviceTx'] as num?)?.toInt() ?? -1;
+      final appRx = (info['appRx'] as num?)?.toInt() ?? -1;
+      final appTx = (info['appTx'] as num?)?.toInt() ?? -1;
+      if (deviceRx < 0 || deviceTx < 0 || appRx < 0 || appTx < 0) return null;
+      return DeviceTraffic(
+        deviceTotal: deviceRx + deviceTx,
+        appTotal: appRx + appTx,
+      );
+    } on MissingPluginException {
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ── Alerte de seuil mensuel ───────────────────────────────────────────────
 
   /// Dernier mois pour lequel l'alerte a été levée (une seule alerte par
@@ -270,18 +344,17 @@ class UsageTrackerService {
   static String? _lastAlertedMonth;
 
   /// Alerte locale au franchissement du seuil mensuel configuré dans les
-  /// Réglages. Le seuil porte sur le total (mobile + Wi-Fi n'y est pour rien :
-  /// seule l'interface mobile compte pour le forfait, mais l'opérateur facture
-  /// ce que l'app consomme hors Wi-Fi — on garde le total affiché, l'alerte
-  /// porte sur la part mobile quand elle est mesurable).
+  /// Réglages. Le seuil porte sur le TOTAL de l'app (mobile + Wi-Fi) —
+  /// même critère que la jauge de l'écran Consommation : critéer sur la
+  /// part mobile faisait diverger les deux affichages (jauge rouge
+  /// « dépassé » sans jamais lever l'alerte, revue IMP-08 du 08/11).
   Future<void> _checkMonthlyLimit() async {
     try {
       final limitGb = SettingsService().monthlyLimitGb;
       if (limitGb <= 0) return;
       final limitBytes = (limitGb * 1024 * 1024 * 1024).round();
       final month = currentMonth();
-      final base = month.mobile > 0 ? month.mobile : month.total;
-      if (base < limitBytes) return;
+      if (month.total < limitBytes) return;
 
       final now = DateTime.now();
       final monthKey = '${now.year}-${now.month.toString().padLeft(2, '0')}';
@@ -298,6 +371,18 @@ class UsageTrackerService {
     }
   }
 
+  /// Changement du seuil dans les Réglages : la présence d'un quota
+  /// différent réarme l'alerte du mois (l'utilisateur qui teste un nouveau
+  /// seuil doit voir le bandeau et la notification repartir immédiatement,
+  /// sans attendre le prochain échantillon de trafic).
+  static bool _limitListenerAdded = false;
+  static void _onLimitChanged() {
+    _lastAlertedMonth = null;
+    limitExceeded = false;
+    limitExceededNotifier.value = false;
+    instance._checkMonthlyLimit();
+  }
+
   /// Notification système de dépassement (Android) : passe par le canal
   /// natif — Flutter seul ne peut pas poster de notification sans plugin
   /// externe. Silencieux en cas d'échec (permission refusée, tests…).
@@ -305,15 +390,15 @@ class UsageTrackerService {
     if (kIsWeb || !Platform.isAndroid) return;
     try {
       final used = formatBytes(currentMonth().total);
-      await MethodChannel('com.yele/telephony').invokeMethod(
-        'notifyLimitExceeded',
-        {
-          'title': 'Yélé — seuil de consommation atteint',
-          'body': 'Vous avez consommé $used ce mois-ci, soit plus que le '
-              'seuil de ${formatGb(limitGb)} Go configuré dans les '
-              'réglages.',
-        },
-      );
+      await MethodChannel(
+        'com.yele/telephony',
+      ).invokeMethod('notifyLimitExceeded', {
+        'title': 'Yélé — seuil de consommation atteint',
+        'body':
+            'Vous avez consommé $used ce mois-ci, soit plus que le '
+            'seuil de ${formatGb(limitGb)} Go configuré dans les '
+            'réglages.',
+      });
     } on MissingPluginException {
       // Tests ou canal indisponible : l'alerte reste visible dans l'écran.
     } catch (e) {
@@ -324,16 +409,17 @@ class UsageTrackerService {
   /// Vrai si le seuil du mois courant a été franchi (lus par l'écran
   /// Consommation pour afficher le bandeau d'alerte).
   static bool limitExceeded = false;
-  static final ValueNotifier<bool> limitExceededNotifier =
-      ValueNotifier(false);
+  static final ValueNotifier<bool> limitExceededNotifier = ValueNotifier(false);
 
   /// Série journalière du mois courant (1er → aujourd'hui), pour le graphique.
   List<DayUsage> monthSeries() {
     final now = DateTime.now();
     final out = <DayUsage>[];
-    for (var d = DateTime(now.year, now.month, 1);
-        !d.isAfter(now);
-        d = d.add(const Duration(days: 1))) {
+    for (
+      var d = DateTime(now.year, now.month, 1);
+      !d.isAfter(now);
+      d = d.add(const Duration(days: 1))
+    ) {
       out.add(_readDay(d));
     }
     return out;
@@ -367,15 +453,40 @@ class DayUsage {
   final int mobile;
   final int wifi;
 
-  const DayUsage({required this.total, required this.mobile, required this.wifi});
+  const DayUsage({
+    required this.total,
+    required this.mobile,
+    required this.wifi,
+  });
 
   static const zero = DayUsage(total: 0, mobile: 0, wifi: 0);
 }
 
+/// IMP-08 v2 — Photographie du trafic de l'appareil depuis le démarrage
+/// (toutes applications confondues) et part de l'app sur la même période.
+class DeviceTraffic {
+  /// Total de l'appareil (app + autres applications), en octets.
+  final int deviceTotal;
+
+  /// Part de l'app (UID Android), en octets.
+  final int appTotal;
+
+  const DeviceTraffic({required this.deviceTotal, required this.appTotal});
+
+  /// Trafic des autres applications : la différence, bornée à 0 (les
+  /// compteurs natifs peuvent diverger de quelques octets pendant un
+  /// échantillonnage en cours).
+  int get otherTotal {
+    final other = deviceTotal - appTotal;
+    return other > 0 ? other : 0;
+  }
+}
+
 /// Formatage d'un seuil en Go : sans décimale si entier, une décimale sinon
 /// (« 1 Go », « 0,5 Go ») — toStringAsFixed(0) arrondissait 0,5 à « 1 ».
-String formatGb(double gb) =>
-    gb % 1 == 0 ? gb.toStringAsFixed(0) : gb.toStringAsFixed(1).replaceAll('.', ',');
+String formatGb(double gb) => gb % 1 == 0
+    ? gb.toStringAsFixed(0)
+    : gb.toStringAsFixed(1).replaceAll('.', ',');
 
 /// Formatage lisible d'un volume en octets : Ko, Mo ou Go.
 String formatBytes(int bytes) {

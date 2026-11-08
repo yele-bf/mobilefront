@@ -55,14 +55,17 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
                     "startThroughputService" -> {
-                        // Volume déjà consommé ce mois (suivi Flutter) : la
-                        // notification « débit temps réel » l'affiche en
-                        // complément du débit instantané. NB : Dart envoie un
-                        // int Java 32 bits quand la valeur est petite — on lit
-                        // un Number et on convertit, sinon ClassCastException
-                        // et le toggle échoue malgré la permission accordée.
+                        // Volumes déjà consommés ce mois (suivi Flutter) :
+                        // la notification « débit temps réel » les affiche
+                        // (total + répartition mobile / Wi-Fi). NB : Dart
+                        // envoie un int Java 32 bits quand la valeur est
+                        // petite — on lit un Number et on convertit, sinon
+                        // ClassCastException et le toggle échoue malgré la
+                        // permission accordée.
                         val usage = (call.argument<Any>("usageBytes") as? Number)?.toLong() ?: 0L
-                        result.success(startThroughputService(usage))
+                        val mobile = (call.argument<Any>("mobileBytes") as? Number)?.toLong() ?: 0L
+                        val wifi = (call.argument<Any>("wifiBytes") as? Number)?.toLong() ?: 0L
+                        result.success(startThroughputService(usage, mobile, wifi))
                     }
                     "stopThroughputService" -> {
                         stopThroughputService()
@@ -73,9 +76,15 @@ class MainActivity : FlutterActivity() {
                     // l'écran Consommation) — évite toute divergence.
                     "resyncThroughputUsage" -> {
                         val usage = (call.argument<Any>("usageBytes") as? Number)?.toLong() ?: 0L
-                        ThroughputService.active?.resyncUsage(usage)
+                        val mobile = (call.argument<Any>("mobileBytes") as? Number)?.toLong() ?: 0L
+                        val wifi = (call.argument<Any>("wifiBytes") as? Number)?.toLong() ?: 0L
+                        ThroughputService.active?.resyncUsage(usage, mobile, wifi)
                         result.success(true)
                     }
+                    // IMP-08 v2 — Trafic de l'appareil depuis le démarrage :
+                    // total (toutes applications) et part de l'app (UID),
+                    // pour l'écran Consommation et la pastille « hors app ».
+                    "getDeviceTraffic" -> result.success(getDeviceTraffic())
                     "isThroughputRunning" -> result.success(ThroughputService.isRunning)
                     // Grand compteur en surimpression (taille de l'horloge) :
                     // l'icône de notification est limitée par Android à la
@@ -226,12 +235,25 @@ class MainActivity : FlutterActivity() {
             -1L
         }
 
+    /// IMP-08 v2 — Photographie du trafic depuis le démarrage de l'appareil :
+    /// `deviceRx/deviceTx` = toutes applications confondues, `appRx/appTx` =
+    /// l'UID de l'application (WebView inclus : la pile Chromium tourne dans
+    /// le processus de l'app). La part « hors app » est la différence, côté
+    /// Dart. En retour -1 quand le compteur n'est pas tenu : l'écran masque
+    /// alors le panneau correspondant.
+    private fun getDeviceTraffic(): Map<String, Long> = mapOf(
+        "deviceRx" to safeCounter { TrafficStats.getTotalRxBytes() },
+        "deviceTx" to safeCounter { TrafficStats.getTotalTxBytes() },
+        "appRx" to safeCounter { TrafficStats.getUidRxBytes(Process.myUid()) },
+        "appTx" to safeCounter { TrafficStats.getUidTxBytes(Process.myUid()) },
+    )
+
     // ── Service de débit temps réel (barre d'état) ──────────────────────────
 
     /// Démarre le service de débit temps réel. Retourne false si la permission
     /// de notification manque : sans elle, le service de premier plan serait
     /// tué aussitôt.
-    private fun startThroughputService(usageBytes: Long): Boolean {
+    private fun startThroughputService(usageBytes: Long, usageMobile: Long, usageWifi: Long): Boolean {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(
                 this, Manifest.permission.POST_NOTIFICATIONS
@@ -242,6 +264,8 @@ class MainActivity : FlutterActivity() {
             ThroughputService.prefs(this).edit()
                 .putBoolean(ThroughputService.KEY_ENABLED, true)
                 .putLong(ThroughputService.KEY_LAST_USAGE, usageBytes)
+                .putLong(ThroughputService.KEY_LAST_MOBILE, usageMobile)
+                .putLong(ThroughputService.KEY_LAST_WIFI, usageWifi)
                 .apply()
             ActivityCompat.requestPermissions(
                 this, arrayOf(Manifest.permission.POST_NOTIFICATIONS),
@@ -252,6 +276,8 @@ class MainActivity : FlutterActivity() {
         val intent = Intent(this, ThroughputService::class.java)
             .setAction(ThroughputService.ACTION_START)
             .putExtra(ThroughputService.EXTRA_USAGE_BYTES, usageBytes)
+            .putExtra(ThroughputService.EXTRA_USAGE_MOBILE, usageMobile)
+            .putExtra(ThroughputService.EXTRA_USAGE_WIFI, usageWifi)
         ContextCompat.startForegroundService(this, intent)
         return true
     }
@@ -278,7 +304,9 @@ class MainActivity : FlutterActivity() {
             .getBoolean(ThroughputService.KEY_ENABLED, false)
         ) {
             startThroughputService(
-                ThroughputService.prefs(this).getLong(ThroughputService.KEY_LAST_USAGE, 0L)
+                ThroughputService.prefs(this).getLong(ThroughputService.KEY_LAST_USAGE, 0L),
+                ThroughputService.prefs(this).getLong(ThroughputService.KEY_LAST_MOBILE, 0L),
+                ThroughputService.prefs(this).getLong(ThroughputService.KEY_LAST_WIFI, 0L),
             )
         }
     }

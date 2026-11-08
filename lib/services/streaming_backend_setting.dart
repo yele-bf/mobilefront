@@ -45,7 +45,8 @@ class StreamingBackendSetting {
     final box = _box;
     if (box == null || !box.isOpen) {
       throw StateError(
-          'StreamingBackendSetting doit être initialisé avant utilisation');
+        'StreamingBackendSetting doit être initialisé avant utilisation',
+      );
     }
     return box;
   }

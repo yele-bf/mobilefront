@@ -130,7 +130,9 @@ class _YeleAppState extends State<YeleApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     SettingsService.appStyleNotifier.removeListener(_onSettingChanged);
     SettingsService.languageNotifier.removeListener(_onSettingChanged);
-    SettingsService.realtimeSpeedNotifier.removeListener(_onRealtimeSpeedChanged);
+    SettingsService.realtimeSpeedNotifier.removeListener(
+      _onRealtimeSpeedChanged,
+    );
     super.dispose();
   }
 
@@ -139,7 +141,9 @@ class _YeleAppState extends State<YeleApp> with WidgetsBindingObserver {
   }
 
   void _onRealtimeSpeedChanged() {
-    ThroughputService.instance.applySetting(SettingsService.realtimeSpeedNotifier.value);
+    ThroughputService.instance.applySetting(
+      SettingsService.realtimeSpeedNotifier.value,
+    );
   }
 
   @override
@@ -149,8 +153,9 @@ class _YeleAppState extends State<YeleApp> with WidgetsBindingObserver {
       debugShowCheckedModeBanner: false,
       theme: buildYeleTheme(),
       darkTheme: buildYeleDarkTheme(),
-      themeMode:
-          _settings.appStyle == AppStyle.dark ? ThemeMode.dark : ThemeMode.light,
+      themeMode: _settings.appStyle == AppStyle.dark
+          ? ThemeMode.dark
+          : ThemeMode.light,
       // ISS-12 : la route initiale dépend du réglage « Test par défaut ».
       // IMP-14 : conditions d'utilisation à accepter au premier lancement.
       initialRoute: widget.hasAccepted ? _settings.initialRoute : '/consent',
@@ -158,29 +163,29 @@ class _YeleAppState extends State<YeleApp> with WidgetsBindingObserver {
         '/consent': (_) => ConsentScreen(nextRoute: _settings.initialRoute),
         '/conditions': (_) => const ConditionsScreen(),
         '/full': (_) => const FullTestScreen(
-              selection: TestSelection.all(),
-              title: 'Test complet',
-              route: '/full',
-              launchLabel: 'LANCER LE\nTEST COMPLET',
-            ),
+          selection: TestSelection.all(),
+          title: 'Test complet',
+          route: '/full',
+          launchLabel: 'LANCER LE\nTEST COMPLET',
+        ),
         '/speed': (_) => const FullTestScreen(
-              selection: TestSelection(speed: true),
-              title: 'Speed test',
-              route: '/speed',
-              launchLabel: 'LANCER LE\nSPEEDTEST',
-            ),
+          selection: TestSelection(speed: true),
+          title: 'Speed test',
+          route: '/speed',
+          launchLabel: 'LANCER LE\nSPEEDTEST',
+        ),
         '/browsing': (_) => const FullTestScreen(
-              selection: TestSelection(speed: false, browsing: true),
-              title: 'Test de navigation',
-              route: '/browsing',
-              launchLabel: 'LANCER LE\nTEST NAVIGATION',
-            ),
+          selection: TestSelection(speed: false, browsing: true),
+          title: 'Test de navigation',
+          route: '/browsing',
+          launchLabel: 'LANCER LE\nTEST NAVIGATION',
+        ),
         '/streaming': (_) => const FullTestScreen(
-              selection: TestSelection(speed: false, streaming: true),
-              title: 'Test de streaming',
-              route: '/streaming',
-              launchLabel: 'LANCER LE\nTEST STREAMING',
-            ),
+          selection: TestSelection(speed: false, streaming: true),
+          title: 'Test de streaming',
+          route: '/streaming',
+          launchLabel: 'LANCER LE\nTEST STREAMING',
+        ),
         '/history': (_) => const HistoryScreen(),
         '/usage': (_) => const UsageScreen(),
         '/coverage': (_) => const CoverageScreen(),

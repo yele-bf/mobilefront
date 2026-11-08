@@ -6,6 +6,7 @@ import '../services/consent_service.dart';
 // temps réel, connectés au service de réglages persistant (Hive).
 import '../services/settings_service.dart';
 import '../services/throughput_service.dart';
+import '../services/usage_tracker_service.dart' show formatGb;
 import '../theme/yele_theme.dart';
 import '../widgets/yele_scaffold.dart';
 
@@ -76,9 +77,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _item('Test par défaut au démarrage', 'Test complet'),
             _item('Unité de débit', 'Mb/s'),
             _item('Style de fond', 'Vert'),
-            _toggle('Utiliser le GPS',
-                'Active/désactive la géolocalisation des tests', _useGps,
-                (v) => setState(() => _useGps = v)),
+            _toggle(
+              'Utiliser le GPS',
+              'Active/désactive la géolocalisation des tests',
+              _useGps,
+              (v) => setState(() => _useGps = v),
+            ),
             // IMP-08 — Réglages du suivi de consommation : le seuil
             // alimente la jauge, le bandeau « seuil dépassé » et la
             // notification native de l'écran Consommation ; le débit temps
@@ -91,9 +95,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onTap: _pickLimit,
             ),
             _toggle(
-                'Débit temps réel',
-                "Affiche le débit instantané dans la barre d'état Android",
-                _realtimeSpeed, (v) => _setRealtimeSpeed(v)),
+              'Débit temps réel',
+              "Affiche le débit instantané dans la barre d'état Android",
+              _realtimeSpeed,
+              (v) => _setRealtimeSpeed(v),
+            ),
             _supportSection(),
             SizedBox(height: 24),
           ],
@@ -106,34 +112,102 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// Libellé de la ligne de seuil : « Aucune alerte » ou « Alerte à 5 Go ».
   String _limitLabel() =>
-      _limitGb > 0 ? 'Alerte à ${_limitGb.round()} Go' : 'Aucune alerte';
+      _limitGb > 0 ? 'Alerte à ${formatGb(_limitGb)} Go' : 'Aucune alerte';
 
-  /// Sélecteur du seuil mensuel (en Go ; 0 = désactivé). Les presets
-  /// évitent une saisie clavier libre et gardent l'alerte lisible.
+  /// Sélecteur du seuil mensuel (en Go ; 0 = désactivé). Presets adaptés
+  /// forfaits Burkina + saisie manuelle libre avec décimales (REVUE IMP-08
+  /// du 08/11 : la limite doit pouvoir se placer entre « Aucune alerte »
+  /// et 1 Go, donc sous la forme 0,5 Go par exemple).
   Future<void> _pickLimit() async {
     final chosen = await showDialog<double>(
       context: context,
-      builder: (ctx) => SimpleDialog(
-        title: const Text('Limite mensuelle de données'),
-        children: [
-          for (final go in const [0.0, 1.0, 2.0, 3.0, 5.0, 10.0, 20.0, 50.0])
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(ctx).pop(go),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 4, vertical: 8),
-                child: Text(
-                  go == 0 ? 'Aucune alerte' : '${go.round()} Go',
-                  style: TextStyle(
-                      fontSize: 15,
-                      color: go > 0 && go == _limitGb
-                          ? YeleColors.primary
-                          : YeleColors.ink),
-                ),
+      builder: (ctx) {
+        final controller = TextEditingController();
+        String? errorText;
+        var selected = _limitGb;
+        return StatefulBuilder(
+          builder: (ctx, setDialog) => AlertDialog(
+            title: const Text('Limite mensuelle de données'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final go in const [
+                    0.0,
+                    1.0,
+                    2.0,
+                    3.0,
+                    5.0,
+                    10.0,
+                    20.0,
+                    50.0,
+                  ])
+                    InkWell(
+                      onTap: () {
+                        selected = go;
+                        setDialog(() {});
+                        Navigator.of(ctx).pop(go);
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 10,
+                        ),
+                        child: Text(
+                          go == 0 ? 'Aucune alerte' : '${formatGb(go)} Go',
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: go > 0 && go == selected
+                                ? YeleColors.primary
+                                : YeleColors.ink,
+                            fontWeight: go == selected
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                          ),
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: controller,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: 'Valeur manuelle (Go)',
+                      hintText: 'Ex. 0,5',
+                      errorText: errorText,
+                      border: const OutlineInputBorder(),
+                    ),
+                    onChanged: (_) => setDialog(() => errorText = null),
+                  ),
+                ],
               ),
             ),
-        ],
-      ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Annuler'),
+              ),
+              TextButton(
+                onPressed: () {
+                  final raw = controller.text.trim().replaceAll(',', '.');
+                  final v = double.tryParse(raw);
+                  if (v == null || v <= 0 || v > 1000) {
+                    setDialog(
+                      () => errorText = 'Valeur invalide (0,01 à 1 000 Go)',
+                    );
+                    return;
+                  }
+                  Navigator.of(ctx).pop(v);
+                },
+                child: const Text('Valider'),
+              ),
+            ],
+          ),
+        );
+      },
     );
     if (chosen == null || chosen == _limitGb) return;
     try {
@@ -164,8 +238,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await Future.delayed(const Duration(milliseconds: 600));
     final running = await ThroughputService.instance.isNativeRunning();
     if (!running && mounted) {
-      _snack('Débit temps réel indisponible — vérifiez les autorisations '
-          "Android (notifications, « Afficher par-dessus »).");
+      _snack(
+        'Débit temps réel indisponible — vérifiez les autorisations '
+        "Android (notifications, « Afficher par-dessus »).",
+      );
     }
   }
 
@@ -237,7 +313,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
     try {
       final ok = await launchUrl(uri).catchError((_) => false);
-      if (!ok) _snack('Aucune application e-mail trouvée. Écrivez à $_supportEmail');
+      if (!ok) {
+        _snack('Aucune application e-mail trouvée. Écrivez à $_supportEmail');
+      }
     } catch (_) {
       _snack('Aucune application e-mail trouvée. Écrivez à $_supportEmail');
     }
@@ -322,13 +400,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title,
-                      style:
-                          TextStyle(fontSize: 16, color: YeleColors.ink)),
+                  Text(
+                    title,
+                    style: TextStyle(fontSize: 16, color: YeleColors.ink),
+                  ),
                   SizedBox(height: 2),
-                  Text(sub,
-                      style: TextStyle(
-                          fontSize: 13, color: YeleColors.muted)),
+                  Text(
+                    sub,
+                    style: TextStyle(fontSize: 13, color: YeleColors.muted),
+                  ),
                 ],
               ),
             ),
@@ -340,40 +420,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _snack(String message) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   // ── Éléments de liste ─────────────────────────────────────────────────────
 
   Widget _section(String t) => Padding(
-        padding: const EdgeInsets.fromLTRB(18, 22, 18, 6),
-        child: Text(t,
-            style: TextStyle(
-                color: YeleColors.primary,
-                fontSize: 15,
-                fontWeight: FontWeight.w700)),
-      );
+    padding: const EdgeInsets.fromLTRB(18, 22, 18, 6),
+    child: Text(
+      t,
+      style: TextStyle(
+        color: YeleColors.primary,
+        fontSize: 15,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+  );
 
   Widget _item(String title, String sub) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: Color(0x11000000))),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title,
-                style: TextStyle(fontSize: 16, color: YeleColors.ink)),
-            SizedBox(height: 2),
-            Text(sub,
-                style: TextStyle(fontSize: 13, color: YeleColors.muted)),
-          ],
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+    decoration: const BoxDecoration(
+      border: Border(bottom: BorderSide(color: Color(0x11000000))),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: TextStyle(fontSize: 16, color: YeleColors.ink)),
+        SizedBox(height: 2),
+        Text(sub, style: TextStyle(fontSize: 13, color: YeleColors.muted)),
+      ],
+    ),
+  );
 
   Widget _toggle(
-      String title, String sub, bool value, ValueChanged<bool>? onChanged) {
+    String title,
+    String sub,
+    bool value,
+    ValueChanged<bool>? onChanged,
+  ) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
       decoration: const BoxDecoration(
@@ -385,12 +471,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: TextStyle(fontSize: 16, color: YeleColors.ink)),
+                Text(
+                  title,
+                  style: TextStyle(fontSize: 16, color: YeleColors.ink),
+                ),
                 SizedBox(height: 2),
-                Text(sub,
-                    style:
-                        TextStyle(fontSize: 13, color: YeleColors.muted)),
+                Text(
+                  sub,
+                  style: TextStyle(fontSize: 13, color: YeleColors.muted),
+                ),
               ],
             ),
           ),

@@ -33,7 +33,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   List<SpeedTestResult> _all = [];
-  int _tab = 0; // 0 = Test complet, 1 = Speed test
+  int _tab = 0; // 0 = Complet, 1 = Speed, 2 = Navigation, 3 = Streaming
   String? _expandedId;
 
   final ReverseGeocodingService _geo = ReverseGeocodingService.instance;
@@ -69,8 +69,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
         .toList();
   }
 
-  bool _isComplet(SpeedTestResult r) =>
-      r.hasStreamingTest || r.hasBrowsingTest;
+  /// Classification dérivée des composantes réellement mesurées (le modèle
+  /// ne sérialise pas la sélection de départ) :
+  /// - **Complet** : streaming ET navigation mesurés (les deux familles
+  ///   caractéristiques du test complet) ;
+  /// - **Streaming** : streaming seul, sans navigation ;
+  /// - **Navigation** : navigation seule, sans streaming ;
+  /// - **Débit** : ni l'un ni l'autre (débit/latence uniquement).
+  bool _isComplet(SpeedTestResult r) => r.hasStreamingTest && r.hasBrowsingTest;
 
   /// Note de qualité /100 dérivée des mesures réelles (transparente) :
   /// 60 pts max pour le download, 20 pour l'upload, 20 pour la latence.
@@ -80,8 +86,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final lat = r.ping <= 20
         ? 20.0
         : r.ping >= 300
-            ? 0.0
-            : (300 - r.ping) / 280 * 20;
+        ? 0.0
+        : (300 - r.ping) / 280 * 20;
     return (dl + ul + lat).round().clamp(0, 100);
   }
 
@@ -104,7 +110,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   /// Détail du scoring ouvert : score global et composantes mesurées.
   List<Widget> _openScoreLines(
-      SpeedTestResult r, Widget Function(String k, String v) line) {
+    SpeedTestResult r,
+    Widget Function(String k, String v) line,
+  ) {
     String pts(double v) => v.toStringAsFixed(0);
     final out = <Widget>[];
     final global = r.scoreGlobal;
@@ -112,19 +120,29 @@ class _HistoryScreenState extends State<HistoryScreen> {
     // juste après le titre « Score YÉLÉ » (plan owner du 06/11) : ici,
     // seulement le score, l'indice et les composantes.
     if (global != null) {
-      out.add(line('Score ouvert',
-          '${pts(global)} pts · ${YeleScoringEngine.classify(global).label}'));
-      out.add(line(
+      out.add(
+        line(
+          'Score ouvert',
+          '${pts(global)} pts · ${YeleScoringEngine.classify(global).label}',
+        ),
+      );
+      out.add(
+        line(
           'Indice (lecture)',
-          '${r.scoreGlobalOn100!.toStringAsFixed(0)}/100'));
+          '${r.scoreGlobalOn100!.toStringAsFixed(0)}/100',
+        ),
+      );
     } else {
       final sub = r.scoreMeasuredSubtotal;
-      out.add(line(
+      out.add(
+        line(
           'Score ouvert',
           sub == null
               ? 'non mesuré'
               : 'incomplet · ${pts(sub)} pts mesurés '
-                  '(composantes absentes exclues)'));
+                    '(composantes absentes exclues)',
+        ),
+      );
     }
     if (r.scoreDownload != null) {
       out.add(line('Download', '${pts(r.scoreDownload!)} pts'));
@@ -144,8 +162,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return out;
   }
 
-  List<SpeedTestResult> get _filtered =>
-      _all.where((r) => _tab == 0 ? _isComplet(r) : !_isComplet(r)).toList();
+  List<SpeedTestResult> get _filtered => _all.where((r) {
+    switch (_tab) {
+      case 0:
+        return _isComplet(r); // streaming + navigation mesurés
+      case 1:
+        return !r.hasStreamingTest && !r.hasBrowsingTest; // débit seul
+      case 2:
+        return r.hasBrowsingTest && !r.hasStreamingTest; // navigation
+      default:
+        return r.hasStreamingTest && !r.hasBrowsingTest; // streaming
+    }
+  }).toList();
 
   @override
   Widget build(BuildContext context) {
@@ -164,8 +192,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
           Expanded(
             child: list.isEmpty
                 ? const Center(
-                    child: Text('Aucun test pour cet onglet.',
-                        style: TextStyle(color: Color(0xFF6B7689))))
+                    child: Text(
+                      'Aucun test pour cet onglet.',
+                      style: TextStyle(color: Color(0xFF6B7689)),
+                    ),
+                  )
                 : ListView.builder(
                     itemCount: list.length,
                     itemBuilder: (_, i) => _row(list[i]),
@@ -194,8 +225,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 point: LatLng(r.latitude!, r.longitude!),
                 width: 32,
                 height: 32,
-                child: const Icon(Icons.location_on,
-                    color: Color(0xFF16557E), size: 28),
+                child: const Icon(
+                  Icons.location_on,
+                  color: Color(0xFF16557E),
+                  size: 28,
+                ),
               ),
           ],
         ),
@@ -223,19 +257,32 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ),
               ),
             ),
-            child: Text(label,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                    letterSpacing: 0.5,
-                    color: active ? YeleColors.ink : const Color(0xFF5A6577))),
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 11,
+                letterSpacing: 0.2,
+                color: active ? YeleColors.ink : const Color(0xFF5A6577),
+              ),
+            ),
           ),
         ),
       );
     }
 
-    return Row(children: [tab('TEST COMPLET', 0), tab('SPEED TEST', 1)]);
+    // Quatre onglets alignés horizontalement, tous visibles dès l'ouverture
+    // (aucun scroll latéral) — police réduite pour tenir dans la largeur.
+    return Row(
+      children: [
+        tab('COMPLET', 0),
+        tab('SPEED', 1),
+        tab('NAVIGATION', 2),
+        tab('STREAMING', 3),
+      ],
+    );
   }
 
   Widget _header() {
@@ -246,12 +293,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
           children: [
             Icon(icon, size: 18, color: YeleColors.field),
             const SizedBox(height: 2),
-            Text(label,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                    fontSize: 12,
-                    color: YeleColors.field,
-                    fontWeight: FontWeight.w700)),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 12,
+                color: YeleColors.field,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ],
         ),
       );
@@ -323,26 +373,38 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   flex: 12,
                   child: Column(
                     children: [
-                      Icon(_typeIcon(net),
-                          size: 16, color: const Color(0xFFCFD6E0)),
+                      Icon(
+                        _typeIcon(net),
+                        size: 16,
+                        color: const Color(0xFFCFD6E0),
+                      ),
                       const SizedBox(height: 2),
-                      Text(net,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                              color: Color(0xFFCFD6E0), fontSize: 11)),
+                      Text(
+                        net,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Color(0xFFCFD6E0),
+                          fontSize: 11,
+                        ),
+                      ),
                       const SizedBox(height: 3),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 1),
+                          horizontal: 6,
+                          vertical: 1,
+                        ),
                         decoration: BoxDecoration(
                           color: _typeColor(net),
                           borderRadius: BorderRadius.circular(4),
                         ),
-                        child: Text(net.length > 5 ? net.substring(0, 5) : net,
-                            style: const TextStyle(
-                                color: Color(0xFF11210B),
-                                fontSize: 9,
-                                fontWeight: FontWeight.w700)),
+                        child: Text(
+                          net.length > 5 ? net.substring(0, 5) : net,
+                          style: const TextStyle(
+                            color: Color(0xFF11210B),
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -353,16 +415,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(r.operator ?? '—',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              color: Color(0xFFCFD6E0), fontSize: 12)),
-                      Text(r.location ?? '—',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              color: Color(0xFF8FA0B8), fontSize: 11)),
+                      Text(
+                        r.operator ?? '—',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFFCFD6E0),
+                          fontSize: 12,
+                        ),
+                      ),
+                      Text(
+                        r.location ?? '—',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF8FA0B8),
+                          fontSize: 11,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -371,12 +441,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   flex: 13,
                   child: Column(
                     children: [
-                      Text(_date.format(r.timestamp),
-                          style: const TextStyle(
-                              color: Color(0xFFCFD6E0), fontSize: 11)),
-                      Text(_time.format(r.timestamp),
-                          style: const TextStyle(
-                              color: Color(0xFF8FA0B8), fontSize: 10)),
+                      Text(
+                        _date.format(r.timestamp),
+                        style: const TextStyle(
+                          color: Color(0xFFCFD6E0),
+                          fontSize: 11,
+                        ),
+                      ),
+                      Text(
+                        _time.format(r.timestamp),
+                        style: const TextStyle(
+                          color: Color(0xFF8FA0B8),
+                          fontSize: 10,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -385,12 +463,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   flex: 14,
                   child: Column(
                     children: [
-                      Text('${r.downloadSpeed.toStringAsFixed(2)} Mb/s',
-                          style: const TextStyle(
-                              color: Color(0xFFCFD6E0), fontSize: 11)),
-                      Text('${r.uploadSpeed.toStringAsFixed(2)} Mb/s',
-                          style: const TextStyle(
-                              color: Color(0xFF8FA0B8), fontSize: 10)),
+                      Text(
+                        '${r.downloadSpeed.toStringAsFixed(2)} Mb/s',
+                        style: const TextStyle(
+                          color: Color(0xFFCFD6E0),
+                          fontSize: 11,
+                        ),
+                      ),
+                      Text(
+                        '${r.uploadSpeed.toStringAsFixed(2)} Mb/s',
+                        style: const TextStyle(
+                          color: Color(0xFF8FA0B8),
+                          fontSize: 10,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -399,11 +485,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   flex: 12,
                   child: Column(
                     children: [
-                      Text(_scoreText(r),
-                          style: const TextStyle(
-                              color: Color(0xFFCFD6E0),
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800)),
+                      Text(
+                        _scoreText(r),
+                        style: const TextStyle(
+                          color: Color(0xFFCFD6E0),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
                       const SizedBox(height: 3),
                       Container(
                         width: 22,
@@ -412,8 +501,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           color: YeleColors.testBot,
                           shape: BoxShape.circle,
                         ),
-                        child: Icon(expanded ? Icons.remove : Icons.add,
-                            size: 16, color: const Color(0xFF11210B)),
+                        child: Icon(
+                          expanded ? Icons.remove : Icons.add,
+                          size: 16,
+                          color: const Color(0xFF11210B),
+                        ),
                       ),
                     ],
                   ),
@@ -433,17 +525,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
   /// coordonnees ; en cas d'echec ou d'absence d'adresse OSM, « non
   /// disponible · GPS seul ».
   List<Widget> _coordBlock(
-      SpeedTestResult r, Widget Function(String k, String v) line) {
+    SpeedTestResult r,
+    Widget Function(String k, String v) line,
+  ) {
     final key = ReverseGeocodingService.cacheKeyFor(r.latitude!, r.longitude!);
     final address = _addresses[key];
     final coords =
         '${r.latitude!.toStringAsFixed(4)}, ${r.longitude!.toStringAsFixed(4)}';
     if (address == null) {
       // Resolution en cours.
-      return [
-        line('Adresse', 'recherche…'),
-        line('GPS', coords),
-      ];
+      return [line('Adresse', 'recherche…'), line('GPS', coords)];
     }
     if (address.isEmpty) {
       // Aucune adresse OSM connue a ces coordonnees (ou hors Burkina).
@@ -452,31 +543,33 @@ class _HistoryScreenState extends State<HistoryScreen> {
         line('GPS', coords),
       ];
     }
-    return [
-      line('Adresse', address),
-      line('GPS', coords),
-    ];
+    return [line('Adresse', address), line('GPS', coords)];
   }
 
   Widget _detail(SpeedTestResult r) {
     Widget line(String k, String v) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 3),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('$k :',
-                  style: const TextStyle(color: Color(0xFF1F3A00), fontSize: 12)),
-              Flexible(
-                child: Text(v,
-                    textAlign: TextAlign.right,
-                    style: const TextStyle(
-                        color: Color(0xFF1F3A00),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700)),
-              ),
-            ],
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            '$k :',
+            style: const TextStyle(color: Color(0xFF1F3A00), fontSize: 12),
           ),
-        );
+          Flexible(
+            child: Text(
+              v,
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                color: Color(0xFF1F3A00),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
 
     final wifi = (r.networkType ?? '').toUpperCase().contains('WIFI');
 
@@ -489,16 +582,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
             children: [
               Padding(
                 padding: const EdgeInsets.only(top: 10, bottom: 2),
-                child: Row(children: [
-                  Container(
-                      width: 3, height: 12, color: const Color(0xFF1F3A00)),
-                  const SizedBox(width: 6),
-                  Text(title,
+                child: Row(
+                  children: [
+                    Container(
+                      width: 3,
+                      height: 12,
+                      color: const Color(0xFF1F3A00),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      title,
                       style: const TextStyle(
-                          color: Color(0xFF1F3A00),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800)),
-                ]),
+                        color: Color(0xFF1F3A00),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
               ),
               ...lignes,
             ],
@@ -511,8 +612,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
       child: Column(
         children: [
           // 0 … Position — la localisation se lit en premier (plan owner).
-          group('Position',
-              (r.latitude ?? 0) != 0 ? _coordBlock(r, line) : <Widget>[]),
+          group(
+            'Position',
+            (r.latitude ?? 0) != 0 ? _coordBlock(r, line) : <Widget>[],
+          ),
           // 1 … Connexion — identité du lien réellement utilisé.
           // Règle produit B1 : FAI et SSID Wi-Fi seulement en Wi-Fi ;
           // une seule ligne « Réseau mobile » (nom canonique, jamais le
@@ -522,36 +625,49 @@ class _HistoryScreenState extends State<HistoryScreen> {
             if (wifi)
               line('FAI', r.operator ?? '—')
             else
-              line('Réseau mobile',
-                  (r.simOperator ?? '').isNotEmpty ? r.simOperator! : '—'),
+              line(
+                'Réseau mobile',
+                (r.simOperator ?? '').isNotEmpty ? r.simOperator! : '—',
+              ),
             if (wifi)
-              line('SSID Wi-Fi',
-                  (r.wifiSsid != null && r.wifiSsid!.trim().isNotEmpty)
-                      ? r.wifiSsid!.trim()
-                      : 'n.d.'),
+              line(
+                'SSID Wi-Fi',
+                (r.wifiSsid != null && r.wifiSsid!.trim().isNotEmpty)
+                    ? r.wifiSsid!.trim()
+                    : 'n.d.',
+              ),
             // Règle produit B1 (plan owner Confirmed) : la Technologie
             // (2G/3G/4G/5G) reste affichée pour un test SIM ; « n.d. »
             // pour les anciens enregistrements antérieurs à ce champ.
             if (!wifi)
-              line('Technologie',
-                  (r.technology ?? '').isNotEmpty
-                      ? r.technology!
-                      : (r.cellularTech ?? 'n.d.')),
-            if ((r.deviceModel ?? '').isNotEmpty) line('Appareil', r.deviceModel!),
+              line(
+                'Technologie',
+                (r.technology ?? '').isNotEmpty
+                    ? r.technology!
+                    : (r.cellularTech ?? 'n.d.'),
+              ),
+            if ((r.deviceModel ?? '').isNotEmpty)
+              line('Appareil', r.deviceModel!),
           ]),
           // 2 … Débit & Latence — ISS-06 (min/moy/max, masqués pour les
           // anciens résultats), IMP-07 (perte, masquée si non mesurée),
           // IMP-01 (données consommées par le test).
           group('Débit & Latence', [
             if (r.downloadStats != null)
-              line('Download min / moy / max',
-                  _minMeanMax(r.downloadStats!, 'Mb/s', 2)),
+              line(
+                'Download min / moy / max',
+                _minMeanMax(r.downloadStats!, 'Mb/s', 2),
+              ),
             if (r.uploadStats != null)
-              line('Upload min / moy / max',
-                  _minMeanMax(r.uploadStats!, 'Mb/s', 2)),
+              line(
+                'Upload min / moy / max',
+                _minMeanMax(r.uploadStats!, 'Mb/s', 2),
+              ),
             if (r.pingStats != null)
-              line('Latence min / moy / max',
-                  _minMeanMax(r.pingStats!, 'ms', 0)),
+              line(
+                'Latence min / moy / max',
+                _minMeanMax(r.pingStats!, 'ms', 0),
+              ),
             // Sans stats ISS-06 (anciens enregistrements), le ping
             // moyen reste visible seul.
             if (r.pingStats == null)
@@ -569,23 +685,31 @@ class _HistoryScreenState extends State<HistoryScreen> {
             if (r.hasStreamingTest) ...[
               // Note /100 de la carte : agrège les 3 résolutions mesurées
               // (ISS-07) et les critères ARCEP — pas une seule résolution.
-              line('Streaming',
-                  '${r.streamingMaxResolution ?? '—'} · ${r.streamingScore!.toStringAsFixed(0)}/100'),
+              line(
+                'Streaming',
+                '${r.streamingMaxResolution ?? '—'} · ${r.streamingScore!.toStringAsFixed(0)}/100',
+              ),
               // Détail par résolution : le taux de performance de chaque
               // palier mesuré (720p, 1080p, 1440p, 2160p).
               for (final q in r.streamingQualities.where((q) => q.reached))
-                line('↳ ${q.label}', '${q.performanceRate.toStringAsFixed(0)} %'),
+                line(
+                  '↳ ${q.label}',
+                  '${q.performanceRate.toStringAsFixed(0)} %',
+                ),
             ],
             if (r.hasBrowsingTest)
-              line('Navigation',
-                  '${(r.browsingAvgLoadMs! / 1000).toStringAsFixed(1)} s · ${r.browsingScore!.toStringAsFixed(0)}/100'),
+              line(
+                'Navigation',
+                '${(r.browsingAvgLoadMs! / 1000).toStringAsFixed(1)} s · ${r.browsingScore!.toStringAsFixed(0)}/100',
+              ),
             if (r.qoeRating != null && r.qoeRating! > 0)
               line('QoE', '${r.qoeRating}/5'),
           ]),
           // 5 … Score YÉLÉ — le référentiel est cité juste après le titre
           // de catégorie (plan owner), puis score / indice / composantes.
           group('Score YÉLÉ', [
-            if (r.scoringVersion != null) line('Référentiel', r.scoringVersion!),
+            if (r.scoringVersion != null)
+              line('Référentiel', r.scoringVersion!),
             if (r.scoringVersion != null) ..._openScoreLines(r, line),
           ]),
           // IMP-11 — Export de cette mesure (CSV / Excel / PDF / PNG).
@@ -614,7 +738,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
   /// rien n'a été mesuré (iOS, Android < 9, appareils qui n'exposent pas les
   /// compteurs).
   List<Widget> _signalLines(
-      SpeedTestResult r, Widget Function(String k, String v) line) {
+    SpeedTestResult r,
+    Widget Function(String k, String v) line,
+  ) {
     // Seuils et libellés alignés sur le tableau de référence qualité signal
     // (IUT) : RSRP −80/−95/−105 et RSSI Wi-Fi −65/−75/−85 ; RSRQ −8/−10/−13
     // (seuils adoptés en revue produit du 05/11 ; libellés harmonisés en
@@ -636,19 +762,25 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     // Puissance du signal (dBm), avec libellé de qualité.
     if ((r.signalRsrp ?? 0) != 0) {
-      lines.add(line(
+      lines.add(
+        line(
           'Puissance du Signal',
           'RSRP ${r.signalRsrp} dBm '
-              '(${qualityLabel(r.signalRsrp!, kind: 'rsrp')})'));
+              '(${qualityLabel(r.signalRsrp!, kind: 'rsrp')})',
+        ),
+      );
     }
     if ((r.signalNrRsrp ?? 0) != 0) {
       lines.add(line('Puissance du Signal', 'NR RSRP ${r.signalNrRsrp} dBm'));
     }
     if ((r.wifiRssi ?? 0) != 0) {
-      lines.add(line(
+      lines.add(
+        line(
           'Puissance du Signal',
           'RSSI ${r.wifiRssi} dBm '
-              '(${qualityLabel(r.wifiRssi!, kind: 'rssi')})'));
+              '(${qualityLabel(r.wifiRssi!, kind: 'rssi')})',
+        ),
+      );
       // Règle produit (plan owner 06/11) : en Wi-Fi le seul indicateur
       // radio pertinent est le RSSI — pas de ligne « Qualité du Signal »
       // fantôme (le RSRQ ne concerne que le lien cellulaire).
@@ -656,10 +788,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     // Qualité du signal (dB), ligne dédiée avec libellé (seuils RSRQ).
     if ((r.signalRsrq ?? 0) != 0) {
-      lines.add(line(
+      lines.add(
+        line(
           'Qualité du Signal',
           'RSRQ ${r.signalRsrq} dB '
-              '(${qualityLabel(r.signalRsrq!, kind: 'rsrq')})'));
+              '(${qualityLabel(r.signalRsrq!, kind: 'rsrq')})',
+        ),
+      );
     }
     if ((r.signalNrRsrq ?? 0) != 0) {
       lines.add(line('Qualité du Signal', 'NR RSRQ ${r.signalNrRsrq} dB'));

@@ -13,6 +13,7 @@ import 'screens/history_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/usage_screen.dart';
 import 'services/account_service.dart';
+import 'services/background_collection_service.dart';
 import 'services/consent_service.dart';
 import 'services/local_storage_service.dart';
 import 'services/settings_service.dart';
@@ -95,6 +96,11 @@ class _YeleAppState extends State<YeleApp> with WidgetsBindingObserver {
     // constructeur…), le réglage est remis à false : sans cela, l'app
     // retenterait — et échouerait — à chaque lancement.
     _restoreRealtimeSpeed();
+    // Bêta (revue du 08/11/2026) : la collecte de couverture est masquée
+    // (section retirée des Réglages). On coupe toute collecte résiduelle
+    // activée avant le masquage — elle ne peut plus être réactivée depuis
+    // l'UI.
+    _shutBackgroundCollection();
     // ISS-12 : changer le style de fond OU la langue se voit immédiatement,
     // sans redémarrer l'application — le MaterialApp se reconstruit, ce qui
     // relit les réglages (thème, AppLocale) et reconstruit tous les écrans.
@@ -111,6 +117,18 @@ class _YeleAppState extends State<YeleApp> with WidgetsBindingObserver {
       if (!_settings.realtimeSpeed) return;
       final ok = await ThroughputService.instance.applySetting(true);
       if (!ok) _settings.realtimeSpeed = false;
+    } catch (_) {}
+  }
+
+  /// Coupe la collecte de couverture si elle a été activée avant le
+  /// masquage de la section (revue bêta du 08/11/2026) : l'état « activée »
+  /// persiste côté Android, le service resterait sinon avec sa notification
+  /// permanente alors que l'UI ne permet plus de l'arrêter.
+  Future<void> _shutBackgroundCollection() async {
+    try {
+      final collect = BackgroundCollectionService();
+      final status = await collect.status();
+      if (status.enabled) await collect.stop();
     } catch (_) {}
   }
 

@@ -73,6 +73,12 @@ class SettingsService {
       AppStyle.values,
       AppStyle.green,
     );
+    // Revue bêta du 08/11/2026 : les réglages « Langue » et « Style de fond »
+    // sont masqués dans Réglages — l'app s'affiche toujours en français,
+    // fond blanc, quelle que soit la valeur stockée (le choix de langue
+    // « system » suivrait la locale du téléphone, y compris l'anglais).
+    languageNotifier.value = AppLanguage.fr;
+    appStyleNotifier.value = AppStyle.green;
   }
 
   static T _readEnum<T extends Enum>(String key, List<T> values, T fallback) {

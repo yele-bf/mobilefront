@@ -7,15 +7,21 @@ import '../constants/config.dart';
 ///
 /// Le drapeau [streamingBackend] de config.dart fixe le moteur à la
 /// compilation ; ce réglage le remplace à l'exécution, sans recompiler l'APK.
-/// La valeur vit dans une petite boîte Hive (`appSettings`) distincte des
-/// résultats : elle survit au redémarrage de l'application et est appliquée
-/// dès le test suivant. Sans surcharge, le moteur reste celui de la
-/// configuration compilée — le drapeau reste donc la valeur d'usine.
+/// La valeur vit dans sa propre boîte Hive (`streamingBackend`) : elle
+/// survit au redémarrage de l'application et est appliquée dès le test
+/// suivant. Sans surcharge, le moteur reste celui de la configuration
+/// compilée — le drapeau reste donc la valeur d'usine.
+///
+/// Boîte dédiée (et non `appSettings` partagée) : Hive 2 refuse de réouvrir
+/// une box déjà ouverte sous un autre type (`Box<String>` ici contre box
+/// non typée dans `SettingsService`), et le partage faisait échouer
+/// `SettingsService.initialize()` en silence — d'où le crash de l'écran
+/// Consommation observé à la revue IMP-08 du 08/11.
 class StreamingBackendSetting {
   final logger = Logger();
 
-  static const String _boxName = 'appSettings';
-  static const String _key = 'streamingBackend';
+  static const String _boxName = 'streamingBackend';
+  static const String _key = 'backend';
 
   /// Valeurs admises, alignées sur le sélecteur du drapeau de config.
   static const List<String> choices = ['youtube', 'hls'];

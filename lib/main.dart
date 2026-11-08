@@ -37,9 +37,13 @@ Future<void> main() async {
   }
   try {
     await SettingsService.initialize();
-  } catch (_) {
+  } catch (e) {
     // Les réglages non persistés ne bloquent pas le lancement de l'app :
-    // les valeurs par défaut s'appliquent (ISS-12).
+    // les valeurs par défaut s'appliquent (ISS-12). Trace en console : un
+    // échec d'initialisation ne doit plus rester invisible (revue IMP-08
+    // du 08/11 — le crash de l'écran Consommation n'avait aucune trace au
+    // démarrage).
+    debugPrint('Réglages non initialisés : $e');
   }
   try {
     await UsageTrackerService.initialize();

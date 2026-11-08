@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/consent_service.dart';
+// IMP-08 — Réglages de consommation : seuil mensuel d'alerte et débit
+// temps réel, connectés au service de réglages persistant (Hive).
+import '../services/settings_service.dart';
+import '../services/throughput_service.dart';
 import '../theme/yele_theme.dart';
 import '../widgets/yele_scaffold.dart';
 
@@ -14,6 +18,49 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _useGps = true;
+
+  // IMP-08 — État courant des réglages de consommation (chargés depuis la
+  // box Hive ; conservés localement au cas où la box ne serait pas
+  // prête — l'écran doit s'afficher sans crash, réglages par défaut).
+  double _limitGb = 0;
+  bool _realtimeSpeed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadConsumptionSettings();
+    // Reste synchronisé si le réglage change ailleurs (resynchro du débit
+    // temps réel au retour au premier plan, par exemple).
+    SettingsService.monthlyLimitGbNotifier.addListener(_onConsChanged);
+    SettingsService.realtimeSpeedNotifier.addListener(_onConsChanged);
+  }
+
+  void _onConsChanged() {
+    _loadConsumptionSettings();
+  }
+
+  void _loadConsumptionSettings() {
+    double limit = _limitGb;
+    bool realtime = _realtimeSpeed;
+    try {
+      limit = SettingsService().monthlyLimitGb;
+      realtime = SettingsService().realtimeSpeed;
+    } catch (_) {
+      // Box non initialisée (démarrage dégradé) : valeurs par défaut.
+    }
+    if (!mounted) return;
+    setState(() {
+      _limitGb = limit;
+      _realtimeSpeed = realtime;
+    });
+  }
+
+  @override
+  void dispose() {
+    SettingsService.monthlyLimitGbNotifier.removeListener(_onConsChanged);
+    SettingsService.realtimeSpeedNotifier.removeListener(_onConsChanged);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,12 +79,94 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _toggle('Utiliser le GPS',
                 'Active/désactive la géolocalisation des tests', _useGps,
                 (v) => setState(() => _useGps = v)),
+            // IMP-08 — Réglages du suivi de consommation : le seuil
+            // alimente la jauge, le bandeau « seuil dépassé » et la
+            // notification native de l'écran Consommation ; le débit temps
+            // réel pilote le service Android (pastille de la barre d'état).
+            _section('Consommation'),
+            _actionItem(
+              icon: Icons.data_usage,
+              title: 'Limite mensuelle de données',
+              sub: _limitLabel(),
+              onTap: _pickLimit,
+            ),
+            _toggle(
+                'Débit temps réel',
+                "Affiche le débit instantané dans la barre d'état Android",
+                _realtimeSpeed, (v) => _setRealtimeSpeed(v)),
             _supportSection(),
             SizedBox(height: 24),
           ],
         ),
       ),
     );
+  }
+
+  // ── IMP-08 — Seuil mensuel et débit temps réel ───────────────────────────
+
+  /// Libellé de la ligne de seuil : « Aucune alerte » ou « Alerte à 5 Go ».
+  String _limitLabel() =>
+      _limitGb > 0 ? 'Alerte à ${_limitGb.round()} Go' : 'Aucune alerte';
+
+  /// Sélecteur du seuil mensuel (en Go ; 0 = désactivé). Les presets
+  /// évitent une saisie clavier libre et gardent l'alerte lisible.
+  Future<void> _pickLimit() async {
+    final chosen = await showDialog<double>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Limite mensuelle de données'),
+        children: [
+          for (final go in const [0.0, 1.0, 2.0, 3.0, 5.0, 10.0, 20.0, 50.0])
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(ctx).pop(go),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 4, vertical: 8),
+                child: Text(
+                  go == 0 ? 'Aucune alerte' : '${go.round()} Go',
+                  style: TextStyle(
+                      fontSize: 15,
+                      color: go > 0 && go == _limitGb
+                          ? YeleColors.primary
+                          : YeleColors.ink),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+    if (chosen == null || chosen == _limitGb) return;
+    try {
+      SettingsService().monthlyLimitGb = chosen;
+    } catch (_) {
+      if (!mounted) return;
+      _snack("Impossible d'enregistrer la limite (réglages indisponibles).");
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _limitGb = chosen);
+  }
+
+  /// Bascule du débit temps réel : main.dart démarre/arrête le service
+  /// Android dès que le notificateur change ; on vérifie ensuite que le
+  /// service natif a survécu (autorisation « Afficher par-dessus »,
+  /// notification…) et on prévient l'utilisateur si ce n'est pas le cas.
+  Future<void> _setRealtimeSpeed(bool want) async {
+    try {
+      SettingsService().realtimeSpeed = want;
+    } catch (_) {
+      // Box non initialisée : l'interrupteur reste sans effet persistant.
+    }
+    if (!mounted) return;
+    setState(() => _realtimeSpeed = want);
+    if (!want || !ThroughputService.instance.isSupported) return;
+
+    await Future.delayed(const Duration(milliseconds: 600));
+    final running = await ThroughputService.instance.isNativeRunning();
+    if (!running && mounted) {
+      _snack('Débit temps réel indisponible — vérifiez les autorisations '
+          "Android (notifications, « Afficher par-dessus »).");
+    }
   }
 
   // ── Assistance (FAQ + Contactez-nous) ────────────────────────────────────

@@ -5,8 +5,10 @@ import '../models/speed_test_result.dart';
 import '../services/export_service.dart';
 import '../theme/yele_theme.dart';
 
-/// IMP-13 — Feuille de choix du format d'export d'une mesure, façon nPerf.
+/// IMP-11 — Feuille de choix du format d'export d'une mesure, façon nPerf.
 /// Appelée depuis l'écran de résultat (fin de test) et l'historique.
+/// (Ancien libellé « IMP-13 » : drift de nomenclature V11 → V14 corrigé
+/// le 07/11/2026.)
 ///
 /// Sur le web, l'export PNG est masqué : la rasterisation PDF → PNG passe
 /// par la plateforme (printing) et n'y est pas disponible ; les trois autres
@@ -94,7 +96,7 @@ class _ExportSheetState extends State<_ExportSheet> {
               icon: Icons.picture_as_pdf_outlined,
               color: YeleColors.danger,
               title: 'PDF — rapport complet',
-              subtitle: 'Rapport brandé Yélé, une page',
+              subtitle: 'Rapport brandé Yélé, toutes les catégories',
               label: 'PDF',
               onTap: () => _run('PDF', () => _export.exportPdf(widget.result)),
             ),

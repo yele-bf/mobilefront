@@ -826,7 +826,7 @@ class _ScoreScreenState extends State<ScoreScreen> {
       padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
       child: Column(
         children: [
-          // IMP-13 — Export de la mesure, façon nPerf : proposé dès le bilan
+          // IMP-11 — Export de la mesure, façon nPerf : proposé dès le bilan
           // (l'export d'un résultat échoué reste possible : les champs mesurés
           // et la raison d'échec sont dans la mesure).
           SizedBox(

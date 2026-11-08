@@ -29,8 +29,9 @@ void main() {
     });
 
     test('setBackend change le moteur effectif et persiste', () async {
-      final other =
-          StreamingBackendSetting.choices.firstWhere((c) => c != streamingBackend);
+      final other = StreamingBackendSetting.choices.firstWhere(
+        (c) => c != streamingBackend,
+      );
 
       await setting.setBackend(other);
       expect(setting.hasOverride, isTrue);
@@ -57,14 +58,19 @@ void main() {
       expect(setting.effectiveBackend, streamingBackend);
     });
 
-    test('valeur stockée illisible : équivalente à une absence de surcharge',
-        () async {
-      final box = Hive.box<String>('appSettings');
-      await box.put('streamingBackend', 'valeur-ancienne-version');
+    test(
+      'valeur stockée illisible : équivalente à une absence de surcharge',
+      () async {
+        // REVUE IMP-08 du 08/11 : boîte dédiée (n'appartient plus à
+        // appSettings) — Hive 2 refuse de réouvrir une box déjà ouverte sous
+        // un autre type, le partage faisait échouer SettingsService.
+        final box = Hive.box<String>('streamingBackend');
+        await box.put('backend', 'valeur-ancienne-version');
 
-      expect(setting.overrideValue, isNull);
-      expect(setting.effectiveBackend, streamingBackend);
-    });
+        expect(setting.overrideValue, isNull);
+        expect(setting.effectiveBackend, streamingBackend);
+      },
+    );
 
     test('boîte fermée : jamais d\'exception, valeur d\'usine', () async {
       await setting.setBackend('hls');

@@ -42,10 +42,9 @@ class ThroughputService {
         } catch (_) {
           // Tracker indisponible (web/tests) : la pastille démarre à 0.
         }
-        final ok = await _channel.invokeMethod<bool>(
-          'startThroughputService',
-          {'usageBytes': usageBytes},
-        );
+        final ok = await _channel.invokeMethod<bool>('startThroughputService', {
+          'usageBytes': usageBytes,
+        });
         if (!(ok ?? false)) return false;
         // Le démarrage est asynchrone côté système : on vérifie que le
         // service a réellement survécu (un crash de startForeground serait
@@ -98,8 +97,9 @@ class ThroughputService {
       try {
         usageBytes = UsageTrackerService.instance.monthlyTotalBytes;
       } catch (_) {}
-      await _channel.invokeMethod('resyncThroughputUsage',
-          {'usageBytes': usageBytes});
+      await _channel.invokeMethod('resyncThroughputUsage', {
+        'usageBytes': usageBytes,
+      });
     } on MissingPluginException {
       // Tests / canal absent : rien à faire.
     } catch (_) {

@@ -48,12 +48,19 @@ class ThroughputService : Service() {
         /** Volume déjà consommé ce mois (octets), transmis au démarrage. */
         const val EXTRA_USAGE_BYTES = "usage_bytes"
 
+        /** IMP-08 v2 — Répartition mobile / Wi-Fi du volume du mois
+         *  (suivi Flutter), affichée dans la notification. */
+        const val EXTRA_USAGE_MOBILE = "usage_mobile"
+        const val EXTRA_USAGE_WIFI = "usage_wifi"
+
         const val PREFS = "yele_background"
         const val KEY_ENABLED = "throughput_enabled"
 
-        /** Dernier volume connu (octets) : sert au redémarrage automatique
+        /** Dernière base connue (octets) : sert au redémarrage automatique
          *  après octroi de la permission de notification. */
         const val KEY_LAST_USAGE = "throughput_last_usage"
+        const val KEY_LAST_MOBILE = "throughput_last_mobile"
+        const val KEY_LAST_WIFI = "throughput_last_wifi"
 
         /** Instance vivante, pour la resynchronisation depuis MainActivity. */
         @Volatile
@@ -106,6 +113,12 @@ class ThroughputService : Service() {
     /** Volume total affiché = base (suivi Flutter) + trafic de la session. */
     private val totalBytes: Long get() = baseBytes + sessionBytes
 
+    /** IMP-08 v2 — Répartition mobile / Wi-Fi de la base (dernière
+     *  resynchronisation depuis l'app ; le trafic de l'app en cours de
+     *  session vient s'y ajouter au prochain relevé). */
+    private var baseMobile = 0L
+    private var baseWifi = 0L
+
     /// Compteur en surimpression (taille de l'horloge) — voir
     /// [SpeedOverlayView] pour la raison d'être.
     private var overlayView: SpeedOverlayView? = null
@@ -131,10 +144,16 @@ class ThroughputService : Service() {
     /// l'application (même source que l'écran Consommation) : sans cela la
     /// pastille et l'app divergent — le service compte tout le trafic de
     /// l'UID en continu, l'app n'échantillonne qu'au premier plan.
-    fun resyncUsage(usageBytes: Long) {
+    fun resyncUsage(usageBytes: Long, usageMobile: Long = 0L, usageWifi: Long = 0L) {
         baseBytes = usageBytes
+        baseMobile = usageMobile
+        baseWifi = usageWifi
         sessionBytes = 0L
-        prefs(this).edit().putLong(KEY_LAST_USAGE, usageBytes).apply()
+        prefs(this).edit()
+            .putLong(KEY_LAST_USAGE, usageBytes)
+            .putLong(KEY_LAST_MOBILE, usageMobile)
+            .putLong(KEY_LAST_WIFI, usageWifi)
+            .apply()
         if (isRunning) {
             (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
                 .notify(NOTIFICATION_ID, buildNotification(0, 0))
@@ -177,11 +196,25 @@ class ThroughputService : Service() {
         lastRx = TrafficStats.getUidRxBytes(Process.myUid())
         lastTx = TrafficStats.getUidTxBytes(Process.myUid())
         val saved = intent?.getLongExtra(EXTRA_USAGE_BYTES, -1L) ?: -1L
-        baseBytes = if (saved >= 0) {
+        val savedMobile = intent?.getLongExtra(EXTRA_USAGE_MOBILE, -1L) ?: -1L
+        val savedWifi = intent?.getLongExtra(EXTRA_USAGE_WIFI, -1L) ?: -1L
+        if (saved >= 0) {
+            baseBytes = saved
             prefs(this).edit().putLong(KEY_LAST_USAGE, saved).apply()
-            saved
         } else {
-            prefs(this).getLong(KEY_LAST_USAGE, 0L)
+            baseBytes = prefs(this).getLong(KEY_LAST_USAGE, 0L)
+        }
+        if (savedMobile >= 0) {
+            baseMobile = savedMobile
+            prefs(this).edit().putLong(KEY_LAST_MOBILE, savedMobile).apply()
+        } else {
+            baseMobile = prefs(this).getLong(KEY_LAST_MOBILE, 0L)
+        }
+        if (savedWifi >= 0) {
+            baseWifi = savedWifi
+            prefs(this).edit().putLong(KEY_LAST_WIFI, savedWifi).apply()
+        } else {
+            baseWifi = prefs(this).getLong(KEY_LAST_WIFI, 0L)
         }
         sessionBytes = 0L
         lastAt = android.os.SystemClock.elapsedRealtime()
@@ -343,11 +376,10 @@ class ThroughputService : Service() {
         else -> "$bytes o"
     }
 
-    /// Pastille de débit dans la barre d'état : une bitmap « 123 Kb/s »
-    /// dessinée à la volée remplace l'icône système (qui était une flèche de
-    /// téléchargement sans signification). La bitmap est affichée telle
-    /// quelle (pas de teinte monochrome) : le compteur reste lisible même
-    /// notification repliée.
+    /// Pastille de débit dans la barre d'état, style « Internet Speed Meter
+    /// Lite » (revue IMP-08 du 08/11) : le nombre en haut, l'unité (Kb/s /
+    /// Mb/s) en dessous, blanc gras — même allure que l'application de
+    /// référence, au lieu d'un « 0 Kb/s » compressé sur une seule ligne.
     private fun speedIcon(downKbps: Long): android.graphics.drawable.Icon? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return null
         val density = resources.displayMetrics.density
@@ -358,27 +390,45 @@ class ThroughputService : Service() {
             if (id != 0) resources.getDimensionPixelSize(id)
             else (24 * density).toInt()
         }.coerceAtLeast(1)
+
+        val label = fmt(downKbps)
+        val sep = label.indexOf(' ')
+        val number = if (sep > 0) label.substring(0, sep) else label
+        val unit = if (sep > 0) label.substring(sep + 1) else ""
+
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-        // On règle la taille de police pour que la HAUTEUR RÉELLE DES CHIFFRES
-        // (cap height, mesurée sur « 0 ») remplisse TOUTE la hauteur de la
-        // zone d'icône — même taille apparente que l'horloge. Un simple
-        // textSize = h laissait ~30 % de blanc (ascendantes/descendantes de
-        // la police), d'où une pastille visuellement minuscule.
         paint.textSize = 100f
         val probe = android.graphics.Rect()
         paint.getTextBounds("0", 0, 1, probe)
-        paint.textSize = 100f * hPx / probe.height().coerceAtLeast(1)
-        val label = fmt(downKbps)
-        val w = paint.measureText(label).toInt() + 2
+        // Le nombre occupe ~62 % de la hauteur du slot (comme les chiffres
+        // de l'horloge) ; l'unité prend le tiers restant en dessous.
+        val numCap = hPx * 0.62f
+        paint.textSize = 100f * numCap / probe.height().coerceAtLeast(1)
+        val unitPaint = Paint(paint)
+        unitPaint.textSize = paint.textSize * 0.45f
+
+        val w =
+            maxOf(paint.measureText(number), unitPaint.measureText(unit))
+                .toInt().coerceAtLeast(1) + 2
         val bmp = Bitmap.createBitmap(w, hPx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
-        paint.getTextBounds("0", 0, 1, probe)
-        // Ligne de base calée pour que les chiffres couvrent exactement
-        // 0..hPx verticalement, sans marge.
-        canvas.drawText(label, 1f, -probe.top.toFloat(), paint)
+
+        if (unit.isEmpty()) {
+            // Pas d'unité séparable : le nombre rempli toute la hauteur du
+            // slot (même calage cap-height que l'ancienne pastille).
+            paint.textSize = 100f * hPx / probe.height().coerceAtLeast(1)
+            paint.getTextBounds(number, 0, number.length, probe)
+            canvas.drawText(number, 1f, -probe.top.toFloat(), paint)
+        } else {
+            paint.getTextBounds(number, 0, number.length, probe)
+            canvas.drawText(number, 1f, -probe.top.toFloat(), paint)
+            val uRect = android.graphics.Rect()
+            unitPaint.getTextBounds(unit, 0, unit.length, uRect)
+            canvas.drawText(unit, 1f, (hPx - uRect.bottom).toFloat(), unitPaint)
+        }
         return android.graphics.drawable.Icon.createWithBitmap(bmp)
     }
 
@@ -396,6 +446,23 @@ class ThroughputService : Service() {
 
         lastTotalBytes = totalBytes
 
+        // IMP-08 v2 — Part « hors app » : l'appareil entier moins l'UID de
+        // l'app, depuis le démarrage du téléphone (la période des compteurs
+        // natifs ; l'app - hors app n'est comparable que sur cette période).
+        val deviceR = TrafficStats.getTotalRxBytes()
+        val deviceT = TrafficStats.getTotalTxBytes()
+        val appR = TrafficStats.getUidRxBytes(Process.myUid())
+        val appT = TrafficStats.getUidTxBytes(Process.myUid())
+        val otherBytes = if (deviceR <= 0 || deviceT <= 0) -1L
+        else (deviceR + deviceT - appR - appT).coerceAtLeast(0L)
+
+        val appLine =
+            "App (ce mois) : ${fmtBytes(totalBytes)}" +
+                " — mobile ${fmtBytes(baseMobile)}, Wi-Fi ${fmtBytes(baseWifi)}"
+        val otherLine = if (otherBytes >= 0L)
+            "Hors app : ${fmtBytes(otherBytes)} (depuis le démarrage)"
+        else "Hors app : indisponible"
+
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
         // Pastille texte dans la barre d'état (API 23+) ; repli : icône flèche.
         val icon = speedIcon(downKbps)
@@ -406,12 +473,13 @@ class ThroughputService : Service() {
 
         return builder
             .setContentTitle("Yélé — débit temps réel")
-            .setContentText("↓ ${fmt(downKbps)}   ↑ ${fmt(upKbps)}   ·   Données : ${fmtBytes(totalBytes)}")
+            .setContentText("↓ ${fmt(downKbps)}   ↑ ${fmt(upKbps)}   ·   ${fmtBytes(totalBytes)}")
             .setStyle(
                 NotificationCompat.BigTextStyle()
                     .bigText(
                         "↓ ${fmt(downKbps)}   ↑ ${fmt(upKbps)}\n" +
-                            "Données utilisées (app) : ${fmtBytes(totalBytes)}",
+                            "$appLine\n" +
+                            otherLine,
                     ),
             )
             .setContentIntent(openApp)

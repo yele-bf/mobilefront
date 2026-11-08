@@ -65,20 +65,23 @@ class ExportService {
       CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0),
       CellIndex.indexByColumnRow(columnIndex: 3, rowIndex: 0),
     );
-    final brand =
-        sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0));
+    final brand = sheet.cell(
+      CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0),
+    );
     brand.value = TextCellValue('$_appName — $_appTagline');
     brand.cellStyle = CellStyle(
       bold: true,
-      backgroundColorHex:
-          ExcelColor.fromHexString('FF0BB89C'), // YeleColors.primary
+      backgroundColorHex: ExcelColor.fromHexString(
+        'FF0BB89C',
+      ), // YeleColors.primary
       fontColorHex: ExcelColor.white,
     );
 
     const headers = ['Champ', 'Valeur', 'Unité'];
     for (var i = 0; i < headers.length; i++) {
-      final c =
-          sheet.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 1));
+      final c = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 1),
+      );
       c.value = TextCellValue(headers[i]);
       c.cellStyle = CellStyle(
         bold: true,
@@ -89,8 +92,9 @@ class ExportService {
     var rowIndex = 2;
     for (final section in measureSections(r, address: address)) {
       // Ligne de titre de catégorie (teinte de la marque).
-      final title = sheet
-          .cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIndex));
+      final title = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: rowIndex),
+      );
       title.value = TextCellValue(section.title);
       title.cellStyle = CellStyle(
         bold: true,
@@ -99,9 +103,13 @@ class ExportService {
       rowIndex++;
       for (final row in section.rows) {
         for (var j = 0; j < row.length && j < 3; j++) {
-          sheet.cell(CellIndex.indexByColumnRow(
-                  columnIndex: j, rowIndex: rowIndex))
-              .value = TextCellValue(row[j]);
+          sheet
+              .cell(
+                CellIndex.indexByColumnRow(columnIndex: j, rowIndex: rowIndex),
+              )
+              .value = TextCellValue(
+            row[j],
+          );
         }
         rowIndex++;
       }
@@ -212,7 +220,7 @@ class ExportService {
           [
             'Adresse',
             (address ?? '').isNotEmpty ? address! : 'non disponible · GPS seul',
-            ''
+            '',
           ],
           ['GPS', '${lat.toStringAsFixed(4)}, ${lon.toStringAsFixed(4)}', ''],
           ['Latitude', lat.toStringAsFixed(6), '°'],
@@ -232,13 +240,13 @@ class ExportService {
         [
           'Réseau mobile',
           (r.simOperator ?? '').isNotEmpty ? r.simOperator! : '—',
-          ''
+          '',
         ],
       if (wifi)
         [
           'SSID Wi-Fi',
           (r.wifiSsid ?? '').trim().isNotEmpty ? r.wifiSsid!.trim() : 'n.d.',
-          ''
+          '',
         ],
       if (!wifi)
         [
@@ -246,7 +254,7 @@ class ExportService {
           (r.technology ?? '').isNotEmpty
               ? r.technology!
               : (r.cellularTech ?? 'n.d.'),
-          ''
+          '',
         ],
       ['Serveur', serverHumanLabel(r.server), ''],
       if ((r.deviceModel ?? '').isNotEmpty) ['Appareil', r.deviceModel!, ''],
@@ -267,7 +275,7 @@ class ExportService {
             'Download min / moy / max',
             '${dl.min.toStringAsFixed(2)} / ${dl.mean.toStringAsFixed(2)} / '
                 '${dl.max.toStringAsFixed(2)} Mb/s',
-            ''
+            '',
           ]
         else
           ['Download', r.downloadSpeed.toStringAsFixed(2), 'Mb/s'],
@@ -276,7 +284,7 @@ class ExportService {
             'Upload min / moy / max',
             '${ul.min.toStringAsFixed(2)} / ${ul.mean.toStringAsFixed(2)} / '
                 '${ul.max.toStringAsFixed(2)} Mb/s',
-            ''
+            '',
           ]
         else
           ['Upload', r.uploadSpeed.toStringAsFixed(2), 'Mb/s'],
@@ -285,7 +293,7 @@ class ExportService {
             'Latence min / moy / max',
             '${pi.min.toStringAsFixed(0)} / ${pi.mean.toStringAsFixed(0)} / '
                 '${pi.max.toStringAsFixed(0)} ms',
-            ''
+            '',
           ]
         else
           ['Latence (ping)', r.ping.toStringAsFixed(0), 'ms'],
@@ -316,23 +324,23 @@ class ExportService {
           'Streaming',
           '${r.streamingMaxResolution ?? '—'} · '
               '${(r.streamingScore ?? 0).toStringAsFixed(0)}/100',
-          ''
+          '',
         ],
         ['Démarrage vidéo', '${r.streamingStartupMs ?? 0}', 'ms'],
         ['Interruptions (rebuffering)', '${r.streamingRebufferCount ?? 0}', ''],
         [
           'Part du temps en tampon',
           ((r.streamingRebufferRatio ?? 0) * 100).toStringAsFixed(1),
-          '%'
+          '%',
         ],
         for (final q in r.streamingQualities)
           [
             'Streaming ${q.label}',
             q.reached
                 ? '${q.performanceRate.toStringAsFixed(0)} % · '
-                    '${q.initialLoadingSec.toStringAsFixed(1)} s'
+                      '${q.initialLoadingSec.toStringAsFixed(1)} s'
                 : '—',
-            ''
+            '',
           ],
       ],
       if (r.hasBrowsingTest) ...[
@@ -340,12 +348,12 @@ class ExportService {
           'Navigation',
           '${((r.browsingAvgLoadMs ?? 0) / 1000).toStringAsFixed(1)} s · '
               '${(r.browsingScore ?? 0).toStringAsFixed(0)}/100',
-          ''
+          '',
         ],
         [
           'Taux de réussite',
           '${((r.browsingSuccessRate ?? 0) * 100).toStringAsFixed(0)} %',
-          ''
+          '',
         ],
         ['Pages testées', (r.browsingPagesTested ?? 0).toString(), ''],
       ],
@@ -364,19 +372,20 @@ class ExportService {
     // indice de lecture, composantes. Anciennes mesures sans scoring :
     // la section ne s'affiche pas (aucune rétro-attribution).
     if (r.scoringVersion != null) {
-      final rows = <List<String>>[['Référentiel', r.scoringVersion!, '']];
+      final rows = <List<String>>[
+        ['Référentiel', r.scoringVersion!, ''],
+      ];
       final global = r.scoreGlobal;
       String pts(double v) => v.toStringAsFixed(0);
       if (global != null) {
         rows.add([
           'Score ouvert',
           '${pts(global)} pts · ${YeleScoringEngine.classify(global).label}',
-          ''
+          '',
         ]);
         final on100 = r.scoreGlobalOn100;
         if (on100 != null) {
-          rows.add(
-              ['Indice (lecture)', '${on100.toStringAsFixed(0)}/100', '']);
+          rows.add(['Indice (lecture)', '${on100.toStringAsFixed(0)}/100', '']);
         }
       } else {
         final sub = r.scoreMeasuredSubtotal;
@@ -385,8 +394,8 @@ class ExportService {
           sub == null
               ? 'non mesuré'
               : 'incomplet · ${pts(sub)} pts mesurés '
-                  '(composantes absentes exclues)',
-          ''
+                    '(composantes absentes exclues)',
+          '',
         ]);
       }
       if (r.scoreDownload != null) {
@@ -432,7 +441,7 @@ class ExportService {
         'Puissance du Signal',
         'RSRP ${r.signalRsrp} dBm '
             '(${qualityLabel(r.signalRsrp!, kind: 'rsrp')})',
-        ''
+        '',
       ]);
     }
     if ((r.signalNrRsrp ?? 0) != 0) {
@@ -443,7 +452,7 @@ class ExportService {
         'Puissance du Signal',
         'RSSI ${r.wifiRssi} dBm '
             '(${qualityLabel(r.wifiRssi!, kind: 'rssi')})',
-        ''
+        '',
       ]);
     }
     if ((r.signalRsrq ?? 0) != 0) {
@@ -451,7 +460,7 @@ class ExportService {
         'Qualité du Signal',
         'RSRQ ${r.signalRsrq} dB '
             '(${qualityLabel(r.signalRsrq!, kind: 'rsrq')})',
-        ''
+        '',
       ]);
     }
     if ((r.signalNrRsrq ?? 0) != 0) {
@@ -473,9 +482,11 @@ class ExportService {
   /// garantit le même rendu partout.
   Future<pw.Font?> _embeddedFont({bool bold = false}) async {
     try {
-      final data = await rootBundle.load(bold
-          ? 'assets/fonts/NotoSans-Bold.ttf'
-          : 'assets/fonts/NotoSans-Regular.ttf');
+      final data = await rootBundle.load(
+        bold
+            ? 'assets/fonts/NotoSans-Bold.ttf'
+            : 'assets/fonts/NotoSans-Regular.ttf',
+      );
       return pw.Font.ttf(data.buffer.asByteData());
     } catch (_) {
       return null; // Repli sur Helvetica (rendu dégradé mais lisible).
@@ -496,8 +507,9 @@ class ExportService {
       fontBold: f,
       fontSize: size,
       color: color,
-      fontWeight:
-          isBold && f != null ? pw.FontWeight.bold : pw.FontWeight.normal,
+      fontWeight: isBold && f != null
+          ? pw.FontWeight.bold
+          : pw.FontWeight.normal,
     );
   }
 
@@ -510,8 +522,8 @@ class ExportService {
     // Rapport compact : les six catégories doivent tenir sur UNE page A4
     // (re-test du 07/11 18:16 — un PNG sur deux pages est jugé flou une fois
     // mis à l'échelle du téléphone ; MultiPage reste le filet de sécurité).
-    final double tileSize = 13;
-    final double bodySize = 7.6;
+    final double tileSize = 10.5;
+    final double bodySize = 6.2;
 
     pdf.addPage(
       pw.MultiPage(
@@ -520,7 +532,7 @@ class ExportService {
         // aussi présent dans le PDF, sans effet visible là-bas.
         pageTheme: pw.PageTheme(
           pageFormat: PdfPageFormat.a4,
-          margin: const pw.EdgeInsets.all(26),
+          margin: const pw.EdgeInsets.all(20),
           buildBackground: (context) =>
               pw.Container(color: PdfColor.fromInt(0xFFFFFFFF)),
         ),
@@ -534,36 +546,50 @@ class ExportService {
             pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.center,
               children: [
-                if (logo != null) pw.Image(pw.MemoryImage(logo), width: 32),
-                if (logo != null) pw.SizedBox(width: 8),
+                if (logo != null) pw.Image(pw.MemoryImage(logo), width: 24),
+                if (logo != null) pw.SizedBox(width: 6),
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text(_appName,
-                        style: _ts(regular, bold, 18, _hex(YeleColors.primary),
-                            isBold: true)),
-                    pw.Text(_appTagline,
-                        style: _ts(regular, bold, 7, _hex(YeleColors.muted))),
+                    pw.Text(
+                      _appName,
+                      style: _ts(
+                        regular,
+                        bold,
+                        15,
+                        _hex(YeleColors.primary),
+                        isBold: true,
+                      ),
+                    ),
+                    pw.Text(
+                      _appTagline,
+                      style: _ts(regular, bold, 6, _hex(YeleColors.muted)),
+                    ),
                   ],
                 ),
                 pw.Spacer(),
                 if (context.pageNumber == 1)
                   pw.Container(
                     padding: const pw.EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 6),
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: pw.BoxDecoration(
                       color: _hex(YeleColors.panel),
-                      borderRadius:
-                          const pw.BorderRadius.all(pw.Radius.circular(6)),
+                      borderRadius: const pw.BorderRadius.all(
+                        pw.Radius.circular(4),
+                      ),
                     ),
-                    child: pw.Text(_dateLong(r.timestamp),
-                        style: _ts(regular, bold, 9, _hex(YeleColors.ink))),
+                    child: pw.Text(
+                      _dateLong(r.timestamp),
+                      style: _ts(regular, bold, 7.5, _hex(YeleColors.ink)),
+                    ),
                   ),
               ],
             ),
-            pw.SizedBox(height: 3),
+            pw.SizedBox(height: 2),
             pw.Container(height: 2, color: _hex(YeleColors.primary)),
-            pw.SizedBox(height: context.pageNumber == 1 ? 10 : 6),
+            pw.SizedBox(height: context.pageNumber == 1 ? 8 : 4),
           ],
         ),
         // Pied de page sur chaque page, avec pagination.
@@ -577,7 +603,7 @@ class ExportService {
                 'Généré par l\'application $_appName le ${_dateLong(DateTime.now())} — '
                 'Serveur de test : ${serverHumanLabel(r.server)} — '
                 'Page ${context.pageNumber} / ${context.pagesCount}',
-                style: _ts(regular, bold, 6.5, _hex(YeleColors.muted)),
+                style: _ts(regular, bold, 5.5, _hex(YeleColors.muted)),
               ),
             ],
           ),
@@ -587,24 +613,41 @@ class ExportService {
           pw.Row(
             crossAxisAlignment: pw.CrossAxisAlignment.center,
             children: [
-              pw.Text('Rapport de mesure',
-                  style: _ts(
-                      regular, bold, 15, _hex(YeleColors.ink), isBold: true)),
+              pw.Text(
+                'Rapport de mesure',
+                style: _ts(
+                  regular,
+                  bold,
+                  15,
+                  _hex(YeleColors.ink),
+                  isBold: true,
+                ),
+              ),
               pw.SizedBox(width: 8),
               // Badge solide + texte blanc : contraste garanti quel que
               // soit le palier (revue 07/11 — le texte se fondait dans
               // une pastille teintée).
               pw.Container(
                 padding: const pw.EdgeInsets.symmetric(
-                    horizontal: 8, vertical: 4),
+                  horizontal: 8,
+                  vertical: 4,
+                ),
                 decoration: pw.BoxDecoration(
                   color: quality.color,
-                  borderRadius:
-                      const pw.BorderRadius.all(pw.Radius.circular(4)),
+                  borderRadius: const pw.BorderRadius.all(
+                    pw.Radius.circular(4),
+                  ),
                 ),
-                child: pw.Text('Qualité : ${quality.label}',
-                    style: _ts(regular, bold, bodySize,
-                        PdfColor.fromInt(0xFFFFFFFF), isBold: true)),
+                child: pw.Text(
+                  'Qualité : ${quality.label}',
+                  style: _ts(
+                    regular,
+                    bold,
+                    bodySize,
+                    PdfColor.fromInt(0xFFFFFFFF),
+                    isBold: true,
+                  ),
+                ),
               ),
             ],
           ),
@@ -613,20 +656,40 @@ class ExportService {
           // ── Tuiles débits / latence ──
           pw.Row(
             children: [
-              _tile('Download', r.downloadSpeed.toStringAsFixed(2), 'Mb/s',
-                  tileSize, regular, bold),
+              _tile(
+                'Download',
+                r.downloadSpeed.toStringAsFixed(2),
+                'Mb/s',
+                tileSize,
+                regular,
+                bold,
+              ),
               pw.SizedBox(width: 10),
-              _tile('Upload', r.uploadSpeed.toStringAsFixed(2), 'Mb/s',
-                  tileSize, regular, bold),
+              _tile(
+                'Upload',
+                r.uploadSpeed.toStringAsFixed(2),
+                'Mb/s',
+                tileSize,
+                regular,
+                bold,
+              ),
               pw.SizedBox(width: 10),
-              _tile('Latence', r.ping.toStringAsFixed(0), 'ms', tileSize,
-                  regular, bold),
+              _tile(
+                'Latence',
+                r.ping.toStringAsFixed(0),
+                'ms',
+                tileSize,
+                regular,
+                bold,
+              ),
             ],
           ),
           pw.SizedBox(height: 4),
-          pw.Text('Gigue : ${r.jitter.toStringAsFixed(0)} ms',
-              style: _ts(regular, bold, bodySize, _hex(YeleColors.muted))),
-          pw.SizedBox(height: 10),
+          pw.Text(
+            'Gigue : ${r.jitter.toStringAsFixed(0)} ms',
+            style: _ts(regular, bold, bodySize, _hex(YeleColors.muted)),
+          ),
+          pw.SizedBox(height: 8),
 
           // ── Sections (catégories de l'app — source unique
           //    [measureSections], 07/11/2026) ──
@@ -635,8 +698,13 @@ class ExportService {
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 _pdfSection(
-                    section.title, section.rows, bodySize, regular, bold),
-                pw.SizedBox(height: 8),
+                  section.title,
+                  section.rows,
+                  bodySize,
+                  regular,
+                  bold,
+                ),
+                pw.SizedBox(height: 4),
               ],
             ),
           ],
@@ -647,11 +715,17 @@ class ExportService {
   }
 
   /// Tuile « Label / Valeur / Unité » encadrée, style carte de résultat.
-  pw.Widget _tile(String label, String value, String unit, double valueSize,
-      pw.Font? regular, pw.Font? bold) {
+  pw.Widget _tile(
+    String label,
+    String value,
+    String unit,
+    double valueSize,
+    pw.Font? regular,
+    pw.Font? bold,
+  ) {
     return pw.Expanded(
       child: pw.Container(
-        padding: const pw.EdgeInsets.symmetric(vertical: 7, horizontal: 6),
+        padding: const pw.EdgeInsets.symmetric(vertical: 5, horizontal: 6),
         decoration: pw.BoxDecoration(
           color: _hex(YeleColors.panel),
           borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),
@@ -659,66 +733,92 @@ class ExportService {
         ),
         child: pw.Column(
           children: [
-            pw.Text(label,
-                style: _ts(regular, bold, 6.8, _hex(YeleColors.muted))),
+            pw.Text(
+              label,
+              style: _ts(regular, bold, 6, _hex(YeleColors.muted)),
+            ),
             pw.SizedBox(height: 2),
-            pw.Text(value,
-                style: _ts(regular, bold, valueSize, _hex(YeleColors.field),
-                    isBold: true)),
-            pw.Text(unit,
-                style: _ts(regular, bold, 6.8, _hex(YeleColors.field))),
+            pw.Text(
+              value,
+              style: _ts(
+                regular,
+                bold,
+                valueSize,
+                _hex(YeleColors.field),
+                isBold: true,
+              ),
+            ),
+            pw.SizedBox(height: 1),
+            pw.Text(unit, style: _ts(regular, bold, 6, _hex(YeleColors.field))),
           ],
         ),
       ),
     );
   }
 
-  pw.Widget _pdfSection(String title, List<List<String>> rows, double fontSize,
-      pw.Font? regular, pw.Font? bold,
-      {double labelWidth = 130}) {
+  pw.Widget _pdfSection(
+    String title,
+    List<List<String>> rows,
+    double fontSize,
+    pw.Font? regular,
+    pw.Font? bold, {
+    double labelWidth = 130,
+  }) {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
         pw.Container(
-          padding:
-              const pw.EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          padding: const pw.EdgeInsets.symmetric(horizontal: 7, vertical: 2),
           decoration: pw.BoxDecoration(
             color: _hex(YeleColors.primary),
-            borderRadius:
-                const pw.BorderRadius.all(pw.Radius.circular(4)),
+            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
           ),
-          child: pw.Text(title,
-              style: _ts(regular, bold, fontSize,
-                  PdfColor.fromInt(0xFFFFFFFF),
-                  isBold: true)),
+          child: pw.Text(
+            title,
+            style: _ts(
+              regular,
+              bold,
+              fontSize,
+              PdfColor.fromInt(0xFFFFFFFF),
+              isBold: true,
+            ),
+          ),
         ),
         pw.SizedBox(height: 3),
-        ...rows.map((row) => pw.Padding(
-              padding: const pw.EdgeInsets.symmetric(vertical: 1.0),
-              child: pw.Row(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.SizedBox(
-                    width: labelWidth,
-                    child: pw.Text('${row[0]} :',
-                        style: _ts(
-                            regular, bold, fontSize, _hex(YeleColors.muted))),
+        ...rows.map(
+          (row) => pw.Padding(
+            padding: const pw.EdgeInsets.symmetric(vertical: 0.5),
+            child: pw.Row(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.SizedBox(
+                  width: labelWidth,
+                  child: pw.Text(
+                    '${row[0]} :',
+                    style: _ts(regular, bold, fontSize, _hex(YeleColors.muted)),
                   ),
-                  pw.Expanded(
-                    child: pw.Text(
-                      row.length > 1 ? row[1] : '',
-                      style: _ts(regular, bold, fontSize,
-                          _hex(YeleColors.ink),
-                          isBold: true),
+                ),
+                pw.Expanded(
+                  child: pw.Text(
+                    row.length > 1 ? row[1] : '',
+                    style: _ts(
+                      regular,
+                      bold,
+                      fontSize,
+                      _hex(YeleColors.ink),
+                      isBold: true,
                     ),
                   ),
-                  if (row.length > 2)
-                    pw.Text(row[2],
-                        style: _ts(
-                            regular, bold, fontSize, _hex(YeleColors.muted))),
-                ],
-              ),
-            )),
+                ),
+                if (row.length > 2)
+                  pw.Text(
+                    row[2],
+                    style: _ts(regular, bold, fontSize, _hex(YeleColors.muted)),
+                  ),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -735,8 +835,18 @@ class ExportService {
 
   String _dateLong(DateTime t) {
     const months = [
-      'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
-      'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
+      'janvier',
+      'février',
+      'mars',
+      'avril',
+      'mai',
+      'juin',
+      'juillet',
+      'août',
+      'septembre',
+      'octobre',
+      'novembre',
+      'décembre',
     ];
     return '${t.day} ${months[t.month - 1]} ${t.year} à '
         '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
@@ -800,25 +910,28 @@ class ExportService {
   /// ASCII (sans accents, cf. [asciiFold]).
   String _csv(SpeedTestResult r, {String? address}) {
     final buf = StringBuffer()
-      ..writeln(
-          '${asciiFold(_appName)};${asciiFold(_appTagline)}');
+      ..writeln('${asciiFold(_appName)};${asciiFold(_appTagline)}');
     for (final section in measureSections(r, address: address)) {
       buf.writeln(_csvLine(['## ${asciiFold(section.title)}']));
       for (final row in section.rows) {
-        buf.writeln(_csvLine([
-          asciiFold(row[0]),
-          asciiFold(row.length > 1 ? row[1] : ''),
-          asciiFold(row.length > 2 ? row[2] : ''),
-        ]));
+        buf.writeln(
+          _csvLine([
+            asciiFold(row[0]),
+            asciiFold(row.length > 1 ? row[1] : ''),
+            asciiFold(row.length > 2 ? row[2] : ''),
+          ]),
+        );
       }
     }
     return buf.toString();
   }
 
   String _csvLine(List<String> fields) => fields
-      .map((f) => (f.contains(';') || f.contains('"') || f.contains('\n'))
-          ? '"${f.replaceAll('"', '""')}"'
-          : f)
+      .map(
+        (f) => (f.contains(';') || f.contains('"') || f.contains('\n'))
+            ? '"${f.replaceAll('"', '""')}"'
+            : f,
+      )
       .join(';');
 
   // ── Fichiers & partage ───────────────────────────────────────────────────
@@ -858,7 +971,10 @@ class ExportService {
       final decoded = img.decodePng(pngBytes);
       if (decoded == null) return pngBytes;
       final flattened = img.Image(
-          width: decoded.width, height: decoded.height, numChannels: 3);
+        width: decoded.width,
+        height: decoded.height,
+        numChannels: 3,
+      );
       // Composition alpha du contenu par-dessus un fond blanc opaque :
       // tout pixel transparent reste blanc (fixe le cadrage noir).
       flattened.clear(img.ColorRgb8(255, 255, 255));
@@ -890,21 +1006,29 @@ class ExportService {
   /// dépasse une page : le résumé reste lisible d'un seul tenant).
   Uint8List _stackPngs(List<Uint8List> pngs) {
     try {
-      final decoded =
-          pngs.map((b) => img.decodePng(b)).whereType<img.Image>().toList();
+      final decoded = pngs
+          .map((b) => img.decodePng(b))
+          .whereType<img.Image>()
+          .toList();
       if (decoded.isEmpty) return pngs.first;
-      final width =
-          decoded.map((d) => d.width).reduce((a, b) => a > b ? a : b);
+      final width = decoded.map((d) => d.width).reduce((a, b) => a > b ? a : b);
       final totalHeight = decoded.fold<int>(0, (sum, d) => sum + d.height);
       final stacked = img.Image(
-          width: width, height: totalHeight, numChannels: 3);
+        width: width,
+        height: totalHeight,
+        numChannels: 3,
+      );
       stacked.clear(img.ColorRgb8(255, 255, 255));
       var y = 0;
       for (final page in decoded) {
         // Composite optimisé (flatten au préalable → fond opaque) : la boucle
         // pixel à pixel est bien trop lente en mode debug sur deux pages A4.
-        img.compositeImage(stacked, page,
-            dstX: (width - page.width) ~/ 2, dstY: y);
+        img.compositeImage(
+          stacked,
+          page,
+          dstX: (width - page.width) ~/ 2,
+          dstY: y,
+        );
         y += page.height;
       }
       return Uint8List.fromList(img.encodePng(stacked));

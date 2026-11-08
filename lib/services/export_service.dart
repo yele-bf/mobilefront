@@ -150,10 +150,11 @@ class ExportService {
   Future<void> exportPng(SpeedTestResult r) async {
     final address = await _resolveAddress(r);
     final doc = await _buildPdf(r, address: address);
-    // 300 dpi = qualité impression : à 144 dpi le texte du rapport était
-    // flou et illisible dès la mise à l'échelle de l'image (re-test du
-    // 07/11 17:43, A059).
-    final pages = await Printing.raster(await doc.save(), dpi: 300).toList();
+    // PNG calibré pour l'ÉCRAN, pas pour l'impression (recherche du 08/11 :
+    // l'ancien export net faisait 960×1200 px ≈ 1:1 sur l'A059) ; à 300 dpi
+    // l'image (2481×3508) était réduite ×0,43 par la visionneuse → flou.
+    // 150 dpi ≈ 1240×1754 px, proche du 1:1 ; le PDF reste vectoriel A4.
+    final pages = await Printing.raster(await doc.save(), dpi: 150).toList();
     if (pages.isEmpty) {
       throw Exception('Rasterisation impossible sur cette plateforme');
     }

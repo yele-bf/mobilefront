@@ -437,6 +437,36 @@ class UsageTrackerService {
       await _b.deleteAll(doomed);
     } catch (_) {}
   }
+
+  /// IMP-08 v4 — Remise à zéro de la consommation du mois en cours
+  /// (revue du 08/11) : supprime les jours du mois courant dans la box,
+  /// réarme l'alerte du seuil et resynchronise la notification « débit
+  /// temps réel » sur zéro. Les jours des mois précédents sont conservés.
+  /// Sert au test propre d'un nouveau seuil : sans purge, le mois déjà
+  /// accumulé (4,23 Go au checkpoint) dépassait immédiatement tout seuil
+  /// bas et l'alerte repartait aussitôt — invalidée d'avance.
+  Future<void> resetCurrentMonth() async {
+    final now = DateTime.now();
+    final prefix =
+        '${now.year.toString().padLeft(4, '0')}-'
+        '${now.month.toString().padLeft(2, '0')}-';
+    try {
+      final doomed = _b.keys
+          .whereType<String>()
+          .where((k) => k.startsWith(prefix))
+          .toList();
+      await _b.deleteAll(doomed);
+    } catch (e) {
+      logger.w('Purge du mois courant impossible: $e');
+      return;
+    }
+    _lastAlertedMonth = null;
+    limitExceeded = false;
+    limitExceededNotifier.value = false;
+    monthlyUsageChanged.value = 0;
+    logger.i('Consommation du mois courant remise à zéro');
+    await _resyncThroughput();
+  }
 }
 
 /// Instantané des compteurs natifs (octets cumulés depuis le boot).

@@ -6,7 +6,8 @@ import '../services/consent_service.dart';
 // temps réel, connectés au service de réglages persistant (Hive).
 import '../services/settings_service.dart';
 import '../services/throughput_service.dart';
-import '../services/usage_tracker_service.dart' show formatGb;
+import '../services/usage_tracker_service.dart'
+    show UsageTrackerService, formatGb;
 import '../theme/yele_theme.dart';
 import '../widgets/yele_scaffold.dart';
 
@@ -132,10 +133,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Imp08 v3 — Remise à zéro explicite de la limite (revue
-                  // du 08/11) : une ligne dédiée, en tête du sélecteur.
+                  // Imp08 v4 — Remise à zéro complète (revue du 08/11) :
+                  // le seuil repart à zéro ET la consommation du mois est
+                  // purgée — sans purge, le mois déjà accumulé (4,23 Go)
+                  // dépassait tout nouveau seuil bas et l'alerte repartait
+                  // aussitôt, invalidée d'avance. Sentinelle -1.0 pour
+                  // distinguer la ligne du simple preset « Aucune alerte ».
                   InkWell(
-                    onTap: () => Navigator.of(ctx).pop(0.0),
+                    onTap: () => Navigator.of(ctx).pop(-1.0),
                     child: Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(
@@ -152,7 +157,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              "Réinitialiser la limite (supprimer l'alerte)",
+                              "Réinitialiser la limite et la consommation "
+                              "du mois",
                               style: TextStyle(
                                 fontSize: 14.5,
                                 color: YeleColors.ink,
@@ -241,7 +247,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       },
     );
-    if (chosen == null || chosen == _limitGb) return;
+    if (chosen == null) return;
+    // Sentinelle de la ligne « Réinitialiser la limite et la
+    // consommation » : purge d'abord (total du mois = 0), puis seuil à
+    // zéro — le notificateur du seuil repart d'un compteur nettoyé, donc
+    // aucune alerte parasite au retour dans l'écran Consommation.
+    if (chosen < 0) {
+      try {
+        await UsageTrackerService.instance.resetCurrentMonth();
+        SettingsService().monthlyLimitGb = 0;
+      } catch (_) {
+        if (!mounted) return;
+        _snack(
+          "Réinitialisation impossible (suivi ou réglages indisponibles).",
+        );
+        return;
+      }
+      if (!mounted) return;
+      setState(() => _limitGb = 0);
+      _snack('Limite et consommation du mois remises à zéro.');
+      return;
+    }
+    if (chosen == _limitGb) return;
     try {
       SettingsService().monthlyLimitGb = chosen;
     } catch (_) {

@@ -127,8 +127,14 @@ class _CoverageScreenState extends State<CoverageScreen> {
     return {for (final e in out.entries) e.key: e.value};
   }
 
-  // ── ISS-11 : Localisez-moi ──
+  // ── ISS-11 : Localisez-moi (interrupteur) ──
+  /// 1er appui → localisation + pin + recentrage ; appui suivant → le pin
+  /// disparaît (la carte ne bouge pas). Re-appui → nouvelle localisation.
   Future<void> _locateMe() async {
+    if (_userPosition != null) {
+      setState(() => _userPosition = null);
+      return;
+    }
     if (_locating) return;
     setState(() => _locating = true);
     final pos = await _location.requestGpsPosition();
@@ -570,7 +576,8 @@ class _CoverageScreenState extends State<CoverageScreen> {
               ),
             ),
           ),
-        // ISS-11 — Bouton « Localisez-moi » : pin + recentrage sur la position.
+        // ISS-11 — Bouton « Localisez-moi » : localise + place un pin ; un
+        // 2e appui masque le pin (interrupteur).
         Positioned(
           right: 12,
           bottom: 16,
@@ -583,8 +590,15 @@ class _CoverageScreenState extends State<CoverageScreen> {
                   heroTag: 'coverage-locate',
                   backgroundColor: Colors.white,
                   foregroundColor: YeleColors.primary,
-                  icon: const Icon(Icons.my_location, size: 20),
-                  label: const Text('Localisez-moi',
+                  icon: Icon(
+                      _userPosition != null
+                          ? Icons.location_off
+                          : Icons.my_location,
+                      size: 20),
+                  label: Text(
+                      _userPosition != null
+                          ? 'Masquer mon point'
+                          : 'Localisez-moi',
                       style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
                   onPressed: _locateMe,
                 ),

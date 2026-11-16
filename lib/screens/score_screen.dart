@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../constants/config.dart';
 import '../models/speed_test_result.dart';
 import '../services/dashboard_api_service.dart';
+import '../services/device_identity_service.dart';
 import '../services/local_storage_service.dart';
 import '../services/packet_loss_service.dart';
 import '../services/speed_test_api_service.dart';
@@ -35,6 +36,10 @@ class _ScoreScreenState extends State<ScoreScreen> {
   final _storage = LocalStorageService();
   final _dashboard = DashboardApiService();
   BarometerResult? _barometer;
+
+  /// Segment de comparaison transmis au serveur (« wifi »/« mobile »),
+  /// pour libeller l'échantillon (« mesures Wi-Fi », « mesures mobiles »).
+  String? _barometerNetType;
   bool _saved = false;
   bool _qoeDone = false;
 
@@ -49,13 +54,41 @@ class _ScoreScreenState extends State<ScoreScreen> {
     // l'ouverture du bilan. Non bloquant : la carte n'apparaît que si
     // l'API répond (et seulement pour un test de débit).
     if (_speedDone) {
-      _dashboard
-          .fetchBarometer(r.downloadSpeed, r.uploadSpeed, r.ping,
-              operator: barometerOperatorOf(r))
-          .then((v) {
-        if (mounted && v != null) setState(() => _barometer = v);
-      });
+      _fetchBarometer();
     }
+  }
+
+  /// IMP-09 — Situe le résultat dans le baromètre, comparé aux mesures de
+  /// la même connexion (Wi-Fi ou mobile) et, si disponibles, aux sous-
+  /// groupes opérateur × techno, de zone (~10 km) et à la tendance des 5
+  /// derniers tests du même appareil.
+  Future<void> _fetchBarometer() async {
+    final wifi = (r.networkType ?? '').toUpperCase().contains('WIFI');
+    // Comparaison à égale connexion : un test Wi-Fi n'est pas comparé à des
+    // mesures 4G. Type de connexion inconnu = comparaison nationale.
+    _barometerNetType =
+        (r.networkType ?? '').trim().isEmpty ? null : (wifi ? 'wifi' : 'mobile');
+    // Techno radio du testeur, pour le sous-groupe opérateur × techno.
+    String? tech;
+    if (!wifi) {
+      final t = ((r.technology ?? r.cellularTech) ?? '').trim();
+      tech = RegExp(r'^[2-5]G$', caseSensitive: false).hasMatch(t) ? t : null;
+    }
+    final uuid = await DeviceIdentityService.instance.getUuid();
+    final v = await _dashboard.fetchBarometer(
+      r.downloadSpeed,
+      r.uploadSpeed,
+      r.ping,
+      operator: barometerOperatorOf(r),
+      netType: _barometerNetType,
+      tech: tech,
+      lat: (r.latitude ?? 0) != 0 ? r.latitude : null,
+      lng: (r.longitude ?? 0) != 0 ? r.longitude : null,
+      streaming: r.hasStreamingTest ? r.streamingScore : null,
+      browsing: r.hasBrowsingTest ? r.browsingScore : null,
+      deviceId: uuid,
+    );
+    if (mounted && v != null) setState(() => _barometer = v);
   }
 
   Future<void> _finalize() async {
@@ -276,8 +309,8 @@ class _ScoreScreenState extends State<ScoreScreen> {
 
   // ── IMP-09 : baromètre de comparaison ─────────────────────────────────
 
-  /// Carte « Baromètre » : position du résultat par rapport à toutes les
-  /// mesures de la base. Silencieuse tant que l'API n'a pas répondu.
+  /// Carte « Baromètre » : position du résultat par rapport aux mesures de
+  /// la même connexion. Silencieuse tant que l'API n'a pas répondu.
   Widget _barometerCard() {
     final b = _barometer;
     if (b == null) return const SizedBox.shrink();
@@ -302,50 +335,114 @@ class _ScoreScreenState extends State<ScoreScreen> {
                       fontWeight: FontWeight.w700,
                       color: YeleColors.surface.ink)),
               const Spacer(),
-              Text('${b.sampleSize} mesures',
-                  style: TextStyle(
-                      fontSize: 12, color: YeleColors.surface.muted)),
+              Text(_sampleLabel, style: TextStyle(
+                  fontSize: 12, color: YeleColors.surface.muted)),
             ],
           ),
           const SizedBox(height: 10),
           _barometerRow('▼ Download', b.downloadPercentile,
-              'plus rapide que ${b.downloadPercentile.toStringAsFixed(0)} % des mesures'),
+              _metricCaption(b.downloadRank, _medianOf(b.medianDownload, 'Mb/s'))),
           _barometerRow('▲ Upload', b.uploadPercentile,
-              'plus rapide que ${b.uploadPercentile.toStringAsFixed(0)} % des mesures'),
+              _metricCaption(b.uploadRank, _medianOf(b.medianUpload, 'Mb/s'))),
           _barometerRow('↔ Latence', b.pingPercentile,
-              'meilleure que ${b.pingPercentile.toStringAsFixed(0)} % des mesures'),
+              _metricCaption(b.pingRank, _medianOf(b.medianPing, 'ms', decimals: 0))),
+          // IMP-09 v2 : les cinq indicateurs — le centile n'est demandé au
+          // serveur que si le testeur a fait l'usage.
+          if (r.hasStreamingTest)
+            _barometerRow('▶ Streaming', b.streamingPercentile,
+                'meilleur que ${b.streamingPercentile.toStringAsFixed(0)} % des tests de streaming'),
+          if (r.hasBrowsingTest)
+            _barometerRow('🌐 Navigation', b.browsingPercentile,
+                'meilleur que ${b.browsingPercentile.toStringAsFixed(0)} % des tests de navigation'),
           // IMP-09 : même lecture, parmi les seuls clients de l'opérateur.
           if (b.hasOperatorComparison) ..._operatorBarometer(b),
+          // IMP-09 v2 : comparaison de proximité, si l'échantillon suffit.
+          if (b.hasZoneComparison) ..._zoneBarometer(b),
+          if (b.hasTrend) _trendLine(b),
         ],
       ),
     );
   }
 
-  /// IMP-09 — Bloc « Parmi les clients de l'opérateur » et débits moyens.
+  /// Libellé de l'échantillon comparé, segmenté par type de connexion —
+  /// seulement si le serveur confirme le filtrage ([BarometerResult.
+  /// networkType]) : sinon « N mesures », sans prétendre à un segment.
+  String get _sampleLabel {
+    final b = _barometer!;
+    switch (b.networkType) {
+      case 'wifi':
+        return '${b.sampleSize} mesures Wi-Fi';
+      case 'mobile':
+        return '${b.sampleSize} mesures mobiles';
+    }
+    return '${b.sampleSize} mesures';
+  }
+
+  /// « 12ᵉ sur 56 » : rang du résultat (1 = le plus rapide) sur l'échantillon.
+  String _rankOf(int rank) {
+    final b = _barometer!;
+    if (rank <= 0 || b.sampleSize <= 1) return '';
+    return '$rankᵉ sur ${b.sampleSize}';
+  }
+
+  /// « médiane 12,3 Mb/s » : valeur centrale du groupe comparé, à situer
+  /// sur la barre.
+  String _medianOf(double median, String unit, {int decimals = 1}) {
+    if (median <= 0) return '';
+    return 'médiane ${median.toStringAsFixed(decimals)} $unit';
+  }
+
+  /// Légende d'une ligne de baromètre : rang + médiane du groupe comparé.
+  String _metricCaption(int rank, String medianLabel) {
+    final parts = [
+      _rankOf(rank),
+      medianLabel,
+    ].where((s) => s.isNotEmpty).toList();
+    return parts.join(' · ');
+  }
+
+  /// IMP-09 — Bloc « Parmi les clients de l'opérateur », restreint à la
+  /// même techno quand l'échantillon le permet, et débits moyens.
   List<Widget> _operatorBarometer(BarometerResult b) {
     final op = b.operator!;
     final muted = TextStyle(fontSize: 12, color: YeleColors.surface.muted);
+    // IMP-09 v2 : sous-groupe plus fin (opérateur × techno) si l'échantillon
+    // atteint minSubgroupSample — sinon le groupe opérateur entier.
+    final techOk = b.hasOperatorTechComparison;
+    final groupe = techOk
+        ? 'les clients $op en ${b.operatorTech}'
+        : 'les clients $op';
+    final dl = techOk
+        ? b.operatorTechDownloadPercentile
+        : b.operatorDownloadPercentile;
+    final ul =
+        techOk ? b.operatorTechUploadPercentile : b.operatorUploadPercentile;
+    final pg = techOk ? b.operatorTechPingPercentile : b.operatorPingPercentile;
+    final n = techOk ? b.operatorTechSampleSize : b.operatorSampleSize;
     return [
       const Divider(height: 22),
       Row(
         children: [
           Expanded(
-            child: Text('Parmi les clients $op',
+            child: Text(
+                techOk
+                    ? 'Parmi les clients $op en ${b.operatorTech}'
+                    : 'Parmi les clients $op',
                 style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
                     color: YeleColors.surface.ink)),
           ),
-          Text('${b.operatorSampleSize} mesures', style: muted),
+          Text('$n mesures', style: muted),
         ],
       ),
       const SizedBox(height: 4),
-      _barometerRow('▼ Download', b.operatorDownloadPercentile,
-          'plus rapide que ${b.operatorDownloadPercentile.toStringAsFixed(0)} % des clients $op'),
-      _barometerRow('▲ Upload', b.operatorUploadPercentile,
-          'plus rapide que ${b.operatorUploadPercentile.toStringAsFixed(0)} % des clients $op'),
-      _barometerRow('↔ Latence', b.operatorPingPercentile,
-          'meilleure que ${b.operatorPingPercentile.toStringAsFixed(0)} % des clients $op'),
+      _barometerRow('▼ Download', dl,
+          'plus rapide que ${dl.toStringAsFixed(0)} % de $groupe'),
+      _barometerRow('▲ Upload', ul,
+          'plus rapide que ${ul.toStringAsFixed(0)} % de $groupe'),
+      _barometerRow('↔ Latence', pg,
+          'meilleure que ${pg.toStringAsFixed(0)} % de $groupe'),
       const SizedBox(height: 6),
       Text(
         'Débit moyen ▼ : vous ${r.downloadSpeed.toStringAsFixed(1)} Mb/s · '
@@ -354,6 +451,54 @@ class _ScoreScreenState extends State<ScoreScreen> {
         style: muted,
       ),
     ];
+  }
+
+  /// IMP-09 v2 — Bloc « Dans votre zone » : mesures à 10 km ou moins du
+  /// test, même lecture que le bloc opérateur.
+  List<Widget> _zoneBarometer(BarometerResult b) {
+    final muted = TextStyle(fontSize: 12, color: YeleColors.surface.muted);
+    return [
+      const Divider(height: 22),
+      Row(
+        children: [
+          Expanded(
+            child: Text('Dans votre zone (10 km)',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: YeleColors.surface.ink)),
+          ),
+          Text('${b.zoneSampleSize} mesures', style: muted),
+        ],
+      ),
+      const SizedBox(height: 4),
+      _barometerRow('▼ Download', b.zoneDownloadPercentile,
+          'plus rapide que ${b.zoneDownloadPercentile.toStringAsFixed(0)} % des mesures de votre zone'),
+      _barometerRow('▲ Upload', b.zoneUploadPercentile,
+          'plus rapide que ${b.zoneUploadPercentile.toStringAsFixed(0)} % des mesures de votre zone'),
+      _barometerRow('↔ Latence', b.zonePingPercentile,
+          'meilleure que ${b.zonePingPercentile.toStringAsFixed(0)} % des mesures de votre zone'),
+    ];
+  }
+
+  /// IMP-09 v2 — Tendance personnelle : les derniers tests du même appareil,
+  /// du plus ancien au plus récent, avec le sens d'évolution.
+  Widget _trendLine(BarometerResult b) {
+    final values = b.recentDownloads.reversed.toList();
+    const eps = 0.1;
+    final sens = values.last > values.first + eps
+        ? 'en hausse'
+        : values.last < values.first - eps
+            ? 'en baisse'
+            : 'stable';
+    final seq = values.map((v) => v.toStringAsFixed(1)).join(' → ');
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Text(
+        'Vos ${values.length} derniers tests ▼ : $seq Mb/s ($sens)',
+        style: TextStyle(fontSize: 12, color: YeleColors.surface.muted),
+      ),
+    );
   }
 
   /// Une ligne du baromètre : métrique + mini-jauge de centile.

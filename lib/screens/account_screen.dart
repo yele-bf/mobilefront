@@ -146,7 +146,6 @@ class _Profile extends StatefulWidget {
 }
 
 class _ProfileState extends State<_Profile> {
-  late final _name = TextEditingController(text: widget.account.name);
   int? _serverCount;
 
   @override
@@ -159,16 +158,47 @@ class _ProfileState extends State<_Profile> {
 
   @override
   void dispose() {
-    _name.dispose();
     super.dispose();
   }
 
   void _snack(String m) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
-  Future<void> _saveName() async {
+  // Demande du 15/11 : le nom s'édite dans une FENÊTRE (dialogue), pas
+  // dans un champ inline — plus clair sur mobile (grand cible, clavier
+  // après ouverture, annulation possible).
+  Future<void> _editName() async {
+    final ctrl = TextEditingController(text: widget.account.name);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Modifier le nom affiché'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          maxLength: 60,
+          decoration: const InputDecoration(
+            labelText: 'Nom affiché',
+            hintText: 'Ex. : Kévin A.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Enregistrer'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
     try {
-      await AccountService().updateName(_name.text);
+      // current.value est mis à jour par le service : l'écran se
+      // reconstruit seul (avatar, sous-titre, compteurs).
+      await AccountService().updateName(ctrl.text);
       if (mounted) _snack('Profil enregistré.');
     } on AccountException catch (e) {
       if (mounted) _snack(e.message);
@@ -231,13 +261,16 @@ class _ProfileState extends State<_Profile> {
           ],
         ),
         const SizedBox(height: 18),
-        TextField(
-          controller: _name,
-          decoration: InputDecoration(
-            labelText: 'Nom affiché',
-            suffixIcon: IconButton(
-                icon: const Icon(Icons.check), onPressed: _saveName),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.badge_outlined),
+          title: Text('Nom affiché', style: TextStyle(color: YeleColors.ink)),
+          subtitle: Text(
+            a.name.trim().isEmpty ? 'Non renseigné' : a.name,
+            style: TextStyle(color: YeleColors.muted),
           ),
+          trailing: const Icon(Icons.edit_outlined, size: 18),
+          onTap: _editName,
         ),
         const SizedBox(height: 18),
         ListTile(

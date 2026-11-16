@@ -5,7 +5,7 @@
 // ConsentService.termsVersion, pour que l'accord soit redemandé.
 
 /// Date de la version affichée en tête du texte.
-const String CONDITIONS_DATE = '30 octobre 2026 (version 1)';
+const String CONDITIONS_DATE = '15 novembre 2026 (version 2)';
 
 /// Adresse à laquelle écrire pour exercer ses droits (accès, suppression).
 const String CONDITIONS_CONTACT_EMAIL = 'support@yele.bf';
@@ -67,13 +67,13 @@ const List<ConditionsSection> CONDITIONS_UTILISATION = [
     bullets: CONSENT_SUMMARY,
   ),
   ConditionsSection(
-    'Collecte en arrière-plan (facultative)',
+    'Collecte en arrière-plan',
     paragraphs: [
-      'Si vous l\'activez, Yélé relève à intervalle régulier, même '
-          'application fermée, votre position, la technologie réseau, '
-          'l\'opérateur et la puissance du signal. Aucun test de débit '
-          'n\'est alors effectué. Cette collecte est désactivée par défaut '
-          'et s\'arrête à tout moment.',
+      'Une collecte automatique en arrière-plan (relever la technologie '
+          'réseau et le niveau de signal sans lancer de test) est prévue, '
+          'mais elle n\'est pas encore proposée : elle sera réintroduite '
+          'dans une prochaine version de l\'application, avec les mêmes '
+          'garanties de consentement et de désactivation à tout moment.',
     ],
   ),
   ConditionsSection(
@@ -116,8 +116,10 @@ const List<ConditionsSection> CONDITIONS_UTILISATION = [
     'Vos choix et vos droits',
     bullets: [
       'refuser : l\'application se ferme sans rien mesurer ni envoyer',
-      'retirer votre accord à tout moment depuis Réglages → Conditions '
-          'd\'utilisation : elles vous seront présentées à nouveau',
+      'retirer votre accord à tout moment depuis Réglages → Assistance → '
+          'Retirer mon accord : les conditions ET les autorisations '
+          '(localisation, réseau mobile, notifications) vous seront de '
+          'nouveau demandées',
       'désactiver la localisation dans les paramètres Android : les tests '
           'sont alors bloqués',
       'demander l\'accès à vos mesures ou leur suppression en écrivant à '

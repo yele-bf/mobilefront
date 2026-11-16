@@ -108,8 +108,8 @@ const _sections = <_Section>[
         'des réseaux mobiles au Burkina Faso**. L\'application mesure le '
         'débit, la latence (ping), la qualité de streaming vidéo et la '
         'navigation web, puis géolocalise chaque test pour construire une '
-        'carte publique de la couverture des opérateurs (ONATEL/Telmob, '
-        'Orange, Telecel/Moov).'),
+        'carte publique de la couverture des opérateurs **Orange BF SA, '
+        'Moov Africa SA et Telecel Faso SA**.'),
     _Qa('Combien de données consomme un test ?',
         'Un test complet consomme en moyenne **20 à 40 Mo** selon la qualité '
         'de votre connexion : environ 10 s de téléchargement, 10 s d\'envoi, '
@@ -121,6 +121,20 @@ const _sections = <_Section>[
         '(2G/3G/4G/5G) sont attachés à chaque mesure pour savoir **où** le '
         'réseau est bon ou faible. Aucune donnée nominative n\'est collectée : '
         "aucune inscription n'est requise."),
+    _Qa("Pourquoi l'application me demande-t-elle ces autorisations ?",
+        '**Localisation** : elle place chaque mesure sur la carte — sans '
+        'position, une mesure ne sert à rien. **Réseau mobile** : elle lit '
+        "l'opérateur de votre SIM et la technologie (2G à 5G), cœur de la "
+        'mesure. **Notifications** (facultative) : elle affiche la '
+        'notification de la collecte en arrière-plan. Vous voyez et pilotez '
+        'tout cela dans **Réglages → Autorisations**, et après avoir retiré '
+        'votre accord, les autorisations vous sont de nouveau demandées.'),
+    _Qa('Faut-il créer un compte pour utiliser Yélé ?',
+        '**Non** : l\'application fonctionne sans compte, aucune inscription '
+        "n'est requise. L'onglet **Mon compte** reste facultatif : il permet "
+        'de créer un compte pour retrouver vos mesures d\'un appareil à '
+        "l'autre et gérer votre profil. Sans compte, vos tests alimentent "
+        'normalement la carte publique, de façon anonyme.'),
     _Qa('Comment obtenir des résultats fiables ?',
         'Restez **immobile et en extérieur si possible** pendant le test, ne '
         "consommez pas d'autres contenus (vidéo, téléchargement) en même "
@@ -225,8 +239,9 @@ const _sections = <_Section>[
         'La carte du tableau de bord agrège toutes les mesures anonymisées '
         'par opérateur et par zone. Les couleurs indiquent la **qualité '
         'moyenne mesurée** (débit, latence, streaming, navigation) et non une '
-        'couverture théorique. Vous pouvez filtrer par opérateur (ONATEL, '
-        'Orange, Telecel), par technologie (2G à 5G), par usage (débit, '
+        'couverture théorique. Vous pouvez filtrer par opérateur (**Orange '
+        'BF SA, Moov Africa SA, Telecel Faso SA**), par technologie (2G à '
+        '5G), par usage (débit, '
         'streaming, navigation) et par période. Vous n\'êtes pas dans la '
         'carte ? Faites un test là où vous êtes, votre mesure enrichira la '
         'zone en quelques minutes.'),
@@ -267,13 +282,14 @@ const _sections = <_Section>[
         '**anonyme**, agrégés avec ceux de toute la communauté, quelques '
         "minutes après l'envoi."),
     _Qa('À quoi sert la collecte automatique en arrière-plan ?',
-        "Sans que vous ayez rien à faire, l'application enregistre "
-        'discrètement la technologie réseau disponible (2G, 3G, 4G, 5G) et le '
-        'niveau de signal à l\'endroit où vous passez. Chaque relève ne '
-        'consomme que **4 Ko**. C\'est cette collecte qui permet de dessiner '
-        'une carte de couverture **complète et continue**, y compris sur les '
-        'routes et dans les zones où personne ne lance de test. Vous pouvez '
-        'la désactiver dans **Réglages → Paramètres techniques**.'),
+        'Prévue pour enregistrer discrètement, sans lancer de test, la '
+        'technologie réseau disponible (2G à 5G) et le niveau de signal à '
+        "l'endroit où vous passez — environ **4 Ko par relève** —, elle "
+        'permettra de dessiner une carte de couverture complète et continue, '
+        'y compris sur les routes et dans les zones où personne ne lance de '
+        'test. Cette collecte est **actuellement suspendue** le temps des '
+        'derniers réglages : elle sera réintroduite dans une prochaine '
+        'version de l\'application.'),
     _Qa('Comment tester correctement la 5G ?',
         'Vérifiez d\'abord que votre téléphone est **compatible 5G** et que '
         'votre forfait l\'autorise. Désactivez ensuite le Wi-Fi, placez-vous '

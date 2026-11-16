@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../constants/config.dart';
@@ -22,6 +23,17 @@ import '../widgets/yele_scaffold.dart';
 /// autorisations Android et la collecte de couverture sont restaurées
 /// depuis `709dd26`, SANS effacer les ajouts postérieurs (consommation
 /// IMP-08, assistance IMP-02, conditions IMP-14).
+/// Liste affichée par « À propos de Yélé » : les évolutions notables de la
+/// version courante. À tenir à jour à chaque build utilisateur (demande du
+/// 15/11/2026 — la version elle-même vient du système, jamais en dur).
+const List<String> _APP_CHANGELOG = [
+  "Nouvel onglet Couverture : la carte du tableau de bord dans l'application",
+  'Mon compte : création de compte, profil et historique associé (IMP-03)',
+  'Réglages enrichis : FAQ, contact, permissions centralisées (IMP-02/04)',
+  'Qualité du signal radio (RSSI/RSRP) envoyée avec chaque test',
+  'Réglages persistants : test par défaut au démarrage (ISS-12)',
+];
+
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -31,8 +43,6 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen>
     with WidgetsBindingObserver {
-  bool _useGps = true;
-
   // IMP-08 — État courant des réglages de consommation (chargés depuis la
   // box Hive ; conservés localement au cas où la box ne serait pas
   // prête — l'écran doit s'afficher sans crash, réglages par défaut).
@@ -56,9 +66,11 @@ class _SettingsScreenState extends State<SettingsScreen>
   bool _gpsOn = true;
 
   // ISS-12 — Réglages généraux fonctionnels et persistants (Hive).
+  // L'« Unité de débit » est masquée depuis le 15/11 (comme Langue /
+  // Style de fond) : seul « Test par défaut » reste éditable ici, le
+  // réglage speedUnit vit côté SettingsService (valeur Auto).
   final _settings = SettingsService();
   DefaultTest _defaultTest = DefaultTest.full;
-  SpeedUnit _speedUnit = SpeedUnit.auto;
 
   @override
   void initState() {
@@ -77,7 +89,6 @@ class _SettingsScreenState extends State<SettingsScreen>
   void _loadSettings() {
     setState(() {
       _defaultTest = _settings.defaultTest;
-      _speedUnit = _settings.speedUnit;
     });
   }
 
@@ -159,20 +170,23 @@ class _SettingsScreenState extends State<SettingsScreen>
               _defaultTestLabel(_defaultTest),
               _pickDefaultTest,
             ),
-            _choiceItem(
-              AppLocale.t('Unité de débit', 'Speed unit'),
-              _speedUnitLabel(_speedUnit),
-              _pickSpeedUnit,
-            ),
-            _toggle(
-              AppLocale.t('Utiliser le GPS', 'Use GPS'),
-              AppLocale.t(
-                'Active/désactive la géolocalisation des tests',
-                'Toggles geolocation of the tests',
-              ),
-              _useGps,
-              (v) => setState(() => _useGps = v),
-            ),
+            // Revue bêta du 08/11/2026 : « Unité de débit » est masquée au
+            // tour de « Langue » / « Style de fond » (demande du 15/11) —
+            // l'app affiche les débits en Mb/s, l'option Auto reste la
+            // valeur de repli (le réglage existe toujours côté service,
+            // il n'est simplement plus présenté).
+            // _choiceItem(
+            //   AppLocale.t('Unité de débit', 'Speed unit'),
+            //   _speedUnitLabel(_speedUnit),
+            //   _pickSpeedUnit,
+            // ),
+            // Le toggle « Utiliser le GPS » a été retiré (demande du
+            // 15/11) : interrupteur mort, son état n'était lu nulle part —
+            // le couper ne bloquait ni les tests ni la géolocalisation,
+            // et il n'était pas persisté. Toute la localisation se pilote
+            // désormais depuis Autorisations → Localisation, qui gère la
+            // permission Android (états, demande, refus définitif) et
+            // l'état du service GPS du téléphone.
             // IMP-08 — Réglages du suivi de consommation : le seuil
             // alimente la jauge, le bandeau « seuil dépassé » et la
             // notification native de l'écran Consommation ; le débit temps
@@ -1052,17 +1066,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     }
   }
 
-  String _speedUnitLabel(SpeedUnit v) {
-    switch (v) {
-      case SpeedUnit.auto:
-        return AppLocale.t('Auto (Mb/s ou Kb/s)', 'Auto (Mb/s or Kb/s)');
-      case SpeedUnit.mbps:
-        return 'Mb/s';
-      case SpeedUnit.kbps:
-        return 'Kb/s';
-    }
-  }
-
   /// Ouvre une liste de choix et persiste immédiatement la valeur retenue.
   Future<void> _pick<T>({
     required String title,
@@ -1129,13 +1132,6 @@ class _SettingsScreenState extends State<SettingsScreen>
     },
   );
 
-  Future<void> _pickSpeedUnit() => _pick<SpeedUnit>(
-    title: AppLocale.t('Unité de débit', 'Speed unit'),
-    current: _speedUnit,
-    choices: [for (final v in SpeedUnit.values) (v, _speedUnitLabel(v))],
-    onPick: (v) => _settings.speedUnit = v,
-  );
-
   // ── Assistance (FAQ + Contactez-nous) ────────────────────────────────────
 
   static const _supportEmail = 'support@yele.bf';
@@ -1190,8 +1186,9 @@ class _SettingsScreenState extends State<SettingsScreen>
           icon: Icons.block_outlined,
           title: AppLocale.t('Retirer mon accord', 'Withdraw my consent'),
           sub: AppLocale.t(
-            'Les conditions vous seront présentées à nouveau',
-            'The terms will be presented again',
+            'Les conditions et les autorisations vous seront de nouveau '
+                'demandées',
+            'The terms and permissions will be requested again',
           ),
           onTap: _withdrawConsent,
         ),
@@ -1271,9 +1268,12 @@ class _SettingsScreenState extends State<SettingsScreen>
         ),
         content: Text(
           AppLocale.t(
-            "Aucun test ne sera possible tant que vous n'aurez pas accepté "
-                "à nouveau les conditions d'utilisation.",
-            'No test will be possible until you accept the terms again.',
+            "Les conditions d'utilisation ET les autorisations (localisation, "
+                "réseau mobile, notifications) vous seront de nouveau "
+                'demandées. Aucun test ne sera possible tant que vous ne '
+                "aurez pas repassé cette étape.",
+            'The terms AND permissions will be requested again. No test '
+                'will be possible until you complete this step.',
           ),
           style: TextStyle(fontSize: 14, height: 1.5, color: YeleColors.ink),
         ),
@@ -1295,15 +1295,68 @@ class _SettingsScreenState extends State<SettingsScreen>
     Navigator.of(context).pushNamedAndRemoveUntil('/consent', (_) => false);
   }
 
-  void _showAbout() {
+  Future<void> _showAbout() async {
+    // Version lue du SYSTÈME (package_info_plus) : toujours raccord avec la
+    // version compilée dans pubspec (2.0.0+2 au 15/11) — plus jamais un
+    // libellé en dur qui prend du retard sur le build (bug trouvé le
+    // 15/11 : la boîte affichait « 1.0.0 » sur une app en 2.0.0).
+    String versionLine = 'Version inconnue';
+    try {
+      final info = await PackageInfo.fromPlatform();
+      versionLine = 'Version ${info.version} (build ${info.buildNumber})';
+    } catch (_) {
+      // Réglage système illisible : on affiche au moins la description.
+    }
+    if (!mounted) return;
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(AppLocale.t('À propos de Yélé', 'About Yélé')),
-        content: Text(
-          'Version 1.0.0\n\n'
-          'Mesure de la qualité des réseaux mobiles au Burkina Faso',
-          style: TextStyle(fontSize: 14, height: 1.5, color: YeleColors.ink),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                versionLine,
+                style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: YeleColors.ink),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Mesure de la qualité des réseaux mobiles au Burkina Faso',
+                style: TextStyle(
+                    fontSize: 13, height: 1.4, color: YeleColors.muted),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                AppLocale.t('Nouveau dans cette version', "What's new"),
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: YeleColors.primary),
+              ),
+              for (final item in _APP_CHANGELOG)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('•  '),
+                      Expanded(
+                        child: Text(
+                          item,
+                          style: TextStyle(
+                              fontSize: 13, height: 1.45, color: YeleColors.ink),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ),
         actions: [
           TextButton(

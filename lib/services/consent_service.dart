@@ -17,11 +17,17 @@ class ConsentService {
 
   /// Version des conditions. L'incrémenter quand les données collectées ou
   /// les règles d'usage changent : l'accord est alors redemandé à tous.
-  static const int termsVersion = 1;
+  /// v2 (15/11/2026) : section collecte arrière-plan rewordée (suspendue),
+  /// droits mis à jour (chemin du retrait + autorisations redemandées).
+  static const int termsVersion = 2;
 
   static const String boxName = 'consent';
   static const String _versionKey = 'termsVersion';
   static const String _dateKey = 'acceptedAt';
+  // Demande du 15/11/2026 : « Retirer mon accord » doit aussi faire
+  // redemander les autorisations (localisation, réseau mobile,
+  // notifications) au prochain accord — pas seulement les conditions.
+  static const String _reconfirmKey = 'reconfirmPermissions';
 
   Box? _box;
 
@@ -58,7 +64,26 @@ class ConsentService {
   Future<void> withdraw() async {
     await _box?.delete(_versionKey);
     await _box?.delete(_dateKey);
-    logger.i('Accord aux conditions retiré');
+    // Les conditions ET les autorisations seront de nouveau demandées :
+    // le prochain accord repasse par la séquence complète de permissions
+    // (ConsentScreen), comme un premier lancement.
+    await _box?.put(_reconfirmKey, true);
+    logger.i('Accord aux conditions retiré (permissions à reconfirmer)');
+  }
+
+  /// Vrai si le prochain accord doit redemander les autorisations
+  /// (posé par [withdraw], consommé par ConsentScreen).
+  bool get shouldReconfirmPermissions {
+    try {
+      return _box?.get(_reconfirmKey) as bool? ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Ferme la séquence de re-confirmation : le drapeau est consommé.
+  Future<void> clearReconfirm() async {
+    await _box?.delete(_reconfirmKey);
   }
 
   /// Ferme la boîte (tests).

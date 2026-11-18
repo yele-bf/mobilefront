@@ -34,17 +34,22 @@ class StreamingTable extends StatelessWidget {
 
   static const _dash = '—';
 
+  /// Décimales françaises : la virgule remplace le point de
+  /// [double.toStringAsFixed] (Dart ne localise pas).
+  static String _fr(num v, int digits) =>
+      v.toStringAsFixed(digits).replaceAll('.', ',');
+
   String _performance(StreamingQualityResult q) =>
-      q.reached ? '${q.performanceRate.toStringAsFixed(2)} %' : _dash;
+      q.reached ? '${_fr(q.performanceRate, 2)} %' : _dash;
 
   String _loading(StreamingQualityResult q) =>
-      q.reached ? '${q.initialLoadingSec.toStringAsFixed(3)} s' : _dash;
+      q.reached ? '${_fr(q.initialLoadingSec, 3)} s' : _dash;
 
   String _buffering(StreamingQualityResult q) {
     if (!q.reached) return _dash;
     // Pas d'interruption : nPerf laisse la case vide plutôt que d'écrire 0.
     if (q.bufferingSec <= 0) return _dash;
-    return '${q.bufferingSec.toStringAsFixed(3)} s';
+    return '${_fr(q.bufferingSec, 3)} s';
   }
 
   String _data(StreamingQualityResult q) {
@@ -67,7 +72,7 @@ class StreamingTable extends StatelessWidget {
   String _minBandwidth(StreamingQualityResult q, Map<String, int> minKbps) {
     final kbps = minKbps[q.label] ?? 0;
     if (kbps <= 0) return _dash;
-    return '≥ ${(kbps / 1e3).toStringAsFixed(2)} Mb/s';
+    return '≥ ${_fr(kbps / 1e3, 2)} Mb/s';
   }
 
   @override

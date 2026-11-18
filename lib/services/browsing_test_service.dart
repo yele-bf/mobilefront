@@ -14,11 +14,17 @@ class BrowsingTestResult {
   final int pagesTested;
   final double score; // score synthétique 0-100
 
+  /// Détail par page, dans l'ordre du scénario : libellé lisible, temps de
+  /// chargement mesuré (ms) et réussite (chargée sans erreur ni timeout).
+  /// Une page échouée porte son temps écoulé (≈ timeout) et success = false.
+  final List<({String label, double loadMs, bool success})> pages;
+
   const BrowsingTestResult({
     required this.avgLoadMs,
     required this.successRate,
     required this.pagesTested,
     required this.score,
+    this.pages = const [],
   });
 
   @override

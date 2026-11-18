@@ -571,6 +571,25 @@ class _HistoryScreenState extends State<HistoryScreen> {
       ),
     );
 
+    // Sous-titre « ▸ Streaming vidéo » / « ▸ Navigation web » du groupe
+    // Qualité perçue (restructuration du 18/11).
+    Widget subHeader(String t) => Padding(
+      padding: const EdgeInsets.only(top: 6, bottom: 2),
+      child: Text(
+        t,
+        style: const TextStyle(
+          color: Color(0xFF1F3A00),
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+
+    // Décimales françaises (virgule) — même convention que l'écran de
+    // résultat.
+    String fr(num v, int digits) =>
+        v.toStringAsFixed(digits).replaceAll('.', ',');
+
     final wifi = (r.networkType ?? '').toUpperCase().contains('WIFI');
 
     // Revue du 06/11 — la carte de détail est rangée en six catégories
@@ -680,7 +699,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ]),
           // 3 … Signal radio.
           group('Signal radio', _signalLines(r, line)),
-          // 4 … Qualité perçue.
+          // 4 … Qualité perçue — restructurée le 18/11 : le détail lisible
+          // (streaming par palier, navigation par site) plutôt que des
+          // agrégats ; fallback ancien format pour les vieilles mesures.
           group('Qualité perçue', [
             if (r.hasStreamingTest) ...[
               // Note /100 de la carte : agrège les 3 résolutions mesurées
@@ -689,19 +710,41 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 'Streaming',
                 '${r.streamingMaxResolution ?? '—'} · ${r.streamingScore!.toStringAsFixed(0)}/100',
               ),
-              // Détail par résolution : le taux de performance de chaque
-              // palier mesuré (720p, 1080p, 1440p, 2160p).
-              for (final q in r.streamingQualities.where((q) => q.reached))
-                line(
-                  '↳ ${q.label}',
-                  '${q.performanceRate.toStringAsFixed(0)} %',
-                ),
+              if (r.streamingQualities.isNotEmpty) ...[
+                subHeader('▸ Streaming vidéo'),
+                // Une ligne par palier : démarrage, coupures, tampon (le
+                // % de tampon est global au test — même valeur sur tous
+                // les paliers, comme l'utilisateur l'a validé).
+                for (final q in r.streamingQualities)
+                  if (q.reached)
+                    line(
+                      q.label,
+                      'Démarre en ${fr(q.initialLoadingSec, 1)} s · '
+                          '${q.rebufferCount} coupure'
+                          '${q.rebufferCount > 1 ? 's' : ''} · '
+                          '${fr((r.streamingRebufferRatio ?? 0) * 100, 0)} % '
+                          'de tampon',
+                    )
+                  else
+                    line(q.label, 'non atteinte'),
+              ],
             ],
-            if (r.hasBrowsingTest)
+            if (r.hasBrowsingTest) ...[
               line(
                 'Navigation',
                 '${(r.browsingAvgLoadMs! / 1000).toStringAsFixed(1)} s · ${r.browsingScore!.toStringAsFixed(0)}/100',
               ),
+              if (r.browsingPages.isNotEmpty) ...[
+                subHeader('▸ Navigation web'),
+                // Une ligne par site : temps de chargement + résultat.
+                for (final p in r.browsingPages)
+                  line(
+                    p.label,
+                    'Se charge en ${fr(p.loadMs / 1000, 1)} s · '
+                    '${p.success ? 'Page chargée avec succès ✓' : 'Échec ✗'}',
+                  ),
+              ],
+            ],
             if (r.qoeRating != null && r.qoeRating! > 0)
               line('QoE', '${r.qoeRating}/5'),
           ]),

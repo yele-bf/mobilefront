@@ -125,10 +125,11 @@ void main() {
       expect(find.text('Débit mini requis'), findsOneWidget);
       expect(find.text('HLS'), findsOneWidget);
       // Valeurs issues de STREAMING_LEVEL_BANDWIDTH_BPS (config).
+      // Décimales françaises : le widget affiche la virgule, pas le point.
       expect(
           find.text('≥ ${(minRequiredKbpsFor(
                   STREAMING_LEVEL_BANDWIDTH_BPS['hd720']!) /
-              1e3).toStringAsFixed(2)} Mb/s'),
+              1e3).toStringAsFixed(2).replaceAll('.', ',')} Mb/s'),
           findsOneWidget);
       // Palier non servi : la valeur requise reste affichée (c'est le but :
       // expliquer la colonne vide), les indicateurs restent à « — ».

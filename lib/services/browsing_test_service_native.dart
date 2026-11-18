@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:logger/logger.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../constants/config.dart';
 import 'arcep_scoring.dart';
 import 'browsing_test_service.dart';
 
@@ -30,6 +31,10 @@ class NativeBrowsingRunner implements BrowsingRunner {
   }) async {
     final loadTimes = <double>[];
     int successes = 0;
+    // Détail par page (validation du 18/11) : libellé lisible, temps mesuré et
+    // réussite, conservés dans l'enregistrement pour l'historique et le
+    // tableau par site de l'écran de résultat.
+    final pageDetails = <({String label, double loadMs, bool success})>[];
 
     // Complète à chaque fin de chargement (ou erreur) de la page courante.
     Completer<void>? pageCompleter;
@@ -86,6 +91,11 @@ class NativeBrowsingRunner implements BrowsingRunner {
         } else {
           logger.w('Browsing ${_hostOf(url)}: échec/timeout');
         }
+        pageDetails.add((
+          label: browsingPageLabel(url),
+          loadMs: ms,
+          success: !currentPageFailed,
+        ));
 
         // Laisse la page visible un court instant avant la suivante
         await Future.delayed(const Duration(milliseconds: 600));
@@ -96,12 +106,14 @@ class NativeBrowsingRunner implements BrowsingRunner {
 
     onProgress?.call(1.0, 'Test de navigation terminé');
 
-    return _buildResult(loadTimes, successes, pages.length);
+    return _buildResult(loadTimes, successes, pages.length,
+        details: pageDetails);
   }
 
   /// Consolide les mesures en résultat (partagé avec la version web).
   BrowsingTestResult _buildResult(
-      List<double> loadTimes, int successes, int total) {
+      List<double> loadTimes, int successes, int total,
+      {List<({String label, double loadMs, bool success})> details = const []}) {
     final successRate = total == 0 ? 0.0 : successes / total;
     final avgLoadMs = loadTimes.isEmpty
         ? 0.0
@@ -116,6 +128,7 @@ class NativeBrowsingRunner implements BrowsingRunner {
         pagesDansSeuil: successes,
         pageLoadMoyenMs: avgLoadMs,
       ).toStringAsFixed(1)),
+      pages: details,
     );
     logger.i(result.toString());
     return result;

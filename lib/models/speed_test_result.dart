@@ -164,6 +164,14 @@ class SpeedTestResult extends HiveObject {
   @HiveField(61)
   String? technology;
 
+  // ── Détail de navigation par site (validation du 18/11) ──
+  // Une ligne JSON par page de référence : {label, loadMs, success}. Null =
+  // ancien enregistrement antérieur à ce champ (les temps par page étaient
+  // calculés mais non conservés) : l'historique et l'écran de résultat
+  // retombent alors sur la synthèse seule.
+  @HiveField(62)
+  String? browsingPagesJson;
+
   // ── ISS-06 : min / max des débits et de la latence ──
   // La moyenne est déjà portée par downloadSpeed / uploadSpeed / ping.
   // Null = non mesurés (test sans phase de débit, ou résultat antérieur).
@@ -249,6 +257,7 @@ class SpeedTestResult extends HiveObject {
     this.browsingAvgLoadMs,
     this.browsingSuccessRate,
     this.browsingPagesTested,
+    this.browsingPagesJson,
     this.browsingScore,
     this.simOperator,
     this.cellularTech,
@@ -319,6 +328,7 @@ class SpeedTestResult extends HiveObject {
       'browsingAvgLoadMs': browsingAvgLoadMs,
       'browsingSuccessRate': browsingSuccessRate,
       'browsingPagesTested': browsingPagesTested,
+      'browsingPages': browsingPagesJson,
       'browsingScore': browsingScore,
       'signalDbm': signalDbm,
       'signalRsrp': signalRsrp,
@@ -362,6 +372,30 @@ class SpeedTestResult extends HiveObject {
 
   /// Vrai si le test de navigation web a été effectué
   bool get hasBrowsingTest => browsingScore != null && browsingScore! > 0;
+
+  /// Détail du test de navigation, une entrée par page de référence dans
+  /// l'ordre du scénario : libellé lisible (« Google »…), temps de chargement
+  /// en ms et réussite (chargée sans erreur/timeout). Liste vide pour les
+  /// enregistrements antérieurs à ce champ (détail non conservé).
+  List<({String label, double loadMs, bool success})> get browsingPages {
+    final raw = browsingPagesJson;
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      return [
+        for (final e in decoded)
+          if (e is Map)
+            (
+              label: (e['label'] ?? '').toString(),
+              loadMs: (e['loadMs'] as num?)?.toDouble() ?? 0,
+              success: e['success'] == true,
+            ),
+      ];
+    } on FormatException {
+      return const [];
+    }
+  }
 
   // ── IMP-12 : score global ouvert ──
 
@@ -486,6 +520,7 @@ class SpeedTestResult extends HiveObject {
       cellularTech: json['cellularTech']?.toString(),
       simSlot: readInt(['simSlot', 'dataSimSlot']),
       streamingQualitiesJson: json['streamingQualities'] as String?,
+      browsingPagesJson: json['browsingPages'] as String?,
       dataUsedKiB: readInt(['dataUsedKiB']),
       signalDbm: readInt(['signalDbm']),
       signalRsrp: readInt(['signalRsrp']),

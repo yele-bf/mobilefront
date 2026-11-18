@@ -552,6 +552,15 @@ class SpeedTestApiService {
         streamingMaxResolution: streaming?.maxResolution,
         streamingScore: streaming?.score,
         streamingQualitiesJson: streaming?.encodeQualities(),
+        // Détail de navigation par site (validation du 18/11) : conservé dans
+        // l'enregistrement local pour l'historique et le tableau de l'écran
+        // de résultat. Non envoyé au backend pour l'instant.
+        browsingPagesJson: browsing == null || browsing.pages.isEmpty
+            ? null
+            : jsonEncode([
+                for (final p in browsing.pages)
+                  {'label': p.label, 'loadMs': p.loadMs, 'success': p.success},
+              ]),
         browsingAvgLoadMs: browsing?.avgLoadMs,
         browsingSuccessRate: browsing?.successRate,
         browsingPagesTested: browsing?.pagesTested,

@@ -148,6 +148,22 @@ const List<String> BROWSING_REFERENCE_PAGES = [
   'https://www.bing.com',
 ];
 
+/// Libellé lisible d'une page de référence du test de navigation (tableaux
+/// par site de l'écran de résultat et de l'historique). Hôte inconnu =
+/// hôte brut tronqué.
+String browsingPageLabel(String url) {
+  const labels = {
+    'www.google.com': 'Google',
+    'www.wikipedia.org': 'Wikipédia',
+    'www.facebook.com': 'Facebook',
+    'lefaso.net': 'Lefaso.net',
+    'www.youtube.com': 'YouTube',
+    'www.bing.com': 'Bing',
+  };
+  final host = Uri.tryParse(url)?.host.toLowerCase() ?? '';
+  return labels[host] ?? (host.isEmpty ? url : host);
+}
+
 // ========== COLLECTE PASSIVE EN ARRIÈRE-PLAN ==========
 // Relève périodique de la position, de la technologie radio, de l'opérateur et
 // de la puissance du signal — sans speedtest. Une relève pèse environ un

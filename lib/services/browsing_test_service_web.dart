@@ -4,6 +4,7 @@ import 'dart:js_interop';
 import 'package:logger/logger.dart';
 import 'package:web/web.dart' as web;
 
+import '../constants/config.dart';
 import 'arcep_scoring.dart';
 import 'browsing_test_service.dart';
 
@@ -34,6 +35,8 @@ class WebBrowsingRunner implements BrowsingRunner {
   }) async {
     final loadTimes = <double>[];
     int successes = 0;
+    // Détail par page (validation du 18/11), comme la version native.
+    final pageDetails = <({String label, double loadMs, bool success})>[];
 
     // Affiche la carte « navigation en cours » pendant le test.
     onController?.call(const WebBrowsingDisplay());
@@ -55,6 +58,11 @@ class WebBrowsingRunner implements BrowsingRunner {
         } else {
           logger.w('Browsing ${_hostOf(url)}: échec/timeout');
         }
+        pageDetails.add((
+          label: browsingPageLabel(url),
+          loadMs: ms,
+          success: ok,
+        ));
 
         // Même rythme que la version WebView.
         await Future.delayed(const Duration(milliseconds: 600));
@@ -79,6 +87,7 @@ class WebBrowsingRunner implements BrowsingRunner {
         pagesDansSeuil: successes,
         pageLoadMoyenMs: avgLoadMs,
       ).toStringAsFixed(1)),
+      pages: pageDetails,
     );
     logger.i(result.toString());
     return result;

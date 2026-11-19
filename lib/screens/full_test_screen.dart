@@ -321,7 +321,9 @@ class _FullTestScreenState extends State<FullTestScreen>
 
       // Bilan d'abord ; le QoE et l'enregistrement se font depuis l'écran Score.
       await Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => ScoreScreen(result: result)),
+        MaterialPageRoute(
+            builder: (_) =>
+                ScoreScreen(result: result, selection: widget.selection)),
       );
     } catch (_) {
       if (!mounted) return;

@@ -172,6 +172,13 @@ class SpeedTestResult extends HiveObject {
   @HiveField(62)
   String? browsingPagesJson;
 
+  // ── Questionnaire QoE adapté au type de test (18/11) ──
+  // JSON des réponses au formulaire terrain : profil, questions du type de
+  // test, améliorations et commentaire facultatif (voir QoeAnswers).
+  // Null = ancien enregistrement (seuls qoeRating / qoeSatisfaction).
+  @HiveField(63)
+  String? qoeAnswersJson;
+
   // ── ISS-06 : min / max des débits et de la latence ──
   // La moyenne est déjà portée par downloadSpeed / uploadSpeed / ping.
   // Null = non mesurés (test sans phase de débit, ou résultat antérieur).
@@ -249,6 +256,7 @@ class SpeedTestResult extends HiveObject {
     this.qoeRating,
     this.qoeUsage,
     this.qoeSatisfaction,
+    this.qoeAnswersJson,
     this.streamingStartupMs,
     this.streamingRebufferCount,
     this.streamingRebufferRatio,
@@ -318,6 +326,7 @@ class SpeedTestResult extends HiveObject {
       'qoeRating': qoeRating,
       'qoeUsage': qoeUsage,
       'qoeSatisfaction': qoeSatisfaction,
+      'qoeAnswers': qoeAnswersJson,
       'streamingStartupMs': streamingStartupMs,
       'streamingRebufferCount': streamingRebufferCount,
       'streamingRebufferRatio': streamingRebufferRatio,
@@ -546,6 +555,7 @@ class SpeedTestResult extends HiveObject {
       qoeRating: readInt(['qoeRating']),
       qoeUsage: json['qoeUsage']?.toString(),
       qoeSatisfaction: json['qoeSatisfaction']?.toString(),
+      qoeAnswersJson: (json['qoeAnswers'] ?? json['qoeAnswersJson'])?.toString(),
     );
   }
 

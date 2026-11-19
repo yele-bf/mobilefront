@@ -77,6 +77,7 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
       wifiSsid: fields[60] as String?,
       technology: fields[61] as String?,
       browsingPagesJson: fields[62] as String?,
+      qoeAnswersJson: fields[63] as String?,
     );
   }
 
@@ -85,9 +86,10 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
     writer
       // Nombre de champs écrits : 49 + accountId (IMP-03) + packetLoss (IMP-07)
       // + 6 min / max (ISS-06) + wifiSsid (60) + technology (61)
-      // + browsingPagesJson (62, détail navigation par site, 18/11).
+      // + browsingPagesJson (62, détail navigation par site, 18/11)
+      // + qoeAnswersJson (63, questionnaire QoE adapté, 18/11).
       // Une autre PR qui ajoute un champ doit additionner, pas remplacer.
-      ..writeByte(60)
+      ..writeByte(61)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -207,7 +209,9 @@ class SpeedTestResultAdapter extends TypeAdapter<SpeedTestResult> {
       ..writeByte(61)
       ..write(obj.technology)
       ..writeByte(62)
-      ..write(obj.browsingPagesJson);
+      ..write(obj.browsingPagesJson)
+      ..writeByte(63)
+      ..write(obj.qoeAnswersJson);
   }
 
   @override

@@ -927,6 +927,34 @@ class SpeedTestApiService {
       // IMP-13 : UUID d'appareil anonyme et stable, généré localement —
       // aucune donnée privée n'est lue ni transmise.
       final deviceId = await DeviceIdentityService.instance.getUuid();
+      // Réponses du questionnaire QoE (18/11) : clés plates pour agréger le
+      // dashboard sans re-parser le JSON côté serveur.
+      final qoeExtra = <String, dynamic>{};
+      try {
+        final decoded = jsonDecode(result.qoeAnswersJson ?? '{}');
+        if (decoded is Map) {
+          final ameliorations =
+              decoded['ameliorations_mobile'] ?? decoded['ameliorations_fixe'];
+          qoeExtra.addAll({
+            'qoeTestType': decoded['test_type'] ?? result.qoeUsage ?? '',
+            'qoeReseau': decoded['reseau'] ?? '',
+            'qoeAge': decoded['tranche_age'] ?? '',
+            'qoeGenre': decoded['genre'] ?? '',
+            'qoeAnciennete': decoded['duree_utilisation'] ?? '',
+            'qoeVitesse': decoded['vitesse_internet'] ?? 0,
+            'qoeDifficultePages': decoded['difficulte_pages_web'] ?? '',
+            'qoeQualiteVideo': decoded['qualite_streaming'] ?? '',
+            'qoeCoupuresVideo': decoded['buffering'] ?? '',
+            'qoeSatisfactionGlobale': decoded['evaluation_globale_reseau'] ?? '',
+            'qoeAmeliorations':
+                ameliorations is List ? ameliorations.join(',') : '',
+            'qoeAmeliorationsAutre': decoded['amelioration_autre'] ?? '',
+            'qoeCommentaire': decoded['commentaire'] ?? '',
+          });
+        }
+      } catch (_) {
+        // JSON absent ou illisible : seuls les champs historiques partent.
+      }
       final response = await _dio.post(
         '/results/telemetry',
         data: {
@@ -955,6 +983,7 @@ class SpeedTestApiService {
             'longitude': result.longitude ?? 0.0,
             'qoeRating': result.qoeRating ?? 0,
             'qoeSatisfaction': result.qoeSatisfaction ?? '',
+            ...qoeExtra,
             // Streaming / navigation web : 0 = test non effectué
             'streamingStartupMs': result.streamingStartupMs ?? 0,
             'streamingRebufferCount': result.streamingRebufferCount ?? 0,

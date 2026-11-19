@@ -1,11 +1,16 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../constants/config.dart';
+import '../models/qoe_answers.dart';
 import '../models/speed_test_result.dart';
+import '../models/test_selection.dart';
 import '../services/dashboard_api_service.dart';
 import '../services/device_identity_service.dart';
 import '../services/local_storage_service.dart';
 import '../services/packet_loss_service.dart';
+import '../services/qoe_profile_store.dart';
 import '../services/speed_test_api_service.dart';
 import '../services/streaming_test_service.dart';
 import '../services/yele_scoring_engine.dart';
@@ -26,7 +31,13 @@ import '../widgets/yele_scaffold.dart';
 /// pas de score en points arbitraire.
 class ScoreScreen extends StatefulWidget {
   final SpeedTestResult result;
-  const ScoreScreen({super.key, required this.result});
+
+  /// Tests demandés par l'utilisateur. Sert à choisir le questionnaire QoE
+  /// adapté : un sous-test échoué ne doit pas changer le type de test.
+  /// Null = écran ouvert hors du parcours de test (repli par déduction).
+  final TestSelection? selection;
+
+  const ScoreScreen({super.key, required this.result, this.selection});
 
   @override
   State<ScoreScreen> createState() => _ScoreScreenState();
@@ -43,14 +54,42 @@ class _ScoreScreenState extends State<ScoreScreen> {
   String? _barometerNetType;
   bool _saved = false;
   bool _qoeDone = false;
+  QoeAnswers? _qoeAnswers;
 
   SpeedTestResult get r => widget.result;
+
+  /// Type de test retenu pour le questionnaire. La sélection de l'utilisateur
+  /// fait foi ; sinon on retombe sur les sous-tests effectivement mesurés.
+  String get _testType {
+    final sel = widget.selection;
+    if (sel != null) {
+      final count = [sel.speed, sel.streaming, sel.browsing]
+          .where((enabled) => enabled)
+          .length;
+      if (count >= 2) return 'complet';
+      if (sel.speed) return 'speedtest';
+      if (sel.streaming) return 'streaming';
+      if (sel.browsing) return 'navigation';
+    }
+    if (r.hasStreamingTest && r.hasBrowsingTest) return 'complet';
+    if (r.hasStreamingTest) return 'streaming';
+    if (r.hasBrowsingTest) return 'navigation';
+    return 'speedtest';
+  }
+
+  /// Liste d'améliorations : mobile avec une SIM, fixe en Wi-Fi.
+  bool get _isMobileConnection =>
+      !(r.networkType ?? '').toUpperCase().contains('WIFI');
 
   bool get _speedDone => r.downloadSpeed > 0 || r.uploadSpeed > 0;
 
   @override
   void initState() {
     super.initState();
+    // Bilan rouvert après coup (historique) : l'évaluation déjà donnée reste
+    // affichée comme enregistrée.
+    _qoeAnswers = QoeAnswers.tryDecode(r.qoeAnswersJson);
+    _qoeDone = _qoeAnswers != null || r.qoeRating != null;
     // IMP-09 — Baromètre : situe le résultat par rapport à la base dès
     // l'ouverture du bilan. Non bloquant : la carte n'apparaît que si
     // l'API répond (test de débit, ou usage seul — streaming/navigation).
@@ -104,22 +143,56 @@ class _ScoreScreenState extends State<ScoreScreen> {
   }
 
   Future<void> _openQoe() async {
+    // Profil mémorisé du dernier questionnaire (âge, genre, ancienneté) pour
+    // éviter de le retaper ; les réponses déjà données servent à « modifier ».
+    final remembered = _qoeAnswers ?? await _loadRememberedQoe();
+    QoeAnswers? completed;
+    if (!mounted) return;
     await showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => QoeDialog(
-        onCompleted: (rating, usage, satisfaction) {
-          r.qoeRating = rating;
-          r.qoeUsage = usage;
-          r.qoeSatisfaction = satisfaction;
-        },
+        testType: _testType,
+        isMobile: _isMobileConnection,
+        initial: remembered,
+        onCompleted: (answers) => completed = answers,
       ),
     );
+
+    if (completed != null) {
+      final answers = completed!;
+      _qoeAnswers = answers;
+      r.qoeAnswersJson = jsonEncode(answers.toJson());
+      r.qoeUsage = answers.testType;
+      r.qoeRating = answers.rating;
+      r.qoeSatisfaction = answers.satisfaction;
+      await QoeProfileStore.save(answers.profileJson());
+      await _finalize();
+      if (!mounted) return;
+      setState(() => _qoeDone = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Évaluation enregistrée ✓')),
+      );
+      return;
+    }
+
+    // « Passer » : la mesure est tout de même conservée.
     await _finalize();
-    if (!mounted) return;
-    setState(() => _qoeDone = true);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Résultat enregistré ✓')),
+  }
+
+  Future<QoeAnswers?> _loadRememberedQoe() async {
+    // Réouverture d'un bilan déjà évalué (historique / retour arrière).
+    final existing = QoeAnswers.tryDecode(r.qoeAnswersJson);
+    if (existing != null) {
+      _qoeDone = true;
+      return existing;
+    }
+    final profile = await QoeProfileStore.load();
+    if (profile == null) return null;
+    return QoeAnswers.fromJson(
+      profile,
+      testType: _testType,
+      reseau: _isMobileConnection ? 'mobile' : 'fixe',
     );
   }
 
@@ -1280,29 +1353,106 @@ class _ScoreScreenState extends State<ScoreScreen> {
     return (sim != null && sim.isNotEmpty) ? sim : '—';
   }
 
+  String get _qoeCta {
+    switch (_testType) {
+      case 'navigation':
+        return 'Évaluer la qualité de ma navigation';
+      case 'streaming':
+        return 'Évaluer la qualité de mes vidéos';
+      case 'complet':
+        return 'Évaluer la qualité de mon test complet';
+      default:
+        return 'Évaluer la qualité de ma connexion';
+    }
+  }
+
+  String get _qoeSubtitle {
+    final count = QoeAnswers.questionCount(_testType);
+    final duration = _testType == 'streaming' || _testType == 'complet'
+        ? '1 min 30'
+        : '1 min';
+    return '$count questions · environ $duration';
+  }
+
+  String get _qoeSummaryText {
+    final parts = _qoeAnswers?.summaryParts ?? const <String>[];
+    return parts.isEmpty
+        ? 'Merci, cela aide à comparer la qualité ressentie'
+        : parts.join(' · ');
+  }
+
+  /// Carte « Votre avis » du croquis validé : invite avant évaluation, puis
+  /// résumé vert avec accès à la modification.
+  Widget _qoeCard() {
+    final done = _qoeDone;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: done ? const Color(0xFFF7FCF7) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+            color: done ? const Color(0xFFBFE0C6) : const Color(0xFFDBE4D8)),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 5,
+              offset: const Offset(0, 1)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(done ? Icons.check_circle : Icons.rate_review,
+                  color: done ? YeleColors.good : const Color(0xFF16557E),
+                  size: 20),
+              const SizedBox(width: 8),
+              Text(done ? 'Évaluation enregistrée' : 'Votre avis',
+                  style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: done ? YeleColors.good : YeleColors.surface.ink)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(done ? _qoeSummaryText : _qoeSubtitle,
+              style: TextStyle(
+                  fontSize: 11, color: YeleColors.surface.muted, height: 1.35)),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _openQoe,
+              icon: Icon(done ? Icons.edit_note : Icons.star_rounded, size: 18),
+              label: Text(done ? 'Voir / modifier mes réponses' : _qoeCta),
+              style: ElevatedButton.styleFrom(
+                backgroundColor:
+                    done ? const Color(0xFFE8F5EA) : const Color(0xFF16557E),
+                foregroundColor: done ? YeleColors.good : Colors.white,
+                elevation: 0,
+                side: done
+                    ? const BorderSide(color: Color(0xFFBFE0C6))
+                    : BorderSide.none,
+                padding: const EdgeInsets.symmetric(vertical: 11),
+                textStyle: const TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _actions() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
       child: Column(
         children: [
-          // Question QoE d'abord (le parcours attendu), puis l'export.
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _qoeDone ? null : _openQoe,
-              icon: Icon(_qoeDone ? Icons.check_circle : Icons.rate_review),
-              label: Text(_qoeDone
-                  ? 'Évaluation enregistrée'
-                  : 'Évaluer la qualité (QoE)'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _qoeDone ? YeleColors.good : YeleColors.primary,
-                foregroundColor: Colors.white,
-                disabledBackgroundColor: YeleColors.good,
-                disabledForegroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-            ),
-          ),
+          // Questionnaire QoE adapté au type de test, puis l'export.
+          _qoeCard(),
           const SizedBox(height: 12),
           // IMP-11 — Export de la mesure, façon nPerf : proposé dès le bilan
           // (l'export d'un résultat échoué reste possible : les champs mesurés

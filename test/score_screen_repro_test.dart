@@ -192,7 +192,7 @@ void main() {
     // Sections suivantes : comparaison, infos, actions.
     expect(find.textContaining('COMPARAISON'), findsWidgets);
     expect(find.textContaining('Serveur de test'), findsOneWidget);
-    expect(find.text('Évaluer la qualité (QoE)'), findsOneWidget);
+    expect(find.text('Évaluer la qualité de ma connexion'), findsOneWidget);
     expect(find.text('Exporter la mesure'), findsOneWidget);
     expect(find.text('Recommencer'), findsOneWidget);
     expect(find.text('Historique'), findsOneWidget);
@@ -267,16 +267,19 @@ void main() {
     expect(find.textContaining('Streaming vidéo'), findsWidgets);
     expect(find.textContaining('Navigation web'), findsWidgets);
     expect(find.textContaining('COMPARAISON'), findsWidgets);
-    expect(find.textContaining('test complet'), findsNothing,
+    expect(find.textContaining('refaites un test complet'), findsNothing,
         reason: 'rappel réservé à l\'usage seul');
-    expect(find.text('Évaluer la qualité (QoE)'), findsOneWidget);
+    expect(
+        find.text('Évaluer la qualité de mon test complet'), findsOneWidget);
     expect(find.text('Recommencer'), findsOneWidget);
     expect(find.text('Historique'), findsOneWidget);
   });
 
   test('roundtrip Hive : le détail par site (index 62) survit à l\'écriture',
       () async {
-    Hive.registerAdapter(SpeedTestResultAdapter());
+    if (!Hive.isAdapterRegistered(0)) {
+      Hive.registerAdapter(SpeedTestResultAdapter());
+    }
     final box = await Hive.openBox<SpeedTestResult>('repro_field62');
     await box.put('nav', _navigationSeule());
     final lu = box.get('nav')!;
@@ -294,6 +297,27 @@ void main() {
     expect(SpeedTestResult(downloadSpeed: 1, uploadSpeed: 1, ping: 1,
             jitter: 1, server: 'x')
         .browsingPages, isEmpty);
+    await box.close();
+  });
+
+  test('roundtrip Hive : les réponses QoE (index 63) survivent', () async {
+    if (!Hive.isAdapterRegistered(0)) {
+      Hive.registerAdapter(SpeedTestResultAdapter());
+    }
+    final box = await Hive.openBox<SpeedTestResult>('repro_field63');
+    final r = _complet()
+      ..qoeAnswersJson =
+          jsonEncode({'test_type': 'complet', 'tranche_age': '20_40'})
+      ..qoeRating = 4
+      ..qoeUsage = 'complet'
+      ..qoeSatisfaction = 'satisfied';
+    await box.put('qoe', r);
+
+    final lu = box.get('qoe')!;
+    expect(lu.qoeAnswersJson, contains('"tranche_age":"20_40"'));
+    expect(lu.qoeRating, 4);
+    expect(lu.qoeUsage, 'complet');
+    expect(lu.qoeSatisfaction, 'satisfied');
     await box.close();
   });
 }

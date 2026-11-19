@@ -14,6 +14,7 @@ import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../constants/config.dart';
+import '../models/qoe_answers.dart';
 import '../models/speed_test_result.dart';
 import 'packet_loss_service.dart';
 import 'reverse_geocoding_service.dart';
@@ -362,9 +363,11 @@ class ExportService {
       ],
       if (r.qoeRating != null && r.qoeRating! > 0) ...[
         ['Évaluation QoE', '${r.qoeRating}/5', ''],
-        if ((r.qoeUsage ?? '').isNotEmpty) ['Usage principal', r.qoeUsage!, ''],
+        if ((r.qoeUsage ?? '').isNotEmpty)
+          ['Type de test', _testTypeLabel(r.qoeUsage!), ''],
         if ((r.qoeSatisfaction ?? '').isNotEmpty)
-          ['Commentaire', r.qoeSatisfaction!, ''],
+          ['Satisfaction', _satisfactionLabel(r.qoeSatisfaction!), ''],
+        ..._qoeAnswerRows(r),
       ],
     ];
     if (perceived.isNotEmpty) {
@@ -425,8 +428,98 @@ class ExportService {
   /// Lignes « Signal radio » : copie conforme de la carte de détail
   /// (history_screen._signalLines) — puissance avec palier, qualité RSRQ,
   /// repli de la mesure générique si aucune métrique typée.
-  static List<List<String>> _signalRows(SpeedTestResult r) {
-    String qualityLabel(int dbm, {required String kind}) {
+  static String _testTypeLabel(String value) {
+    switch (value) {
+      case 'speedtest':
+        return 'Speedtest';
+      case 'navigation':
+        return 'Navigation web';
+      case 'streaming':
+        return 'Streaming vidéo';
+      case 'complet':
+        return 'Test complet';
+      default:
+        return value;
+    }
+  }
+
+  static String _satisfactionLabel(String value) {
+    switch (value) {
+      case 'very_satisfied':
+        return 'Très satisfaite';
+      case 'satisfied':
+        return 'Satisfaite';
+      case 'neutral':
+        return 'Moyenne';
+      case 'unsatisfied':
+        return 'Insatisfaite';
+      case 'very_unsatisfied':
+        return 'Très insatisfaite';
+      default:
+        return value;
+    }
+  }
+
+  /// Lignes détaillées du questionnaire QoE (18/11), si présent.
+  static List<List<String>> _qoeAnswerRows(SpeedTestResult r) {
+    final a = QoeAnswers.tryDecode(r.qoeAnswersJson);
+    if (a == null) return const [];
+    String label(Map<String, String> options, String? key) =>
+        key == null ? '' : (options[key] ?? key);
+    final ameliorations = QoeAnswers.ameliorationsOptions(a.reseau == 'mobile');
+    return [
+      if (a.trancheAge != null)
+        ['Profil — âge', label(QoeAnswers.ageOptions, a.trancheAge), ''],
+      if (a.genre != null)
+        ['Profil — genre', label(QoeAnswers.genreOptions, a.genre), ''],
+      if (a.dureeUtilisation != null)
+        [
+          'Profil — ancienneté',
+          label(QoeAnswers.ancienneteOptions, a.dureeUtilisation),
+          ''
+        ],
+      if (a.vitesseInternet != null)
+        [
+          'Vitesse déclarée',
+          '${a.vitesseInternet}/5 · ${QoeAnswers.etoilesLabels[a.vitesseInternet]}',
+          ''
+        ],
+      if (a.difficultePagesWeb != null)
+        [
+          'Difficultés pages web',
+          label(QoeAnswers.frequenceOptions, a.difficultePagesWeb),
+          ''
+        ],
+      if (a.qualiteStreaming != null)
+        [
+          'Qualité des vidéos',
+          label(QoeAnswers.niveauOptions, a.qualiteStreaming),
+          ''
+        ],
+      if (a.buffering != null)
+        [
+          'Coupures vidéo',
+          label(QoeAnswers.frequenceOptions, a.buffering),
+          ''
+        ],
+      if (a.evaluationGlobaleReseau != null)
+        [
+          'Satisfaction globale',
+          label(QoeAnswers.niveauOptions, a.evaluationGlobaleReseau),
+          ''
+        ],
+      if (a.ameliorations.isNotEmpty)
+        [
+          'Améliorations',
+          a.ameliorations.map((k) => ameliorations[k] ?? k).join(' ; '),
+          ''
+        ],
+      if ((a.commentaire ?? '').isNotEmpty)
+        ['Commentaire libre', a.commentaire!, ''],
+    ];
+  }
+
+  static List<List<String>> _signalRows(SpeedTestResult r) {    String qualityLabel(int dbm, {required String kind}) {
       final t = switch (kind) {
         'rsrq' => [-8, -10, -13],
         'rssi' => [-65, -75, -85],

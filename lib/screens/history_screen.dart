@@ -4,7 +4,6 @@ import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../constants/config.dart';
-import '../models/qoe_answers.dart';
 import '../models/speed_test_result.dart';
 import '../services/account_service.dart';
 import '../services/local_storage_service.dart';
@@ -700,9 +699,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ]),
           // 3 … Signal radio.
           group('Signal radio', _signalLines(r, line)),
-          // 4 … Qualité perçue — restructurée le 18/11 : le détail lisible
-          // (streaming par palier, navigation par site) plutôt que des
-          // agrégats ; fallback ancien format pour les vieilles mesures.
+          // 4 … Qualité perçue — indicateurs MESURÉS uniquement (streaming
+          // par palier, navigation par site). Les réponses du questionnaire
+          // QoE ne figurent plus dans l'historique (demande du 19/11) :
+          // elles restent enregistrées et partent au dashboard.
           group('Qualité perçue', [
             if (r.hasStreamingTest) ...[
               // Note /100 de la carte : agrège les 3 résolutions mesurées
@@ -746,10 +746,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   ),
               ],
             ],
-            if (r.qoeRating != null && r.qoeRating! > 0) ...[
-              line('QoE', '${r.qoeRating}/5'),
-              ..._qoeLines(r, line),
-            ],
           ]),
           // 5 … Score YÉLÉ — le référentiel est cité juste après le titre
           // de catégorie (plan owner), puis score / indice / composantes.
@@ -780,45 +776,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   /// Lignes « Puissance du Signal » / « Qualité du Signal » : métriques radio
-  /// Détail du questionnaire QoE (18/11) — absent des anciennes mesures.
-  List<Widget> _qoeLines(
-    SpeedTestResult r,
-    Widget Function(String k, String v) line,
-  ) {
-    final a = QoeAnswers.tryDecode(r.qoeAnswersJson);
-    if (a == null) return const [];
-    String label(Map<String, String> options, String? key) =>
-        key == null ? '' : (options[key] ?? key);
-    final ameliorations = QoeAnswers.ameliorationsOptions(a.reseau == 'mobile');
-    return [
-      if (a.trancheAge != null)
-        line('Profil', [
-          label(QoeAnswers.ageOptions, a.trancheAge),
-          if (a.genre != null) label(QoeAnswers.genreOptions, a.genre),
-          if (a.dureeUtilisation != null)
-            label(QoeAnswers.ancienneteOptions, a.dureeUtilisation),
-        ].join(' · ')),
-      if (a.vitesseInternet != null)
-        line('Vitesse déclarée',
-            '${a.vitesseInternet}/5 · ${QoeAnswers.etoilesLabels[a.vitesseInternet]}'),
-      if (a.difficultePagesWeb != null)
-        line('Pages web',
-            label(QoeAnswers.frequenceOptions, a.difficultePagesWeb)),
-      if (a.qualiteStreaming != null)
-        line('Vidéos', label(QoeAnswers.niveauOptions, a.qualiteStreaming)),
-      if (a.buffering != null)
-        line('Coupures vidéo', label(QoeAnswers.frequenceOptions, a.buffering)),
-      if (a.evaluationGlobaleReseau != null)
-        line('Satisfaction',
-            label(QoeAnswers.niveauOptions, a.evaluationGlobaleReseau)),
-      if (a.ameliorations.isNotEmpty)
-        line('Améliorations',
-            a.ameliorations.map((k) => ameliorations[k] ?? k).join(' ; ')),
-      if ((a.commentaire ?? '').isNotEmpty)
-        line('Commentaire', a.commentaire!),
-    ];
-  }
-
   /// typées selon la connexion utilisée pour le test. Rien ne s'affiche si
   /// rien n'a été mesuré (iOS, Android < 9, appareils qui n'exposent pas les
   /// compteurs).

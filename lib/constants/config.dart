@@ -36,8 +36,11 @@ String serverHumanLabel(String? server) {
 
 // ========== APPLICATION CONFIGURATION ==========
 const String APP_NAME = 'Yélé - Test de Vitesse';
-const String APP_VERSION = '1.0.0';
-const String APP_BUILD_NUMBER = '1';
+// Version affichee dans le tiroir de navigation. Elle doit suivre
+// `pubspec.yaml` (defaut constate le 19/11/2026 : le tiroir annoncait encore
+// 1.0.0 alors que la build publiee etait 2.1.0+3).
+const String APP_VERSION = '2.1.1';
+const String APP_BUILD_NUMBER = '4';
 
 // ========== FEATURE FLAGS ==========
 const bool ENABLE_OFFLINE_MODE = true;

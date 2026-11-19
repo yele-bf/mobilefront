@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import '../constants/config.dart';
 import '../theme/yele_theme.dart';
 import 'app_localizations.dart';
 
@@ -76,8 +78,20 @@ class YeleDrawer extends StatelessWidget {
             ],
           ),
           const Spacer(),
-          const Text('v1.0.0',
-              style: TextStyle(color: Colors.black54, fontSize: 11)),
+          // Version lue du SYSTEME (package_info_plus), comme la boite « A
+          // propos » : le tiroir annoncait « v1.0.0 » sur une build 2.1.0+3
+          // (defaut constate le 19/11/2026). La constante ne sert que de
+          // repli si la plateforme ne repond pas.
+          FutureBuilder<PackageInfo>(
+            future: PackageInfo.fromPlatform(),
+            builder: (context, snapshot) {
+              final version =
+                  snapshot.data?.version ?? APP_VERSION;
+              return Text('v$version',
+                  style:
+                      const TextStyle(color: Colors.black54, fontSize: 11));
+            },
+          ),
         ],
       ),
     );

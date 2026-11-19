@@ -2,7 +2,7 @@ name: yele
 description: "Yélé — Mesure de la qualité des réseaux mobiles (nouvelle app)"
 publish_to: 'none'
 
-version: 2.1.0+3
+version: 2.1.1+4
 
 environment:
   sdk: ^3.12.0
